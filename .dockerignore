@@ -1,0 +1,13 @@
+.git
+bin
+data
+artifacts
+@misc
+output
+.playwright-cli
+web/node_modules
+web/dist
+web/output
+.env
+.env.*
+!go.sum

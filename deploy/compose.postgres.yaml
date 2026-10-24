@@ -1,0 +1,40 @@
+name: wishingskin
+services:
+  app:
+    build:
+      context: ..
+    ports:
+      - "127.0.0.1:8090:8090"
+    environment:
+      WS_DATABASE_DRIVER: postgres
+      WS_DATABASE_DSN: ${WS_DATABASE_DSN:?Set a PostgreSQL connection URL}
+      WS_PUBLIC_URL: ${WS_PUBLIC_URL:?Set the public origin}
+      WS_TRUSTED_PROXIES: ${WS_TRUSTED_PROXIES:-}
+      WS_TURNSTILE_SITE_KEY: ${WS_TURNSTILE_SITE_KEY:-}
+      WS_TURNSTILE_SECRET: ${WS_TURNSTILE_SECRET:-}
+      WS_SMTP_ADDRESS: ${WS_SMTP_ADDRESS:-}
+      WS_SMTP_FROM: ${WS_SMTP_FROM:-}
+      WS_SMTP_USERNAME: ${WS_SMTP_USERNAME:-}
+      WS_SMTP_PASSWORD: ${WS_SMTP_PASSWORD:-}
+      WS_SMTP_TLS: ${WS_SMTP_TLS:-starttls}
+    volumes:
+      - textures:/data/textures
+    depends_on:
+      postgres:
+        condition: service_healthy
+  postgres:
+    image: postgres:16-alpine@sha256:4e6e670bb069649261c9c18031f0aded7bb249a5b6664ddec29c013a89310d50
+    environment:
+      POSTGRES_DB: wishingskin
+      POSTGRES_USER: wishingskin
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?Set the database password}
+    volumes:
+      - postgres:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U wishingskin -d wishingskin"]
+      interval: 5s
+      timeout: 3s
+      retries: 20
+volumes:
+  textures:
+  postgres:

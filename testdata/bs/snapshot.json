@@ -1,0 +1,51 @@
+{
+  "format_version": 1,
+  "source": {
+    "instance": "local-synthetic-bs602-ygg521",
+    "core_version": "6.0.2",
+    "core_commit": "b737a65f5f5fce1f897f8603db74fd970437b351",
+    "plugin_version": "5.2.1",
+    "plugin_commit": "de016f4cbb43df7bd6d46193d5625693f8c79b3f",
+    "password_method": "BCRYPT",
+    "password_salt": "",
+    "hash_mode": "sha256",
+    "uuid_algorithm": "v4"
+  },
+  "users": [
+    {
+      "id": 7,
+      "email": "Fixture@Example.invalid",
+      "nickname": "Local fixture",
+      "password_hash": "$2y$10$XgnooZqNJeNcLYdeEVNpZOo62Bsv3kUfLinnJMMVPFZk8vzLHBzum",
+      "score": 42,
+      "permission": 0
+    }
+  ],
+  "characters": [
+    {
+      "id": 19,
+      "user_id": 7,
+      "name": "FixturePlayer",
+      "uuid": "12345678123442348234123456789abc",
+      "skin_id": 11,
+      "cape_id": 0
+    }
+  ],
+  "textures": [
+    {
+      "id": 11,
+      "name": "Local blue skin",
+      "type": "alex",
+      "hash": "5018d0dcc356e0c415cc859885aeaeeb0f88b5cb7119e3941cde2b099a68b5e8",
+      "public": false
+    }
+  ],
+  "signature_private_key": "",
+  "omitted": [
+    {
+      "scope": "fixture",
+      "count": -1,
+      "reason": "Synthetic source-contract fixture, not an installed or runtime-verified Blessing Skin instance."
+    }
+  ]
+}

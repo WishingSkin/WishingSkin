@@ -1,0 +1,11 @@
+/bin/
+/data/
+/artifacts/
+/@misc/
+/web/node_modules/
+/web/dist/
+/web/output/
+.env
+.env.*
+!.env.example
+*.log

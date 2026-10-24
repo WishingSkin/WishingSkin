@@ -1,0 +1,41 @@
+name: wishingskin
+services:
+  app:
+    build:
+      context: ..
+    ports:
+      - "127.0.0.1:8090:8090"
+    environment:
+      WS_DATABASE_DRIVER: mysql
+      WS_DATABASE_DSN: ${WS_DATABASE_DSN:?Set a MySQL DSN}
+      WS_PUBLIC_URL: ${WS_PUBLIC_URL:?Set the public origin}
+      WS_TRUSTED_PROXIES: ${WS_TRUSTED_PROXIES:-}
+      WS_TURNSTILE_SITE_KEY: ${WS_TURNSTILE_SITE_KEY:-}
+      WS_TURNSTILE_SECRET: ${WS_TURNSTILE_SECRET:-}
+      WS_SMTP_ADDRESS: ${WS_SMTP_ADDRESS:-}
+      WS_SMTP_FROM: ${WS_SMTP_FROM:-}
+      WS_SMTP_USERNAME: ${WS_SMTP_USERNAME:-}
+      WS_SMTP_PASSWORD: ${WS_SMTP_PASSWORD:-}
+      WS_SMTP_TLS: ${WS_SMTP_TLS:-starttls}
+    volumes:
+      - textures:/data/textures
+    depends_on:
+      mysql:
+        condition: service_healthy
+  mysql:
+    image: mysql:8.4@sha256:d36d39a64cd12a5c1cc9e6aa2bfb5f8d4c81a2f6586e0a04a9ae13939db02209
+    environment:
+      MYSQL_DATABASE: wishingskin
+      MYSQL_USER: wishingskin
+      MYSQL_PASSWORD: ${MYSQL_PASSWORD:?Set the application database password}
+      MYSQL_ROOT_PASSWORD: ${MYSQL_ROOT_PASSWORD:?Set a separate root password}
+    volumes:
+      - mysql:/var/lib/mysql
+    healthcheck:
+      test: ["CMD-SHELL", "MYSQL_PWD=$$MYSQL_ROOT_PASSWORD mysqladmin ping -h 127.0.0.1 --silent"]
+      interval: 5s
+      timeout: 3s
+      retries: 30
+volumes:
+  textures:
+  mysql:

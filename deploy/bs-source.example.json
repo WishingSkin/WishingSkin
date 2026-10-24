@@ -1,0 +1,11 @@
+{
+  "instance": "replace-with-confirmed-source-id",
+  "core_version": "6.0.2",
+  "core_commit": "b737a65f5f5fce1f897f8603db74fd970437b351",
+  "plugin_version": "5.2.1",
+  "plugin_commit": "de016f4cbb43df7bd6d46193d5625693f8c79b3f",
+  "password_method": "BCRYPT",
+  "password_salt": "",
+  "hash_mode": "sha256",
+  "uuid_algorithm": "v4"
+}

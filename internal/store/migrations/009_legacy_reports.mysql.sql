@@ -1,0 +1,9 @@
+CREATE TABLE IF NOT EXISTS legacy_reports (
+    id BIGINT NOT NULL PRIMARY KEY,
+    tid BIGINT NOT NULL,
+    uploader BIGINT NOT NULL,
+    reporter BIGINT NOT NULL,
+    reason LONGTEXT NOT NULL,
+    status INTEGER NOT NULL,
+    report_at VARCHAR(26) NULL
+) ENGINE=InnoDB DEFAULT CHARACTER SET utf8mb4 COLLATE utf8mb4_0900_bin;

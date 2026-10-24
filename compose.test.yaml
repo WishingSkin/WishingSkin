@@ -1,0 +1,29 @@
+name: wishingskin-phase1-test
+services:
+  mysql:
+    image: mysql:8.4@sha256:d36d39a64cd12a5c1cc9e6aa2bfb5f8d4c81a2f6586e0a04a9ae13939db02209
+    environment:
+      MYSQL_ROOT_PASSWORD: wishingskin-local-test-only
+      MYSQL_DATABASE: wishingskin_test
+    ports:
+      - "127.0.0.1:33316:3306"
+    healthcheck:
+      test: ["CMD", "mysqladmin", "ping", "-h", "127.0.0.1", "-pwishingskin-local-test-only"]
+      interval: 3s
+      timeout: 3s
+      retries: 40
+    mem_limit: 768m
+  postgres:
+    image: postgres:16-alpine@sha256:4e6e670bb069649261c9c18031f0aded7bb249a5b6664ddec29c013a89310d50
+    environment:
+      POSTGRES_USER: wishingskin_test
+      POSTGRES_PASSWORD: wishingskin-local-test-only
+      POSTGRES_DB: wishingskin_test
+    ports:
+      - "127.0.0.1:35416:5432"
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U wishingskin_test -d wishingskin_test"]
+      interval: 3s
+      timeout: 3s
+      retries: 40
+    mem_limit: 512m
