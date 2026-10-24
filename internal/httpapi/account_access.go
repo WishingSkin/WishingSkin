@@ -3,9 +3,11 @@ package httpapi
 import (
 	"context"
 	"database/sql"
+	"encoding/json"
 	"errors"
 	"net/http"
 	"net/mail"
+	"regexp"
 	"strings"
 	"time"
 	"unicode/utf8"
@@ -80,12 +82,78 @@ func (a *Server) site(w http.ResponseWriter, r *http.Request) {
 		failure(w, 503, "暂时无法读取服务设置")
 		return
 	}
-	respond(w, 200, map[string]any{"appearance": custom, "noticeFormat": brand.NoticeFormat, "noticeHtml": renderNotice(brand.Notice, brand.NoticeFormat), "name": brand.Name, "tagline": brand.Tagline, "notice": brand.Notice, "registration": mode, "mailEnabled": services.Mail != nil, "turnstileSiteKey": services.SiteKey, "points": points})
+	domains, err := a.registrationEmailDomains(r.Context(), a.s.DB)
+	if err != nil {
+		failure(w, 503, "暂时无法读取注册设置")
+		return
+	}
+	respond(w, 200, map[string]any{"appearance": custom, "noticeFormat": brand.NoticeFormat, "noticeHtml": renderNotice(brand.Notice, brand.NoticeFormat), "name": brand.Name, "tagline": brand.Tagline, "footer": brand.Footer, "notice": brand.Notice, "registration": mode, "emailDomains": domains, "mailEnabled": services.Mail != nil, "turnstileSiteKey": services.SiteKey, "points": points})
 }
 
 func validEmail(value string) bool {
 	address, err := mail.ParseAddress(value)
 	return err == nil && address.Address == value && len(value) <= 254 && !strings.ContainsAny(value, "\r\n")
+}
+
+var emailDomainPattern = regexp.MustCompile(`^[a-z0-9](?:[a-z0-9-]{0,61}[a-z0-9])?(?:\.[a-z0-9](?:[a-z0-9-]{0,61}[a-z0-9])?)+$`)
+
+func normalizeEmailDomains(domains []string) ([]string, error) {
+	seen := map[string]struct{}{}
+	result := make([]string, 0, len(domains))
+	for _, raw := range domains {
+		domain := strings.ToLower(strings.TrimSpace(strings.TrimPrefix(raw, "@")))
+		if domain == "" {
+			continue
+		}
+		if len(domain) > 253 || !emailDomainPattern.MatchString(domain) {
+			return nil, errors.New("invalid email domain")
+		}
+		if _, ok := seen[domain]; ok {
+			continue
+		}
+		seen[domain] = struct{}{}
+		result = append(result, domain)
+	}
+	if len(result) > 100 {
+		return nil, errors.New("too many email domains")
+	}
+	return result, nil
+}
+
+func (a *Server) registrationEmailDomains(ctx context.Context, reader settingReader) ([]string, error) {
+	var raw string
+	err := reader.QueryRowContext(ctx, "SELECT value FROM settings WHERE setting_key='registration_email_domains'").Scan(&raw)
+	if errors.Is(err, sql.ErrNoRows) {
+		return []string{}, nil
+	}
+	if err != nil {
+		return nil, err
+	}
+	var domains []string
+	if err := json.Unmarshal([]byte(raw), &domains); err != nil {
+		return nil, err
+	}
+	return normalizeEmailDomains(domains)
+}
+
+func (a *Server) registrationEmailAllowed(ctx context.Context, reader settingReader, email string) (bool, error) {
+	domains, err := a.registrationEmailDomains(ctx, reader)
+	if err != nil {
+		return false, err
+	}
+	if len(domains) == 0 {
+		return true, nil
+	}
+	parts := strings.Split(strings.ToLower(email), "@")
+	if len(parts) != 2 {
+		return false, nil
+	}
+	for _, domain := range domains {
+		if parts[1] == domain {
+			return true, nil
+		}
+	}
+	return false, nil
 }
 
 func (a *Server) publicWrite(w http.ResponseWriter, r *http.Request) bool {
@@ -194,6 +262,15 @@ func (a *Server) register(w http.ResponseWriter, r *http.Request) {
 		failure(w, 400, "邮箱或昵称格式无效")
 		return
 	}
+	allowed, err := a.registrationEmailAllowed(r.Context(), a.s.DB, body.Email)
+	if err != nil {
+		failure(w, 503, "暂时无法读取注册设置")
+		return
+	}
+	if !allowed {
+		failure(w, 400, "该邮箱域名不在注册允许范围内")
+		return
+	}
 	if !credential.ValidNewPassword(body.Password) {
 		failure(w, 400, "新密码须为 8–128 个字符，且同时包含英文字母、数字和符号")
 		return
@@ -242,7 +319,7 @@ func (a *Server) register(w http.ResponseWriter, r *http.Request) {
 		var remaining int
 		var expires int64
 		err = tx.QueryRowContext(r.Context(), a.s.Bind("SELECT remaining_uses,expires_at FROM invitation_codes WHERE code_hash=? FOR UPDATE"), tokenHash(strings.TrimSpace(body.Invitation))).Scan(&remaining, &expires)
-		if errors.Is(err, sql.ErrNoRows) || err == nil && (remaining < 1 || expires <= time.Now().Unix()) {
+		if errors.Is(err, sql.ErrNoRows) || err == nil && (remaining < 1 || expires != 0 && expires <= time.Now().Unix()) {
 			failure(w, 400, "邀请码无效、已过期或已用完")
 			return
 		}

@@ -3,7 +3,9 @@ package httpapi
 import (
 	"context"
 	"database/sql"
+	"encoding/csv"
 	"errors"
+	"fmt"
 	"net/http"
 	"strconv"
 	"strings"
@@ -14,6 +16,7 @@ func (a *Server) registerAdministration() {
 	a.mux.HandleFunc("GET /api/admin/users", a.adminUsers)
 	a.mux.HandleFunc("PATCH /api/admin/users/{id}", a.updateAdminUser)
 	a.mux.HandleFunc("GET /api/admin/events", a.adminEvents)
+	a.mux.HandleFunc("GET /api/admin/events/export", a.exportAdminEvents)
 	a.mux.HandleFunc("PATCH /api/admin/branding", a.updateSiteBranding)
 }
 
@@ -238,6 +241,24 @@ type adminEvent struct {
 	CreatedAt  int64  `json:"createdAt"`
 }
 
+func adminEventFilter(w http.ResponseWriter, r *http.Request) (string, []any, bool) {
+	query := strings.TrimSpace(r.URL.Query().Get("q"))
+	if utf8.RuneCountInString(query) > 255 {
+		failure(w, 400, "搜索内容不能超过 255 个字符")
+		return "", nil, false
+	}
+	if query == "" {
+		return "", nil, true
+	}
+	where := " WHERE POSITION(? IN action)>0 OR POSITION(? IN target_type)>0 OR POSITION(? IN target_id)>0"
+	args := []any{query, query, query}
+	if id, err := strconv.ParseInt(query, 10, 64); err == nil {
+		where += " OR actor_id=?"
+		args = append(args, id)
+	}
+	return where, args, true
+}
+
 func (a *Server) adminEvents(w http.ResponseWriter, r *http.Request) {
 	if _, ok := a.adminRead(w, r); !ok {
 		return
@@ -246,12 +267,16 @@ func (a *Server) adminEvents(w http.ResponseWriter, r *http.Request) {
 	if !ok {
 		return
 	}
+	where, args, ok := adminEventFilter(w, r)
+	if !ok {
+		return
+	}
 	var total int64
-	if err := a.s.DB.QueryRowContext(r.Context(), "SELECT COUNT(*) FROM admin_events").Scan(&total); err != nil {
+	if err := a.s.DB.QueryRowContext(r.Context(), a.s.Bind("SELECT COUNT(*) FROM admin_events"+where), args...).Scan(&total); err != nil {
 		failure(w, 503, "暂时无法读取管理记录")
 		return
 	}
-	rows, err := a.s.DB.QueryContext(r.Context(), a.s.Bind("SELECT event_id,actor_id,action,target_type,target_id,created_at FROM admin_events ORDER BY created_at DESC,event_id DESC LIMIT ? OFFSET ?"), size, (page-1)*size)
+	rows, err := a.s.DB.QueryContext(r.Context(), a.s.Bind("SELECT event_id,actor_id,action,target_type,target_id,created_at FROM admin_events"+where+" ORDER BY created_at DESC,event_id DESC LIMIT ? OFFSET ?"), append(args, size, (page-1)*size)...)
 	if err != nil {
 		failure(w, 503, "暂时无法读取管理记录")
 		return
@@ -273,4 +298,45 @@ func (a *Server) adminEvents(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	respond(w, 200, map[string]any{"events": items, "total": total, "page": page, "pageSize": size})
+}
+
+func csvCell(value string) string {
+	if value != "" && strings.ContainsRune("=+-@", []rune(value)[0]) {
+		return "'" + value
+	}
+	return value
+}
+
+func (a *Server) exportAdminEvents(w http.ResponseWriter, r *http.Request) {
+	if _, ok := a.adminRead(w, r); !ok {
+		return
+	}
+	where, args, ok := adminEventFilter(w, r)
+	if !ok {
+		return
+	}
+	rows, err := a.s.DB.QueryContext(r.Context(), a.s.Bind("SELECT event_id,actor_id,action,target_type,target_id,created_at FROM admin_events"+where+" ORDER BY created_at DESC,event_id DESC"), args...)
+	if err != nil {
+		failure(w, 503, "暂时无法导出管理记录")
+		return
+	}
+	defer rows.Close()
+	w.Header().Set("Content-Type", "text/csv; charset=utf-8")
+	w.Header().Set("Content-Disposition", `attachment; filename="wishingskin-admin-events.csv"`)
+	writer := csv.NewWriter(w)
+	_, _ = w.Write([]byte{0xEF, 0xBB, 0xBF})
+	if err := writer.Write([]string{"id", "actor_id", "action", "target_type", "target_id", "created_at"}); err != nil {
+		return
+	}
+	for rows.Next() {
+		var id, action, targetType, targetID string
+		var actor, created int64
+		if err := rows.Scan(&id, &actor, &action, &targetType, &targetID, &created); err != nil {
+			return
+		}
+		if err := writer.Write([]string{csvCell(id), fmt.Sprintf("%d", actor), csvCell(action), csvCell(targetType), csvCell(targetID), fmt.Sprintf("%d", created)}); err != nil {
+			return
+		}
+	}
+	writer.Flush()
 }

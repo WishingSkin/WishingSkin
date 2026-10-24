@@ -294,7 +294,25 @@ func (a *Server) listTextures(w http.ResponseWriter, r *http.Request) {
 		sessionError(w, err)
 		return
 	}
-	rows, err := a.s.DB.QueryContext(r.Context(), a.s.Bind("SELECT r.record_id,r.file_hash,r.name,r.description,r.kind,r.model,r.is_public,r.owner_id FROM texture_records r JOIN textures f ON f.hash=r.file_hash WHERE r.deleted=? AND f.deleted=? AND (r.owner_id=? OR (r.owner_id IS NULL AND r.file_hash IN (SELECT skin_hash FROM characters WHERE user_id=? UNION SELECT cape_hash FROM characters WHERE user_id=?))) ORDER BY r.name,r.record_id"), false, false, u.ID, u.ID, u.ID)
+	where := " WHERE r.deleted=? AND f.deleted=? AND (r.owner_id=? OR (r.owner_id IS NULL AND r.file_hash IN (SELECT skin_hash FROM characters WHERE user_id=? UNION SELECT cape_hash FROM characters WHERE user_id=?)))"
+	args := []any{false, false, u.ID, u.ID, u.ID}
+	if kind := r.URL.Query().Get("kind"); kind != "" {
+		if kind != "skin" && kind != "cape" {
+			failure(w, 400, "材质类型无效")
+			return
+		}
+		where += " AND r.kind=?"
+		args = append(args, kind)
+	}
+	if query := strings.TrimSpace(r.URL.Query().Get("q")); query != "" {
+		if utf8.RuneCountInString(query) > 255 {
+			failure(w, 400, "搜索内容不能超过 255 个字符")
+			return
+		}
+		where += " AND (POSITION(? IN r.name)>0 OR POSITION(? IN r.description)>0 OR POSITION(? IN r.file_hash)>0)"
+		args = append(args, query, query, strings.ToLower(query))
+	}
+	rows, err := a.s.DB.QueryContext(r.Context(), a.s.Bind("SELECT r.record_id,r.file_hash,r.name,r.description,r.kind,r.model,r.is_public,r.owner_id FROM texture_records r JOIN textures f ON f.hash=r.file_hash"+where+" ORDER BY r.name,r.record_id"), args...)
 	if err != nil {
 		failure(w, 503, "暂时无法读取材质")
 		return

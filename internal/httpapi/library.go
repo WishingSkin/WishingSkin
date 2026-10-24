@@ -141,7 +141,25 @@ func (a *Server) wardrobe(w http.ResponseWriter, r *http.Request) {
 		sessionError(w, err)
 		return
 	}
-	rows, err := a.s.DB.QueryContext(r.Context(), a.s.Bind("SELECT "+libraryColumns+",c.display_name"+libraryTables+" JOIN wardrobe c ON c.record_id=r.record_id WHERE c.user_id=? AND r.deleted=? AND f.deleted=? ORDER BY c.display_name,r.record_id"), u.ID, false, false)
+	where := " WHERE c.user_id=? AND r.deleted=? AND f.deleted=?"
+	args := []any{u.ID, false, false}
+	if kind := r.URL.Query().Get("kind"); kind != "" {
+		if kind != "skin" && kind != "cape" {
+			failure(w, 400, "材质类型无效")
+			return
+		}
+		where += " AND r.kind=?"
+		args = append(args, kind)
+	}
+	if query := strings.TrimSpace(r.URL.Query().Get("q")); query != "" {
+		if utf8.RuneCountInString(query) > 255 {
+			failure(w, 400, "搜索内容不能超过 255 个字符")
+			return
+		}
+		where += " AND (POSITION(? IN c.display_name)>0 OR POSITION(? IN r.name)>0 OR POSITION(? IN r.file_hash)>0)"
+		args = append(args, query, query, strings.ToLower(query))
+	}
+	rows, err := a.s.DB.QueryContext(r.Context(), a.s.Bind("SELECT "+libraryColumns+",c.display_name"+libraryTables+" JOIN wardrobe c ON c.record_id=r.record_id"+where+" ORDER BY c.display_name,r.record_id"), args...)
 	if err != nil {
 		failure(w, 503, "暂时无法读取衣柜")
 		return

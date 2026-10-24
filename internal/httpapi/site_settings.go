@@ -11,13 +11,14 @@ import (
 type siteBranding struct {
 	Name         string `json:"name"`
 	Tagline      string `json:"tagline"`
+	Footer       string `json:"footer"`
 	Notice       string `json:"notice"`
 	NoticeFormat string `json:"noticeFormat,omitempty"`
 }
 
 func (a *Server) siteBranding(ctx context.Context) (siteBranding, error) {
 	brand := siteBranding{Name: "WishingSkin"}
-	rows, err := a.s.DB.QueryContext(ctx, "SELECT setting_key,value FROM settings WHERE setting_key IN ('site_name','site_tagline','site_notice','site_notice_format')")
+	rows, err := a.s.DB.QueryContext(ctx, "SELECT setting_key,value FROM settings WHERE setting_key IN ('site_name','site_tagline','site_footer','site_notice','site_notice_format')")
 	if err != nil {
 		return brand, err
 	}
@@ -34,6 +35,8 @@ func (a *Server) siteBranding(ctx context.Context) (siteBranding, error) {
 			}
 		case "site_tagline":
 			brand.Tagline = value
+		case "site_footer":
+			brand.Footer = value
 		case "site_notice_format":
 			brand.NoticeFormat = value
 		case "site_notice":
@@ -58,6 +61,7 @@ func (a *Server) updateSiteBranding(w http.ResponseWriter, r *http.Request) {
 	}
 	body.Name = strings.TrimSpace(body.Name)
 	body.Tagline = strings.TrimSpace(body.Tagline)
+	body.Footer = strings.TrimSpace(body.Footer)
 	body.Notice = strings.TrimSpace(body.Notice)
 	if body.Name == "" || utf8.RuneCountInString(body.Name) > 64 || strings.ContainsAny(body.Name, "\r\n") {
 		failure(w, 400, "站点名称须为 1–64 个字符且不能换行")
@@ -67,11 +71,15 @@ func (a *Server) updateSiteBranding(w http.ResponseWriter, r *http.Request) {
 		failure(w, 400, "站点简介最多 200 个字符且不能换行")
 		return
 	}
+	if utf8.RuneCountInString(body.Footer) > 200 || strings.ContainsAny(body.Footer, "\r\n") {
+		failure(w, 400, "页脚信息最多 200 个字符且不能换行")
+		return
+	}
 	if utf8.RuneCountInString(body.Notice) > 1000 {
 		failure(w, 400, "站点公告最多 1000 个字符")
 		return
 	}
-	for _, value := range []string{body.Name, body.Tagline, body.Notice} {
+	for _, value := range []string{body.Name, body.Tagline, body.Footer, body.Notice} {
 		for _, char := range value {
 			if unicode.IsControl(char) && char != '\n' && char != '\r' && char != '\t' {
 				failure(w, 400, "站点文案不能包含控制字符")
@@ -89,7 +97,7 @@ func (a *Server) updateSiteBranding(w http.ResponseWriter, r *http.Request) {
 		query = "INSERT INTO settings(setting_key,value) VALUES(?,?) ON DUPLICATE KEY UPDATE value=VALUES(value)"
 	}
 	err := a.saveNoticeHistory(r.Context(), tx, body)
-	for _, field := range []struct{ key, value string }{{"site_name", body.Name}, {"site_tagline", body.Tagline}, {"site_notice", body.Notice}, {"site_notice_format", body.NoticeFormat}} {
+	for _, field := range []struct{ key, value string }{{"site_name", body.Name}, {"site_tagline", body.Tagline}, {"site_footer", body.Footer}, {"site_notice", body.Notice}, {"site_notice_format", body.NoticeFormat}} {
 		if err != nil {
 			break
 		}

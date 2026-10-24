@@ -4,6 +4,8 @@ import (
 	"database/sql"
 	"net/http"
 	"strconv"
+	"strings"
+	"unicode/utf8"
 )
 
 type legacyReportItem struct {
@@ -34,6 +36,19 @@ func (a *Server) listLegacyReports(w http.ResponseWriter, r *http.Request) {
 		value, _ := strconv.Atoi(status)
 		where = " WHERE status=?"
 		args = append(args, value)
+	}
+	if query := strings.TrimSpace(r.URL.Query().Get("q")); query != "" {
+		if utf8.RuneCountInString(query) > 255 {
+			failure(w, 400, "搜索内容不能超过 255 个字符")
+			return
+		}
+		where += " AND (POSITION(? IN reason)>0"
+		args = append(args, query)
+		if id, err := strconv.ParseInt(query, 10, 64); err == nil && id > 0 {
+			where += " OR id=? OR tid=? OR uploader=? OR reporter=?"
+			args = append(args, id, id, id, id)
+		}
+		where += ")"
 	}
 	var total int
 	if err := a.s.DB.QueryRowContext(r.Context(), a.s.Bind("SELECT COUNT(*) FROM legacy_reports"+where), args...).Scan(&total); err != nil {

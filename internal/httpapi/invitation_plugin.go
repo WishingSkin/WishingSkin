@@ -89,15 +89,20 @@ func (a *Server) generateInvitations(w http.ResponseWriter, r *http.Request, bat
 	if !ok {
 		return
 	}
-	var body struct{ Count, Uses, Hours int }
+	var body struct {
+		Count     int  `json:"count"`
+		Uses      int  `json:"uses"`
+		Hours     int  `json:"hours"`
+		Permanent bool `json:"permanent"`
+	}
 	if !decode(w, r, &body) {
 		return
 	}
 	if !batch {
 		body.Count = 1
 	}
-	if body.Count < 1 || body.Count > 100 || body.Uses < 1 || body.Uses > 1000 || body.Hours < 1 || body.Hours > 8760 {
-		failure(w, 400, "批量数量须为 1–100，次数为 1–1000，有效期为 1–8760 小时")
+	if body.Count < 1 || body.Count > 100 || body.Uses < 1 || body.Uses > 1000 || !body.Permanent && (body.Hours < 1 || body.Hours > 8760) {
+		failure(w, 400, "批量数量须为 1–100，次数为 1–1000，有效期为 1–8760 小时或长期有效")
 		return
 	}
 	tx, ok := a.beginAdminWrite(w, r, u)
@@ -121,7 +126,10 @@ func (a *Server) generateInvitations(w http.ResponseWriter, r *http.Request, bat
 		return
 	}
 	codes := make([]string, 0, body.Count)
-	expires := time.Now().Add(time.Duration(body.Hours) * time.Hour).Unix()
+	expires := int64(0)
+	if !body.Permanent {
+		expires = time.Now().Add(time.Duration(body.Hours) * time.Hour).Unix()
+	}
 	for i := 0; i < body.Count; i++ {
 		code, e := secret()
 		if e != nil {

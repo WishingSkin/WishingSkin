@@ -46,6 +46,12 @@ func (a *Server) listReports(w http.ResponseWriter, r *http.Request, admin bool)
 		failure(w, 403, "需要管理员权限")
 		return
 	}
+	columns := "p.report_id,p.record_id,p.texture_name,r.file_hash,p.reason,p.status,p.resolution,p.reply,p.created_at,p.resolved_at,f.deleted"
+	from := " FROM reports p JOIN texture_records r ON r.record_id=p.record_id JOIN textures f ON f.hash=r.file_hash"
+	if admin {
+		columns += ",p.reporter_id,reporter.email,r.owner_id,COALESCE(owner.email,'')"
+		from += " JOIN users reporter ON reporter.id=p.reporter_id LEFT JOIN users owner ON owner.id=r.owner_id"
+	}
 	page, size, ok := adminPagination(w, r)
 	if !ok {
 		return
@@ -65,16 +71,24 @@ func (a *Server) listReports(w http.ResponseWriter, r *http.Request, admin bool)
 		where += " AND p.status=?"
 		args = append(args, status)
 	}
+	if query := strings.TrimSpace(r.URL.Query().Get("q")); query != "" {
+		if utf8.RuneCountInString(query) > 255 {
+			failure(w, 400, "搜索内容不能超过 255 个字符")
+			return
+		}
+		id, _ := strconv.ParseInt(query, 10, 64)
+		where += " AND (POSITION(? IN p.texture_name)>0 OR POSITION(? IN p.reason)>0 OR POSITION(? IN r.file_hash)>0"
+		args = append(args, query, query, strings.ToLower(query))
+		if admin {
+			where += " OR p.reporter_id=? OR r.owner_id=? OR POSITION(? IN LOWER(reporter.email))>0 OR POSITION(? IN LOWER(COALESCE(owner.email,'')))>0"
+			args = append(args, id, id, strings.ToLower(query), strings.ToLower(query))
+		}
+		where += ")"
+	}
 	var total int
-	if err := a.s.DB.QueryRowContext(r.Context(), a.s.Bind("SELECT COUNT(*) FROM reports p"+where), args...).Scan(&total); err != nil {
+	if err := a.s.DB.QueryRowContext(r.Context(), a.s.Bind("SELECT COUNT(*)"+from+where), args...).Scan(&total); err != nil {
 		failure(w, 503, "暂时无法读取举报")
 		return
-	}
-	columns := "p.report_id,p.record_id,p.texture_name,r.file_hash,p.reason,p.status,p.resolution,p.reply,p.created_at,p.resolved_at,f.deleted"
-	from := " FROM reports p JOIN texture_records r ON r.record_id=p.record_id JOIN textures f ON f.hash=r.file_hash"
-	if admin {
-		columns += ",p.reporter_id,reporter.email,r.owner_id,COALESCE(owner.email,'')"
-		from += " JOIN users reporter ON reporter.id=p.reporter_id LEFT JOIN users owner ON owner.id=r.owner_id"
 	}
 	rows, err := a.s.DB.QueryContext(r.Context(), a.s.Bind("SELECT "+columns+from+where+" ORDER BY p.created_at DESC,p.report_id DESC LIMIT ? OFFSET ?"), append(args, size, (page-1)*size)...)
 	if err != nil {

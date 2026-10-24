@@ -1,8 +1,6 @@
 package httpapi
 
-import (
-	"net/http"
-)
+import "net/http"
 
 func (a *Server) adminRequest(w http.ResponseWriter, r *http.Request) (User, bool) {
 	u, token, err := a.current(r)
@@ -25,12 +23,20 @@ func (a *Server) setRegistration(w http.ResponseWriter, r *http.Request) {
 	if !ok {
 		return
 	}
-	var body struct{ Mode string }
+	var body struct {
+		Mode         string   `json:"mode"`
+		EmailDomains []string `json:"emailDomains"`
+	}
 	if !decode(w, r, &body) {
 		return
 	}
 	if body.Mode != "open" && body.Mode != "closed" && body.Mode != "invitation" {
 		failure(w, 400, "注册模式无效")
+		return
+	}
+	domains, err := normalizeEmailDomains(body.EmailDomains)
+	if err != nil {
+		failure(w, 400, "注册邮箱域名格式无效")
 		return
 	}
 	services, serviceErr := a.services(r.Context())
@@ -47,7 +53,10 @@ func (a *Server) setRegistration(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	defer tx.Rollback()
-	_, err := tx.ExecContext(r.Context(), a.s.Bind("UPDATE settings SET value=? WHERE setting_key='registration_mode'"), body.Mode)
+	_, err = tx.ExecContext(r.Context(), a.s.Bind("UPDATE settings SET value=? WHERE setting_key='registration_mode'"), body.Mode)
+	if err == nil {
+		err = a.putSetting(r.Context(), tx, "registration_email_domains", domains)
+	}
 	if err == nil && body.Mode == "invitation" {
 		err = a.putSetting(r.Context(), tx, "official_invitation", invitationOptions{Enabled: true, Required: true})
 	}
