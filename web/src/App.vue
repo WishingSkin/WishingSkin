@@ -92,7 +92,8 @@ const failedImages = ref<string[]>([])
 const selected = computed(() => characters.value.find(character => character.id === selectedId.value))
 const viewerKey = computed(() => selected.value ? `${selected.value.id}:${selected.value.model}:${selected.value.skinHash}:${selected.value.capeHash}` : '')
 const fallbackViewer = ref('')
-const site = ref<SiteAccess>({ appearance: { logoImage: '', accent: 'blue', defaultTheme: 'system' }, noticeFormat: '', noticeHtml: '', name: 'WishingSkin', tagline: '', footer: '', notice: '', registration: 'closed', emailDomains: [], mailEnabled: false, turnstileSiteKey: '', points: { enabled: false, dailyReward: 0, uploadCost: 0, characterCost: 0 } })
+const site = ref<SiteAccess>({ appearance: { logoImage: '', accent: 'blue', defaultTheme: 'system' }, homepage: { blocks: [] }, noticeFormat: '', noticeHtml: '', name: 'WishingSkin', tagline: '', footer: '', notice: '', registration: 'closed', emailDomains: [], mailEnabled: false, turnstileSiteKey: '', points: { enabled: false, dailyReward: 0, uploadCost: 0, characterCost: 0 } })
+const homepageBlocks = computed(() => site.value.homepage?.blocks || [])
 watch([() => site.value.name, locale], () => { document.title = `${site.value.name} · ${t('角色与材质')}` }, { immediate: true, flush: 'sync' })
 const siteError = ref(false)
 const accessMode = ref<AccessMode | null>(null)
@@ -156,6 +157,12 @@ function navigate(path: string, replace = false) {
     window.history[replace ? 'replaceState' : 'pushState']({}, '', next)
   }
   setRouteView(normalized, url.search)
+}
+function homepageLink(event: MouseEvent, href: string) {
+  if (href.startsWith('/') && !href.startsWith('//')) {
+    event.preventDefault()
+    navigate(href)
+  }
 }
 // Remove mail secrets before any third-party widget can load. Reading a link never submits it.
 function readMailLink() {
@@ -655,11 +662,13 @@ onBeforeUnmount(() => {
 
     <main v-else-if="!user && publicLibraryOpen" class="public-library-layout"><button class="secondary-button public-library-back" type="button" @click="navigate('/')">{{ t("返回主页") }}</button><TextureBrowser mode="library" csrf-token="" :wardrobe="[]" :wardrobe-busy="false" wardrobe-error="" @login="navigate('/login')" /></main>
     <main v-else-if="!user && publicHome" class="public-home-layout">
-      <section class="public-home-hero" aria-labelledby="public-home-title">
-        <div class="public-home-copy"><span class="small-square" aria-hidden="true"></span><p class="eyebrow">{{ t('Minecraft 外观工作台') }}</p><h1 id="public-home-title">{{ site.name }}</h1><p class="public-home-tagline">{{ site.tagline || t('每一个像素，都是你的模样。') }}</p><p class="public-home-description">{{ t('管理角色、皮肤和披风，在公开库中发现新的外观，并通过 Yggdrasil 接入游戏。') }}</p><div class="public-home-actions"><button class="primary-button" type="button" @click="navigate('/login')">{{ t('登录工作台') }}<span aria-hidden="true">↗</span></button><button class="secondary-button" type="button" @click="navigate('/library')">{{ t('浏览公开库') }}</button></div></div>
-        <div class="public-home-preview checkerboard" :aria-label="t('默认角色预览')"><ModelThumbnail class="login-model-thumbnail" name="Steve" model="default" skin-hash="" cape-hash="" /><ModelThumbnail class="login-model-thumbnail" name="Alex" model="slim" skin-hash="" cape-hash="" /></div>
-      </section>
-      <section class="public-home-features" :aria-label="t('站点功能')"><article class="public-home-feature panel"><span>01</span><h2>{{ t('角色与外观') }}</h2><p>{{ t('用模型预览管理标准和纤细模型，皮肤与披风分别绑定。') }}</p></article><article class="public-home-feature panel"><span>02</span><h2>{{ t('公开库') }}</h2><p>{{ t('浏览公开材质并收藏到自己的衣柜。') }}</p></article><article class="public-home-feature panel"><span>03</span><h2>{{ t('游戏接入') }}</h2><p>{{ t('使用本站提供的 Yggdrasil 或兼容地址加载外观。') }}</p></article></section>
+      <template v-for="block in homepageBlocks" :key="block.id">
+        <section v-if="block.enabled && block.kind === 'intro'" class="public-home-hero" :aria-labelledby="`public-home-title-${block.id}`"><div class="public-home-copy"><span class="small-square" aria-hidden="true"></span><p class="eyebrow">{{ t('Minecraft 外观工作台') }}</p><h1 :id="`public-home-title-${block.id}`">{{ block.title || site.name }}</h1><p class="public-home-tagline">{{ block.body || site.tagline || t('每一个像素，都是你的模样。') }}</p><div v-if="block.buttonLabel && block.buttonHref" class="public-home-actions"><a class="primary-button" :href="block.buttonHref" @click="homepageLink($event, block.buttonHref)">{{ block.buttonLabel }}<span aria-hidden="true">↗</span></a></div></div></section>
+        <section v-else-if="block.enabled && block.kind === 'features'" class="public-home-features" :aria-label="block.title || t('站点功能')"><div class="public-home-section-heading"><h2>{{ block.title }}</h2><p v-if="block.body">{{ block.body }}</p></div><div class="public-home-feature-grid"><article v-for="(feature, featureIndex) in block.features || []" :key="`${block.id}-${featureIndex}`" class="public-home-feature panel"><span>{{ String(featureIndex + 1).padStart(2, '0') }}</span><h2>{{ feature.title }}</h2><p>{{ feature.body }}</p><a v-if="feature.href" :href="feature.href" @click="homepageLink($event, feature.href)">{{ t('查看') }} <span aria-hidden="true">↗</span></a></article></div></section>
+        <section v-else-if="block.enabled && block.kind === 'notice' && site.notice" class="public-home-notice panel"><h2>{{ block.title || t('最新公告') }}</h2><div class="notice-content" v-html="site.noticeHtml"></div></section>
+        <section v-else-if="block.enabled && block.kind === 'cta'" class="public-home-cta panel"><h2>{{ block.title }}</h2><p>{{ block.body }}</p><a v-if="block.buttonHref" class="secondary-button" :href="block.buttonHref" @click="homepageLink($event, block.buttonHref)">{{ block.buttonLabel || t('继续') }}</a></section>
+      </template>
+      <p v-if="!homepageBlocks.length" class="public-home-description">{{ site.tagline || t('管理角色、皮肤和披风，在公开库中发现新的外观，并通过 Yggdrasil 接入游戏。') }}</p>
     </main>
     <main v-else-if="!user" class="login-layout">
       <section class="welcome-panel" aria-labelledby="welcome-title">

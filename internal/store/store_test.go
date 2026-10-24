@@ -85,6 +85,12 @@ func assertEmbeddedSchemasAgree(t *testing.T, migration string) {
 			t.Errorf("missing invitation_codes upgrade")
 		}
 	}
+	if migration == "014_homepage_blocks" {
+		tables = nil
+		if !strings.Contains(string(mysql), "homepage_blocks") || !strings.Contains(string(postgres), "homepage_blocks") {
+			t.Errorf("missing homepage blocks default")
+		}
+	}
 	if migration == "010_user_profiles" {
 		tables = []string{"user_profiles"}
 	}

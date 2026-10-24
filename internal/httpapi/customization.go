@@ -223,6 +223,7 @@ func (a *Server) updateAppearance(w http.ResponseWriter, r *http.Request) {
 func (a *Server) registerCustomization() {
 	a.mux.HandleFunc("POST /api/admin/notice-preview", a.previewNotice)
 	a.mux.HandleFunc("PATCH /api/admin/appearance", a.updateAppearance)
+	a.mux.HandleFunc("PATCH /api/admin/homepage", a.updateHomepage)
 	a.mux.HandleFunc("GET /api/account/profile", a.accountProfile)
 	a.mux.HandleFunc("PATCH /api/account/profile", a.updateAccountProfile)
 	a.mux.HandleFunc("GET /api/avatars/{id}", a.avatar)

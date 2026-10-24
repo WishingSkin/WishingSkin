@@ -77,6 +77,11 @@ func (a *Server) site(w http.ResponseWriter, r *http.Request) {
 		failure(w, 503, "暂时无法读取站点设置")
 		return
 	}
+	homepage, err := a.homepage(r.Context())
+	if err != nil {
+		failure(w, 503, "暂时无法读取首页设置")
+		return
+	}
 	services, err := a.services(r.Context())
 	if err != nil {
 		failure(w, 503, "暂时无法读取服务设置")
@@ -87,7 +92,7 @@ func (a *Server) site(w http.ResponseWriter, r *http.Request) {
 		failure(w, 503, "暂时无法读取注册设置")
 		return
 	}
-	respond(w, 200, map[string]any{"appearance": custom, "noticeFormat": brand.NoticeFormat, "noticeHtml": renderNotice(brand.Notice, brand.NoticeFormat), "name": brand.Name, "tagline": brand.Tagline, "footer": brand.Footer, "notice": brand.Notice, "registration": mode, "emailDomains": domains, "mailEnabled": services.Mail != nil, "turnstileSiteKey": services.SiteKey, "points": points})
+	respond(w, 200, map[string]any{"appearance": custom, "homepage": homepage, "noticeFormat": brand.NoticeFormat, "noticeHtml": renderNotice(brand.Notice, brand.NoticeFormat), "name": brand.Name, "tagline": brand.Tagline, "footer": brand.Footer, "notice": brand.Notice, "registration": mode, "emailDomains": domains, "mailEnabled": services.Mail != nil, "turnstileSiteKey": services.SiteKey, "points": points})
 }
 
 func validEmail(value string) bool {
