@@ -133,17 +133,37 @@ func New(s *store.Store, cfg Config) (*Server, error) {
 	a.registerYggdrasil()
 	a.mux.HandleFunc("/api/", func(w http.ResponseWriter, r *http.Request) { failure(w, 404, "接口不存在") })
 	if cfg.Assets != nil {
-		files := http.FileServerFS(cfg.Assets)
 		a.mux.HandleFunc("/", func(w http.ResponseWriter, r *http.Request) {
 			if r.Method != http.MethodGet && r.Method != http.MethodHead {
 				w.Header().Set("Allow", "GET, HEAD")
 				http.Error(w, "Method not allowed", http.StatusMethodNotAllowed)
 				return
 			}
-			files.ServeHTTP(w, r)
+			a.serveAssetOrSPA(w, r)
 		})
 	}
 	return a, nil
+}
+
+func isSPAPath(path string) bool {
+	if strings.HasSuffix(path, ".json") {
+		return false
+	}
+	return path == "/" || path == "/login" || path == "/library" || path == "/user" || strings.HasPrefix(path, "/user/") || path == "/admin"
+}
+
+func (a *Server) serveAssetOrSPA(w http.ResponseWriter, r *http.Request) {
+	if a.cfg.Assets == nil {
+		http.NotFound(w, r)
+		return
+	}
+	if isSPAPath(r.URL.Path) {
+		clone := r.Clone(r.Context())
+		clone.URL.Path = "/index.html"
+		http.FileServerFS(a.cfg.Assets).ServeHTTP(w, clone)
+		return
+	}
+	http.FileServerFS(a.cfg.Assets).ServeHTTP(w, r)
 }
 
 func (a *Server) ServeHTTP(w http.ResponseWriter, r *http.Request) {

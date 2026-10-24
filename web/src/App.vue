@@ -48,6 +48,8 @@ const accountTab = ref<AccountTab>('dashboard')
 const publicHome = ref(true)
 const publicLibraryOpen = ref(false)
 const materialTab = ref<'skin' | 'cape' | 'upload'>('skin')
+const routePath = ref(window.location.pathname || '/')
+const pendingNext = ref<string | null>(null)
 const materialSearch = ref('')
 const characters = ref<Character[]>([])
 const selectedId = ref<number | null>(null)
@@ -100,6 +102,62 @@ const captchaRequired = ref(false)
 const loginChallengeToken = ref('')
 const loginChallenge = ref<InstanceType<typeof TurnstileChallenge> | null>(null)
 const emailVerificationRequired = ref(false)
+
+function normalizePath(path: string) {
+  if (!path || path === '') return '/'
+  const normalized = path.replace(/\/+/g, '/')
+  return normalized.length > 1 ? normalized.replace(/\/$/, '') : normalized
+}
+function safeNext(value: string | null) {
+  if (!value || !value.startsWith('/') || value.startsWith('//') || value.startsWith('/api/')) return null
+  return value
+}
+function isProtectedPath(path: string) { return path === '/user' || path.startsWith('/user/') || path === '/admin' }
+function accountPath(tab: AccountTab) { return tab === 'dashboard' ? '/user/account' : `/user/account/${tab}` }
+function materialPath(tab: 'skin' | 'cape' | 'upload') { return `/user/materials?tab=${tab}` }
+function openMaterialTab(tab: 'skin' | 'cape' | 'upload') {
+  if (tab === 'upload') uploadKind.value = materialTab.value === 'cape' ? 'cape' : 'skin'
+  navigate(materialPath(tab))
+}
+function setRouteView(path: string, search = '') {
+  const normalized = normalizePath(path)
+  if (normalized === '/admin' && user.value && !user.value.isAdmin) {
+    const fallback = '/user'
+    if (window.location.pathname !== fallback || window.location.search) window.history.replaceState({}, '', fallback)
+    setRouteView(fallback)
+    return
+  }
+  const params = new URLSearchParams(search)
+  routePath.value = normalized
+  publicHome.value = normalized === '/'
+  publicLibraryOpen.value = normalized === '/library' && !user.value
+  if (normalized === '/library' && user.value) page.value = 'library'
+  else if (normalized === '/user/materials') page.value = 'materials'
+  else if (normalized === '/user/wardrobe') page.value = 'wardrobe'
+  else if (normalized === '/user/account' || normalized.startsWith('/user/account/')) {
+    page.value = 'account'
+    const tab = normalized.split('/').pop() as AccountTab
+    accountTab.value = ['profile', 'points', 'integration', 'reports'].includes(tab) ? tab : 'dashboard'
+  } else if (normalized === '/admin') page.value = 'administration'
+  else if (normalized === '/user') page.value = 'characters'
+  if (normalized === '/user/materials') {
+    const tab = params.get('tab')
+    materialTab.value = tab === 'cape' || tab === 'upload' ? tab : 'skin'
+  }
+  if (normalized === '/login') {
+    const mode = params.get('mode')
+    accessMode.value = mode === 'register' || mode === 'mail' ? mode : null
+  } else if (!linkToken.value) accessMode.value = null
+}
+function navigate(path: string, replace = false) {
+  const url = new URL(path, window.location.origin)
+  const normalized = normalizePath(url.pathname)
+  const next = normalized + url.search
+  if (window.location.pathname + window.location.search !== next) {
+    window.history[replace ? 'replaceState' : 'pushState']({}, '', next)
+  }
+  setRouteView(normalized, url.search)
+}
 // Remove mail secrets before any third-party widget can load. Reading a link never submits it.
 function readMailLink() {
   const fragment = new URLSearchParams(window.location.hash.slice(1))
@@ -109,6 +167,10 @@ function readMailLink() {
   history.replaceState(null, '', window.location.pathname + window.location.search)
   accessMode.value = mode
 }
+const initialPath = normalizePath(window.location.pathname)
+pendingNext.value = safeNext(new URLSearchParams(window.location.search).get('next'))
+if (!pendingNext.value && isProtectedPath(initialPath)) pendingNext.value = initialPath + window.location.search
+setRouteView(initialPath, window.location.search)
 readMailLink()
 async function loadSite() {
   try {
@@ -186,8 +248,8 @@ function acceptSession(session: Session) {
   user.value = session.user
   csrfToken.value = session.csrfToken
   sessionError.value = ''
-  publicHome.value = false
-  publicLibraryOpen.value = false
+  navigate(pendingNext.value || '/user', true)
+  pendingNext.value = null
 }
 
 function clearSession() {
@@ -232,9 +294,7 @@ function clearSession() {
   adminCharacterLimit.value = 1
   failedImages.value = []
   fallbackViewer.value = ''
-  page.value = 'characters'
-  accountTab.value = 'dashboard'
-  publicHome.value = true
+  navigate('/', true)
 }
 
 async function loadCharacters() {
@@ -313,7 +373,7 @@ async function loadWardrobe() {
 function expireSession() { clearSession(); loginError.value = '登录已过期，请重新登录。' }
 
 async function wearCollected(texture: LibraryRecord) {
-  page.value = 'characters'
+  navigate('/user', false)
   await nextTick()
   bindingDraft.value[texture.kind] = texture.id
 }
@@ -408,7 +468,7 @@ async function uploadTexture() {
   if (!ok) return
   const uploaded: TextureRecord = await ok.json()
   if (version !== sessionVersion) return
-  materialTab.value = uploaded.kind
+  navigate(materialPath(uploaded.kind), true)
   actionMessage.value = '材质已上传到我的材质。'
   uploadName.value = ''
   uploadDescription.value = ''
@@ -554,9 +614,14 @@ function modelLabel(model: string) {
   return t('未指定')
 }
 function imageFailed(hash: string) { if (!failedImages.value.includes(hash)) failedImages.value.push(hash) }
+const handlePopState = () => {
+  setRouteView(window.location.pathname, window.location.search)
+  readMailLink()
+}
 
 onMounted(() => {
   window.addEventListener('hashchange', readMailLink)
+  window.addEventListener('popstate', handlePopState)
   let preference: string | null = null
   try { preference = localStorage.getItem('wishingskin-theme') } catch { /* Use the system preference. */ }
   themePreference = preference === 'light' || preference === 'dark' ? preference : ''
@@ -564,7 +629,10 @@ onMounted(() => {
   void restoreSession()
   void loadSite()
 })
-onBeforeUnmount(() => window.removeEventListener('hashchange', readMailLink))
+onBeforeUnmount(() => {
+  window.removeEventListener('hashchange', readMailLink)
+  window.removeEventListener('popstate', handlePopState)
+})
 </script>
 
 <template>
@@ -578,18 +646,18 @@ onBeforeUnmount(() => window.removeEventListener('hashchange', readMailLink))
           <svg v-if="dark" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" aria-hidden="true"><circle cx="12" cy="12" r="4"/><path d="M12 2v2m0 16v2M2 12h2m16 0h2M5 5l1.5 1.5m11 11L19 19M5 19l1.5-1.5m11-11L19 5"/></svg>
           <svg v-else viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" aria-hidden="true"><path d="M20.5 13.2A8.5 8.5 0 0 1 10.8 3.5a8.5 8.5 0 1 0 9.7 9.7Z"/></svg>
         </button>
-        <button v-if="user" class="topbar-user" type="button" :title="user.nickname || t('我的账号')" :aria-label="t('打开账号：{name}', { name: user.nickname || t('我的账号') })" @click="page = 'account'; publicLibraryOpen = false; accessMode = null"><img class="user-avatar" :src="'/api/avatars/' + user.id + '.png?v=' + avatarVersion" alt="" width="34" height="34" /><span>{{ user.nickname || t('我的账号') }}</span></button>
+        <button v-if="user" class="topbar-user" type="button" :title="user.nickname || t('我的账号')" :aria-label="t('打开账号：{name}', { name: user.nickname || t('我的账号') })" @click="navigate('/user/account')"><img class="user-avatar" :src="'/api/avatars/' + user.id + '.png?v=' + avatarVersion" alt="" width="34" height="34" /><span>{{ user.nickname || t('我的账号') }}</span></button>
       </div>
     </header>
 
     <main v-if="initializing" class="initial-state" aria-live="polite"><span class="loading-dot"></span><p>{{ t("正在打开你的工作台…") }}</p></main>
 
-    <main v-else-if="accessMode" class="access-layout"><AccountAccess :mode="accessMode" :token="linkToken" :site="site" :email="user?.email || email" :dark="dark" @back="accessMode = null; linkToken = ''" @completed="accessCompleted" /></main>
+    <main v-else-if="accessMode" class="access-layout"><AccountAccess :mode="accessMode" :token="linkToken" :site="site" :email="user?.email || email" :dark="dark" @back="navigate('/login'); linkToken = ''" @completed="accessCompleted" /></main>
 
-    <main v-else-if="!user && publicLibraryOpen" class="public-library-layout"><button class="secondary-button public-library-back" type="button" @click="publicLibraryOpen = false">{{ t("返回主页") }}</button><TextureBrowser mode="library" csrf-token="" :wardrobe="[]" :wardrobe-busy="false" wardrobe-error="" @login="publicLibraryOpen = false; publicHome = false" /></main>
+    <main v-else-if="!user && publicLibraryOpen" class="public-library-layout"><button class="secondary-button public-library-back" type="button" @click="navigate('/')">{{ t("返回主页") }}</button><TextureBrowser mode="library" csrf-token="" :wardrobe="[]" :wardrobe-busy="false" wardrobe-error="" @login="navigate('/login')" /></main>
     <main v-else-if="!user && publicHome" class="public-home-layout">
       <section class="public-home-hero" aria-labelledby="public-home-title">
-        <div class="public-home-copy"><span class="small-square" aria-hidden="true"></span><p class="eyebrow">{{ t('Minecraft 外观工作台') }}</p><h1 id="public-home-title">{{ site.name }}</h1><p class="public-home-tagline">{{ site.tagline || t('每一个像素，都是你的模样。') }}</p><p class="public-home-description">{{ t('管理角色、皮肤和披风，在公开库中发现新的外观，并通过 Yggdrasil 接入游戏。') }}</p><div class="public-home-actions"><button class="primary-button" type="button" @click="publicHome = false">{{ t('登录工作台') }}<span aria-hidden="true">↗</span></button><button class="secondary-button" type="button" @click="publicLibraryOpen = true">{{ t('浏览公开库') }}</button></div></div>
+        <div class="public-home-copy"><span class="small-square" aria-hidden="true"></span><p class="eyebrow">{{ t('Minecraft 外观工作台') }}</p><h1 id="public-home-title">{{ site.name }}</h1><p class="public-home-tagline">{{ site.tagline || t('每一个像素，都是你的模样。') }}</p><p class="public-home-description">{{ t('管理角色、皮肤和披风，在公开库中发现新的外观，并通过 Yggdrasil 接入游戏。') }}</p><div class="public-home-actions"><button class="primary-button" type="button" @click="navigate('/login')">{{ t('登录工作台') }}<span aria-hidden="true">↗</span></button><button class="secondary-button" type="button" @click="navigate('/library')">{{ t('浏览公开库') }}</button></div></div>
         <div class="public-home-preview checkerboard" :aria-label="t('默认角色预览')"><ModelThumbnail class="login-model-thumbnail" name="Steve" model="default" skin-hash="" cape-hash="" /><ModelThumbnail class="login-model-thumbnail" name="Alex" model="slim" skin-hash="" cape-hash="" /></div>
       </section>
       <section class="public-home-features" :aria-label="t('站点功能')"><article class="public-home-feature panel"><span>01</span><h2>{{ t('角色与外观') }}</h2><p>{{ t('用模型预览管理标准和纤细模型，皮肤与披风分别绑定。') }}</p></article><article class="public-home-feature panel"><span>02</span><h2>{{ t('公开库') }}</h2><p>{{ t('浏览公开材质并收藏到自己的衣柜。') }}</p></article><article class="public-home-feature panel"><span>03</span><h2>{{ t('游戏接入') }}</h2><p>{{ t('使用本站提供的 Yggdrasil 或兼容地址加载外观。') }}</p></article></section>
@@ -600,7 +668,7 @@ onBeforeUnmount(() => window.removeEventListener('hashchange', readMailLink))
         <div class="login-preview checkerboard"><ModelThumbnail class="login-model-thumbnail" name="Steve" model="default" skin-hash="" cape-hash="" /><ModelThumbnail class="login-model-thumbnail" name="Alex" model="slim" skin-hash="" cape-hash="" /></div>
       </section>
       <section class="login-panel" aria-labelledby="login-title">
-        <div class="login-heading"><span class="section-symbol" aria-hidden="true">↳</span><h2 id="login-title">{{ t("登录工作台") }}</h2><p>{{ t("使用你的已有账号继续。") }}</p><button class="text-button" type="button" @click="publicHome = true">{{ t('返回主页') }}</button></div>
+        <div class="login-heading"><span class="section-symbol" aria-hidden="true">↳</span><h2 id="login-title">{{ t("登录工作台") }}</h2><p>{{ t("使用你的已有账号继续。") }}</p><button class="text-button" type="button" @click="navigate('/')">{{ t('返回主页') }}</button></div>
         <div v-if="sessionError" class="notice error" role="alert"><p>{{ t(sessionError) }}</p><button class="text-button" type="button" @click="restoreSession">{{ t("重新连接") }}</button></div>
         <form @submit.prevent="login">
           <label for="email">{{ t("邮箱") }}</label><input id="email" v-model="email" name="email" type="email" autocomplete="username" placeholder="you@example.com" required :disabled="loginBusy" />
@@ -608,11 +676,11 @@ onBeforeUnmount(() => window.removeEventListener('hashchange', readMailLink))
           <TurnstileChallenge v-if="captchaRequired" ref="loginChallenge" :site-key="site.turnstileSiteKey" action="login" :dark="dark" @token="loginChallengeToken = $event" />
           <p v-if="loginError" class="form-error" role="alert">{{ t(loginError) }}</p>
           <p v-if="loginMessage" class="action-success" role="status">{{ t(loginMessage) }}</p>
-          <button v-if="emailVerificationRequired" class="text-button" type="button" @click="accessMode = 'mail'">{{ t('重新发送验证邮件') }}</button>
+          <button v-if="emailVerificationRequired" class="text-button" type="button" @click="navigate('/login?mode=mail')">{{ t('重新发送验证邮件') }}</button>
           <button class="primary-button login-button" type="submit" :disabled="loginBusy || (captchaRequired && !loginChallengeToken)">{{ loginBusy ? t('正在登录…') : t('登录') }}<span aria-hidden="true">↗</span></button>
         </form>
-        <button class="secondary-button browse-library" type="button" @click="publicLibraryOpen = true">{{ t("浏览公开库") }}</button>
-        <div class="access-links"><button v-if="site.registration !== 'closed'" class="text-button" type="button" @click="accessMode = 'register'">{{ t('创建账号') }}</button><button class="text-button" type="button" @click="accessMode = 'mail'">{{ t('验证邮箱 / 找回密码') }}</button></div>
+        <button class="secondary-button browse-library" type="button" @click="navigate('/library')">{{ t("浏览公开库") }}</button>
+        <div class="access-links"><button v-if="site.registration !== 'closed'" class="text-button" type="button" @click="navigate('/login?mode=register')">{{ t('创建账号') }}</button><button class="text-button" type="button" @click="navigate('/login?mode=mail')">{{ t('验证邮箱 / 找回密码') }}</button></div>
         <div v-if="siteError" class="notice" role="alert">{{ t('暂时无法读取站点设置') }} <button class="text-button" type="button" @click="loadSite">{{ t('重试') }}</button></div>
         <div v-else-if="site.registration === 'closed'" class="registration-note"><span class="status-dot" aria-hidden="true"></span><p>{{ t('目前暂未开放注册。') }}<br><span>{{ t("账号由站点管理员提供。") }}</span></p></div>
       </section>
@@ -622,12 +690,11 @@ onBeforeUnmount(() => window.removeEventListener('hashchange', readMailLink))
       <aside class="sidebar">
         <div class="sidebar-title">{{ t("我的工作台") }}</div>
         <nav :aria-label="t('工作台导航')" :class="{ 'has-admin': user.isAdmin }">
-          <button type="button" class="nav-button" :class="{ active: page === 'characters' }" :aria-current="page === 'characters' ? 'page' : undefined" @click="page = 'characters'"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" aria-hidden="true"><rect x="8" y="3" width="8" height="7" rx="1"/><path d="M7 13h10v8H7zM3 13h4v6H3zm14 0h4v6h-4zM12 13v8"/></svg>{{ t("角色管理") }}<span class="nav-count">{{ characters.length }}</span></button>
-          <button type="button" class="nav-button" :class="{ active: page === 'materials' }" :aria-current="page === 'materials' ? 'page' : undefined" @click="page = 'materials'"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" aria-hidden="true"><path d="M3 7h18v14H3zM2 3h20v4H2zM9 11h6"/></svg>{{ t("我的材质") }}<span class="nav-count">{{ textures.length }}</span></button>
-          <button type="button" class="nav-button" :class="{ active: page === 'wardrobe' }" :aria-current="page === 'wardrobe' ? 'page' : undefined" @click="page = 'wardrobe'"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" aria-hidden="true"><path d="M4 3h16v18H4zM12 3v18M9 11v3m6-3v3"/></svg>{{ t("我的衣柜") }}<span class="nav-count">{{ wardrobe.length }}</span></button>
-          <button type="button" class="nav-button" :class="{ active: page === 'library' }" :aria-current="page === 'library' ? 'page' : undefined" @click="page = 'library'"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" aria-hidden="true"><path d="M3 4h7v7H3zM14 4h7v7h-7zM3 15h7v6H3zM14 15h7v6h-7z"/></svg>{{ t("公开库") }}</button>
-          <button type="button" class="nav-button" :class="{ active: page === 'account' }" :aria-current="page === 'account' ? 'page' : undefined" @click="page = 'account'"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" aria-hidden="true"><circle cx="12" cy="8" r="4"/><path d="M4 21v-2a8 8 0 0 1 16 0v2"/></svg>{{ t("账号") }}</button>
-          <button v-if="user.isAdmin" type="button" class="nav-button" :class="{ active: page === 'administration' }" :aria-current="page === 'administration' ? 'page' : undefined" @click="page = 'administration'"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" aria-hidden="true"><path d="m12 3 8 3v6c0 5-8 9-8 9s-8-4-8-9V6z"/><path d="m8 12 3 3 5-6"/></svg>{{ t('管理后台') }}</button>
+          <button type="button" class="nav-button" :class="{ active: page === 'characters' }" :aria-current="page === 'characters' ? 'page' : undefined" @click="navigate('/user')"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" aria-hidden="true"><rect x="8" y="3" width="8" height="7" rx="1"/><path d="M7 13h10v8H7zM3 13h4v6H3zm14 0h4v6h-4zM12 13v8"/></svg>{{ t("角色管理") }}<span class="nav-count">{{ characters.length }}</span></button>
+          <button type="button" class="nav-button" :class="{ active: page === 'materials' }" :aria-current="page === 'materials' ? 'page' : undefined" @click="navigate('/user/materials')"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" aria-hidden="true"><path d="M3 7h18v14H3zM2 3h20v4H2zM9 11h6"/></svg>{{ t("我的材质") }}<span class="nav-count">{{ textures.length }}</span></button>
+          <button type="button" class="nav-button" :class="{ active: page === 'wardrobe' }" :aria-current="page === 'wardrobe' ? 'page' : undefined" @click="navigate('/user/wardrobe')"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" aria-hidden="true"><path d="M4 3h16v18H4zM12 3v18M9 11v3m6-3v3"/></svg>{{ t("我的衣柜") }}<span class="nav-count">{{ wardrobe.length }}</span></button>
+          <button type="button" class="nav-button" :class="{ active: page === 'account' }" :aria-current="page === 'account' ? 'page' : undefined" @click="navigate('/user/account')"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" aria-hidden="true"><circle cx="12" cy="8" r="4"/><path d="M4 21v-2a8 8 0 0 1 16 0v2"/></svg>{{ t("账号") }}</button>
+          <button v-if="user.isAdmin" type="button" class="nav-button" :class="{ active: page === 'administration' }" :aria-current="page === 'administration' ? 'page' : undefined" @click="navigate('/admin')"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" aria-hidden="true"><path d="m12 3 8 3v6c0 5-8 9-8 9s-8-4-8-9V6z"/><path d="m8 12 3 3 5-6"/></svg>{{ t('管理后台') }}</button>
         </nav>
       </aside>
 
@@ -663,7 +730,7 @@ onBeforeUnmount(() => window.removeEventListener('hashchange', readMailLink))
                   <form class="binding-form" @submit.prevent="bindTexture('skin', bindingDraft.skin)"><label class="binding-field"><span>{{ t("皮肤") }}</span><select v-model="bindingDraft.skin" :aria-label="t('皮肤')" :disabled="actionBusy || charactersBusy || texturesBusy || wardrobeBusy"><option v-if="bindingDraft.skin === '__current'" value="__current" disabled>{{ t("当前皮肤（暂无可选记录）") }}</option><option value="">{{ t("不使用皮肤") }}</option><option v-for="texture in bindingTextures.filter(item => item.kind === 'skin')" :key="texture.id" :value="texture.id">{{ texture.name }}{{ texture.kind === 'skin' && texture.model === 'slim' ? t(' · 纤细') : '' }}{{ texture.public ? t(' · 公开') : t(' · 未公开') }}</option></select></label><button class="secondary-button" type="submit" :disabled="actionBusy || charactersBusy || texturesBusy || wardrobeBusy || bindingDraft.skin === '__current'">{{ t("应用皮肤") }}</button></form>
                   <form class="binding-form" @submit.prevent="bindTexture('cape', bindingDraft.cape)"><label class="binding-field"><span>{{ t("披风") }}</span><select v-model="bindingDraft.cape" :aria-label="t('披风')" :disabled="actionBusy || charactersBusy || texturesBusy || wardrobeBusy"><option v-if="bindingDraft.cape === '__current'" value="__current" disabled>{{ t("当前披风（暂无可选记录）") }}</option><option value="">{{ t("不使用披风") }}</option><option v-for="texture in bindingTextures.filter(item => item.kind === 'cape')" :key="texture.id" :value="texture.id">{{ texture.name }}{{ texture.kind === 'skin' && texture.model === 'slim' ? t(' · 纤细') : '' }}{{ texture.public ? t(' · 公开') : t(' · 未公开') }}</option></select></label><button class="secondary-button" type="submit" :disabled="actionBusy || charactersBusy || texturesBusy || wardrobeBusy || bindingDraft.cape === '__current'">{{ t("应用披风") }}</button></form>
                 </div>
-                <div class="material-link"><p v-if="textureError" class="form-error" role="alert">{{ t(textureError) }} <button class="text-button" type="button" :disabled="texturesBusy" @click="loadTextures">{{ t("重新加载") }}</button></p><p v-if="wardrobeError" class="form-error" role="alert">{{ t(wardrobeError) }} <button class="text-button" type="button" :disabled="wardrobeBusy" @click="loadWardrobe">{{ t("重新加载衣柜") }}</button></p><p>{{ t("需要新的皮肤或披风？") }}<button class="text-button" type="button" @click="page = 'materials'; materialTab = 'upload'">{{ t("前往上传材质") }}</button><button class="text-button" type="button" @click="page = 'wardrobe'">{{ t("打开我的衣柜") }}</button></p></div>
+              <div class="material-link"><p v-if="textureError" class="form-error" role="alert">{{ t(textureError) }} <button class="text-button" type="button" :disabled="texturesBusy" @click="loadTextures">{{ t("重新加载") }}</button></p><p v-if="wardrobeError" class="form-error" role="alert">{{ t(wardrobeError) }} <button class="text-button" type="button" :disabled="wardrobeBusy" @click="loadWardrobe">{{ t("重新加载衣柜") }}</button></p><p>{{ t("需要新的皮肤或披风？") }}<button class="text-button" type="button" @click="navigate('/user/materials?tab=upload')">{{ t("前往上传材质") }}</button><button class="text-button" type="button" @click="navigate('/user/wardrobe')">{{ t("打开我的衣柜") }}</button></p></div>
               </section>
               <details :key="`sources:${viewerKey}`" class="texture-sources" :open="fallbackViewer === viewerKey">
                 <summary>{{ t("PNG 材质与下载") }}</summary>
@@ -672,7 +739,7 @@ onBeforeUnmount(() => window.removeEventListener('hashchange', readMailLink))
                 </div>
               </details>
             </section>
-            <section v-else class="empty-state panel"><span class="empty-character" aria-hidden="true">♙</span><h2>{{ t("先创建你的角色") }}</h2><p>{{ t("创建后，就可以为它选择皮肤和披风。也可以先上传材质。") }}</p><button class="secondary-button" type="button" @click="page = 'materials'; materialTab = 'upload'">{{ t("前往上传材质") }}</button></section>
+            <section v-else class="empty-state panel"><span class="empty-character" aria-hidden="true">♙</span><h2>{{ t("先创建你的角色") }}</h2><p>{{ t("创建后，就可以为它选择皮肤和披风。也可以先上传材质。") }}</p><button class="secondary-button" type="button" @click="navigate('/user/materials?tab=upload')">{{ t("前往上传材质") }}</button></section>
             </div>
           </div>
         </template>
@@ -680,8 +747,8 @@ onBeforeUnmount(() => window.removeEventListener('hashchange', readMailLink))
           <div class="page-heading"><div><h1 id="materials-title">{{ t("我的材质") }}<span class="heading-pixel" aria-hidden="true"></span></h1></div><button class="secondary-button" type="button" :disabled="texturesBusy || actionBusy" @click="loadTextures">{{ texturesBusy ? t('正在刷新…') : t('刷新列表') }}</button></div>
           <template v-if="actionPage === 'materials'"><p v-if="actionError" class="form-error action-feedback" role="alert">{{ t(actionError) }}</p><p v-if="actionMessage" class="action-success" role="status">{{ t(actionMessage) }}</p></template>
           <nav class="material-tabs" :aria-label="t('材质分类')">
-            <button v-for="kind in (['skin', 'cape'] as const)" :key="kind" type="button" :class="{ active: materialTab === kind }" :aria-current="materialTab === kind ? 'page' : undefined" @click="materialTab = kind">{{ kind === 'skin' ? t('皮肤') : t('披风') }}<span>{{ textures.filter(texture => texture.kind === kind).length }}</span></button>
-            <button type="button" :class="{ active: materialTab === 'upload' }" :aria-current="materialTab === 'upload' ? 'page' : undefined" @click="materialTab = 'upload'">{{ t("上传材质") }}<span aria-hidden="true">＋</span></button>
+            <button v-for="kind in (['skin', 'cape'] as const)" :key="kind" type="button" :class="{ active: materialTab === kind }" :aria-current="materialTab === kind ? 'page' : undefined" @click="openMaterialTab(kind)">{{ kind === 'skin' ? t('皮肤') : t('披风') }}<span>{{ textures.filter(texture => texture.kind === kind).length }}</span></button>
+            <button type="button" :class="{ active: materialTab === 'upload' }" :aria-current="materialTab === 'upload' ? 'page' : undefined" @click="openMaterialTab('upload')">{{ t("上传材质") }}<span aria-hidden="true">＋</span></button>
           </nav>
           <div v-if="materialTab !== 'upload'" class="materials-workspace">
             <section class="material-library panel" :aria-label="materialTab === 'skin' ? t('皮肤列表') : t('披风列表')" :aria-busy="texturesBusy">
@@ -689,7 +756,7 @@ onBeforeUnmount(() => window.removeEventListener('hashchange', readMailLink))
               <div class="panel-title"><h2>{{ materialTab === 'skin' ? t('皮肤') : t('披风') }}</h2><span>{{ t('{count} 份材质', { count: visibleTextures.length }) }}</span></div>
               <div v-if="texturesBusy" class="empty-state" role="status"><span class="loading-dot"></span><h2>{{ t("正在加载材质…") }}</h2></div>
               <div v-else-if="textureError" class="empty-state" role="alert"><span class="empty-symbol" aria-hidden="true">!</span><h2>{{ t("暂时没有加载出来") }}</h2><p>{{ t(textureError) }}</p><button class="secondary-button" type="button" @click="loadTextures">{{ t("重新加载") }}</button></div>
-              <div v-else-if="!visibleTextures.length" class="empty-state"><span class="empty-symbol" aria-hidden="true">＋</span><h2>{{ t(materialTab === 'skin' ? '还没有皮肤' : '还没有披风') }}</h2><p>{{ t("上传一份 PNG 材质，在这里预览和查看。") }}</p><button class="secondary-button" type="button" @click="uploadKind = materialTab as 'skin' | 'cape'; materialTab = 'upload'">{{ t(materialTab === 'skin' ? '上传皮肤' : '上传披风') }}</button></div>
+              <div v-else-if="!visibleTextures.length" class="empty-state"><span class="empty-symbol" aria-hidden="true">＋</span><h2>{{ t(materialTab === 'skin' ? '还没有皮肤' : '还没有披风') }}</h2><p>{{ t("上传一份 PNG 材质，在这里预览和查看。") }}</p><button class="secondary-button" type="button" @click="uploadKind = materialTab as 'skin' | 'cape'; openMaterialTab('upload')">{{ t(materialTab === 'skin' ? '上传皮肤' : '上传披风') }}</button></div>
               <div v-else class="material-cards"><button v-for="texture in visibleTextures" :key="texture.id" class="material-card" :class="{ selected: texture.id === selectedTextureId }" type="button" :aria-pressed="texture.id === selectedTextureId" @click="selectedTextureId = texture.id"><ModelThumbnail class="material-thumbnail" :name="texture.name" :model="texture.kind === 'skin' ? texture.model : 'default'" :skin-hash="texture.kind === 'skin' ? texture.fileHash : ''" :cape-hash="texture.kind === 'cape' ? texture.fileHash : ''" /><span class="material-card-copy"><strong>{{ texture.name }}</strong><span>{{ texture.kind === 'skin' ? modelLabel(texture.model) : t('披风') }}<small>{{ texture.public ? t('公开') : t('未公开') }}</small></span></span></button></div>
             </section>
             <aside v-if="selectedTexture && !texturesBusy && !textureError" class="material-preview panel" aria-labelledby="material-preview-title">
@@ -702,7 +769,7 @@ onBeforeUnmount(() => window.removeEventListener('hashchange', readMailLink))
               </div>
               <button v-if="selectedTexture.owned || selectedTexture.public" class="secondary-button material-wear" type="button" :disabled="actionBusy || wardrobeBusy || !!wardrobeError || wardrobe.some(item => item.id === selectedTexture?.id)" @click="collectOwnTexture">{{ wardrobe.some(item => item.id === selectedTexture?.id) ? t('已在衣柜') : t('收藏到衣柜') }}</button>
               <details :key="selectedTexture.id" class="texture-sources" :open="materialFallback === selectedTexture.id"><summary>{{ t("PNG 材质与下载") }}</summary><div class="texture-preview checkerboard"><img v-if="!failedImages.includes(selectedTexture.fileHash)" :src="textureUrl(selectedTexture.fileHash)" :alt="t('“{name}”的 PNG 材质平面图', { name: selectedTexture.name })" @error="imageFailed(selectedTexture.fileHash)" /><p v-else class="texture-placeholder">{{ t("材质预览加载失败，可尝试下载或刷新列表。") }}</p></div><a class="download-link material-download" :href="textureUrl(selectedTexture.fileHash)" :download="`${selectedTexture.name}.png`">{{ t("下载 PNG") }}</a></details>
-              <button class="secondary-button material-wear" type="button" @click="page = 'characters'">{{ t("前往角色管理穿戴") }}</button>
+              <button class="secondary-button material-wear" type="button" @click="navigate('/user')">{{ t("前往角色管理穿戴") }}</button>
             </aside>
           </div>
           <div v-show="materialTab === 'upload'" class="upload-workspace">
@@ -720,12 +787,12 @@ onBeforeUnmount(() => window.removeEventListener('hashchange', readMailLink))
         </section>
         <template v-if="page === 'account'">
           <div class="page-heading"><div><h1>{{ t("账号") }}<span class="heading-pixel" aria-hidden="true"></span></h1><p>{{ t("管理个人资料、安全设置和账号相关服务。") }}</p></div></div>
-          <nav class="account-tabs admin-navigation" :aria-label="t('账号栏目')"><div class="admin-core-navigation"><span class="admin-group-label">{{ t('账号工作区') }}</span><div><button v-for="item in (['dashboard', 'profile', 'points', 'integration', 'reports'] as const)" :key="item" type="button" class="secondary-button" :class="{ active: accountTab === item }" :aria-current="accountTab === item ? 'page' : undefined" @click="accountTab = item">{{ t({ dashboard: '仪表盘', profile: '个人资料与安全', points: '积分', integration: '游戏接入', reports: '我的举报' }[item]) }}</button></div></div></nav>
+          <nav class="account-tabs admin-navigation" :aria-label="t('账号栏目')"><div class="admin-core-navigation"><span class="admin-group-label">{{ t('账号工作区') }}</span><div><button v-for="item in (['dashboard', 'profile', 'points', 'integration', 'reports'] as const)" :key="item" type="button" class="secondary-button" :class="{ active: accountTab === item }" :aria-current="accountTab === item ? 'page' : undefined" @click="navigate(accountPath(item))">{{ t({ dashboard: '仪表盘', profile: '个人资料与安全', points: '积分', integration: '游戏接入', reports: '我的举报' }[item]) }}</button></div></div></nav>
           <section v-if="accountTab === 'dashboard'" class="account-dashboard" :aria-label="t('账号仪表盘')">
-            <div class="account-dashboard-grid"><article class="panel account-summary-card account-summary-primary"><div class="account-profile"><img class="user-avatar large" :src="'/api/avatars/' + user.id + '.png?v=' + avatarVersion" alt="" width="64" height="64" /><div><p class="eyebrow">{{ t('当前账号') }}</p><h2>{{ user.nickname || t('我的账号') }}</h2><p>{{ user.email }}</p></div></div><span class="account-status" :class="{ verified: user.emailVerified }">{{ user.emailVerified ? t('邮箱已验证') : t('邮箱待验证') }}</span></article><article class="panel account-summary-card"><span class="account-card-index">01</span><h2>{{ t('角色') }}</h2><strong>{{ characters.length }} / {{ characterLimit }}</strong><p>{{ t('已创建角色') }}</p><button class="text-button" type="button" @click="page = 'characters'">{{ t('打开角色管理') }} ↗</button></article><article class="panel account-summary-card"><span class="account-card-index">02</span><h2>{{ t('材质与衣柜') }}</h2><strong>{{ textures.length + wardrobe.length }}</strong><p>{{ t('材质与收藏总数') }}</p><button class="text-button" type="button" @click="page = 'materials'">{{ t('打开我的材质') }} ↗</button></article></div>
-            <div class="account-dashboard-columns"><section class="panel account-dashboard-section"><div class="panel-title"><h2>{{ t('快速操作') }}</h2><span>{{ t('常用入口') }}</span></div><div class="account-quick-actions"><button class="secondary-button" type="button" @click="accountTab = 'profile'">{{ t('修改个人资料') }}</button><button class="secondary-button" type="button" @click="page = 'materials'; materialTab = 'upload'">{{ t('上传材质') }}</button><button class="secondary-button" type="button" @click="page = 'wardrobe'">{{ t('打开我的衣柜') }}</button><button class="secondary-button" type="button" @click="accountTab = 'reports'">{{ t('查看我的举报') }}</button></div></section><section class="panel account-dashboard-section"><div class="panel-title"><h2>{{ t('账号状态') }}</h2><span>{{ site.name }}</span></div><dl class="account-fields"><div><dt>{{ t('昵称') }}</dt><dd>{{ user.nickname || t('未设置') }}</dd></div><div><dt>{{ t('登录邮箱') }}</dt><dd>{{ user.email }}</dd></div><div><dt>{{ t('账号类型') }}</dt><dd>{{ user.isAdmin ? t('管理员') : t('普通用户') }}</dd></div></dl></section></div>
+            <div class="account-dashboard-grid"><article class="panel account-summary-card account-summary-primary"><div class="account-profile"><img class="user-avatar large" :src="'/api/avatars/' + user.id + '.png?v=' + avatarVersion" alt="" width="64" height="64" /><div><p class="eyebrow">{{ t('当前账号') }}</p><h2>{{ user.nickname || t('我的账号') }}</h2><p>{{ user.email }}</p></div></div><span class="account-status" :class="{ verified: user.emailVerified }">{{ user.emailVerified ? t('邮箱已验证') : t('邮箱待验证') }}</span></article><article class="panel account-summary-card"><span class="account-card-index">01</span><h2>{{ t('角色') }}</h2><strong>{{ characters.length }} / {{ characterLimit }}</strong><p>{{ t('已创建角色') }}</p><button class="text-button" type="button" @click="navigate('/user')">{{ t('打开角色管理') }} ↗</button></article><article class="panel account-summary-card"><span class="account-card-index">02</span><h2>{{ t('材质与衣柜') }}</h2><strong>{{ textures.length + wardrobe.length }}</strong><p>{{ t('材质与收藏总数') }}</p><button class="text-button" type="button" @click="navigate('/user/materials')">{{ t('打开我的材质') }} ↗</button></article></div>
+            <div class="account-dashboard-columns"><section class="panel account-dashboard-section"><div class="panel-title"><h2>{{ t('快速操作') }}</h2><span>{{ t('常用入口') }}</span></div><div class="account-quick-actions"><button class="secondary-button" type="button" @click="navigate('/user/account/profile')">{{ t('修改个人资料') }}</button><button class="secondary-button" type="button" @click="navigate('/user/materials?tab=upload')">{{ t('上传材质') }}</button><button class="secondary-button" type="button" @click="navigate('/user/wardrobe')">{{ t('打开我的衣柜') }}</button><button class="secondary-button" type="button" @click="navigate('/user/account/reports')">{{ t('查看我的举报') }}</button></div></section><section class="panel account-dashboard-section"><div class="panel-title"><h2>{{ t('账号状态') }}</h2><span>{{ site.name }}</span></div><dl class="account-fields"><div><dt>{{ t('昵称') }}</dt><dd>{{ user.nickname || t('未设置') }}</dd></div><div><dt>{{ t('登录邮箱') }}</dt><dd>{{ user.email }}</dd></div><div><dt>{{ t('账号类型') }}</dt><dd>{{ user.isAdmin ? t('管理员') : t('普通用户') }}</dd></div></dl></section></div>
           </section>
-          <section v-else-if="accountTab === 'profile'" class="account-panel panel" aria-labelledby="account-title"><div class="account-block account-overview"><div class="account-section-heading"><span>01</span><div><h2>{{ t('个人资料') }}</h2><p>{{ t('头像、昵称和站内身份信息。') }}</p></div></div><div class="account-profile"><img class="user-avatar large" :src="'/api/avatars/' + user.id + '.png?v=' + avatarVersion" alt="" width="64" height="64" /><div><h2 id="account-title">{{ user.nickname || t('我的账号') }}</h2><p>{{ t('已登录 {name}', { name: site.name }) }}</p></div></div><dl class="account-fields"><div><dt>{{ t("昵称") }}</dt><dd>{{ user.nickname || t('未设置') }}</dd></div><div><dt>{{ t("邮箱") }}</dt><dd>{{ user.email }}</dd></div><div><dt>{{ t('邮箱状态') }}</dt><dd>{{ user.emailVerified ? t('已验证') : t('未验证') }}</dd></div></dl></div><div class="account-block account-security"><div class="account-section-heading"><span>02</span><div><h2>{{ t('登录与安全') }}</h2><p>{{ t('更新个人资料、邮箱验证和密码。') }}</p></div></div><ProfileSettings :csrf-token="csrfToken" :characters="characters" @updated="profileUpdated" @expired="expireSession" /><section v-if="!user.emailVerified" class="account-password"><h3>{{ t('验证邮箱') }}</h3><p v-if="user.legacyAccount">{{ t('迁移账号可继续使用，邮箱尚未验证。') }}</p><p v-else>{{ t('本机创建的管理员可先配置站点，邮箱尚未验证。') }}</p><button class="secondary-button" type="button" @click="accessMode = 'mail'">{{ t('发送验证邮件') }}</button></section><section class="account-password" aria-labelledby="password-title"><h3 id="password-title">{{ t("修改密码") }}</h3><p>{{ t("修改后会退出所有网页会话并撤销游戏令牌，需要重新登录。") }}</p><form class="password-form" @submit.prevent="changePassword"><fieldset :disabled="passwordBusy"><input type="hidden" name="username" :value="user.email" autocomplete="username" /><label class="binding-field"><span>{{ t("当前密码") }}</span><input v-model="currentPassword" type="password" autocomplete="current-password" required /></label><label class="binding-field"><span>{{ t("新密码") }}</span><input v-model="newPassword" type="password" autocomplete="new-password" required aria-describedby="password-rule" /></label><p id="password-rule" class="password-rule">{{ t("8–128 个字符，须同时包含英文字母、数字和符号；空白不计作符号。") }}</p><label class="binding-field"><span>{{ t("确认新密码") }}</span><input v-model="confirmPassword" type="password" autocomplete="new-password" required /></label><p v-if="passwordError" class="form-error" role="alert">{{ t(passwordError) }}</p><button class="primary-button" type="submit" :disabled="passwordBusy || actionBusy">{{ passwordBusy ? t('正在修改…') : t('修改密码并重新登录') }}</button></fieldset></form></section><div class="account-logout"><div><h3>{{ t("退出当前账号") }}</h3><p>{{ t("下次使用工作台时需要重新登录。") }}</p></div><button class="secondary-button" type="button" :disabled="logoutBusy || passwordBusy || actionBusy || charactersBusy || texturesBusy || wardrobeBusy" @click="logout">{{ logoutBusy ? t('正在退出…') : t('退出登录') }}</button></div><p v-if="logoutError" class="form-error" role="alert">{{ t(logoutError) }}</p></div></section>
+          <section v-else-if="accountTab === 'profile'" class="account-panel panel" aria-labelledby="account-title"><div class="account-block account-overview"><div class="account-section-heading"><span>01</span><div><h2>{{ t('个人资料') }}</h2><p>{{ t('头像、昵称和站内身份信息。') }}</p></div></div><div class="account-profile"><img class="user-avatar large" :src="'/api/avatars/' + user.id + '.png?v=' + avatarVersion" alt="" width="64" height="64" /><div><h2 id="account-title">{{ user.nickname || t('我的账号') }}</h2><p>{{ t('已登录 {name}', { name: site.name }) }}</p></div></div><dl class="account-fields"><div><dt>{{ t("昵称") }}</dt><dd>{{ user.nickname || t('未设置') }}</dd></div><div><dt>{{ t("邮箱") }}</dt><dd>{{ user.email }}</dd></div><div><dt>{{ t('邮箱状态') }}</dt><dd>{{ user.emailVerified ? t('已验证') : t('未验证') }}</dd></div></dl></div><div class="account-block account-security"><div class="account-section-heading"><span>02</span><div><h2>{{ t('登录与安全') }}</h2><p>{{ t('更新个人资料、邮箱验证和密码。') }}</p></div></div><ProfileSettings :csrf-token="csrfToken" :characters="characters" @updated="profileUpdated" @expired="expireSession" /><section v-if="!user.emailVerified" class="account-password"><h3>{{ t('验证邮箱') }}</h3><p v-if="user.legacyAccount">{{ t('迁移账号可继续使用，邮箱尚未验证。') }}</p><p v-else>{{ t('本机创建的管理员可先配置站点，邮箱尚未验证。') }}</p><button class="secondary-button" type="button" @click="navigate('/login?mode=mail')">{{ t('发送验证邮件') }}</button></section><section class="account-password" aria-labelledby="password-title"><h3 id="password-title">{{ t("修改密码") }}</h3><p>{{ t("修改后会退出所有网页会话并撤销游戏令牌，需要重新登录。") }}</p><form class="password-form" @submit.prevent="changePassword"><fieldset :disabled="passwordBusy"><input type="hidden" name="username" :value="user.email" autocomplete="username" /><label class="binding-field"><span>{{ t("当前密码") }}</span><input v-model="currentPassword" type="password" autocomplete="current-password" required /></label><label class="binding-field"><span>{{ t("新密码") }}</span><input v-model="newPassword" type="password" autocomplete="new-password" required aria-describedby="password-rule" /></label><p id="password-rule" class="password-rule">{{ t("8–128 个字符，须同时包含英文字母、数字和符号；空白不计作符号。") }}</p><label class="binding-field"><span>{{ t("确认新密码") }}</span><input v-model="confirmPassword" type="password" autocomplete="new-password" required /></label><p v-if="passwordError" class="form-error" role="alert">{{ t(passwordError) }}</p><button class="primary-button" type="submit" :disabled="passwordBusy || actionBusy">{{ passwordBusy ? t('正在修改…') : t('修改密码并重新登录') }}</button></fieldset></form></section><div class="account-logout"><div><h3>{{ t("退出当前账号") }}</h3><p>{{ t("下次使用工作台时需要重新登录。") }}</p></div><button class="secondary-button" type="button" :disabled="logoutBusy || passwordBusy || actionBusy || charactersBusy || texturesBusy || wardrobeBusy" @click="logout">{{ logoutBusy ? t('正在退出…') : t('退出登录') }}</button></div><p v-if="logoutError" class="form-error" role="alert">{{ t(logoutError) }}</p></div></section>
           <PointsPanel v-else-if="accountTab === 'points'" :csrf-token="csrfToken" @expired="expireSession" />
           <IntegrationPanel v-else-if="accountTab === 'integration'" />
           <ReportsView v-else-if="accountTab === 'reports'" :csrf-token="csrfToken" @expired="expireSession" />

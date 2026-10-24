@@ -16,6 +16,7 @@ import (
 	"net/http/cookiejar"
 	"net/http/httptest"
 	"path/filepath"
+	"strings"
 	"testing"
 	"testing/fstest"
 	"time"
@@ -119,14 +120,17 @@ func TestStaticAssetsAndAPIRouting(t *testing.T) {
 		method, path string
 		status       int
 	}{
-		{"GET", "/", 200}, {"HEAD", "/", 200}, {"GET", "/assets/main.js", 200},
+		{"GET", "/", 200}, {"HEAD", "/", 200}, {"GET", "/login", 200}, {"GET", "/library", 200}, {"GET", "/user/materials", 200}, {"GET", "/user/account/profile", 200}, {"GET", "/admin", 200}, {"GET", "/assets/main.js", 200},
 		{"POST", "/", 405}, {"GET", "/api/unknown", 404}, {"POST", "/api/unknown", 404},
-		{"GET", "/api/site", 200}, {"GET", "/api/auth/me", 401},
+		{"GET", "/unknown", 404}, {"GET", "/api/site", 200}, {"GET", "/api/auth/me", 401},
 	} {
 		w := httptest.NewRecorder()
 		app.ServeHTTP(w, httptest.NewRequest(tt.method, tt.path, nil))
 		if w.Code != tt.status {
 			t.Fatalf("%s %s got %d want %d", tt.method, tt.path, w.Code, tt.status)
+		}
+		if strings.HasPrefix(tt.path, "/api/") && w.Header().Get("Content-Type") != "application/json; charset=utf-8" {
+			t.Fatalf("%s %s did not return JSON", tt.method, tt.path)
 		}
 	}
 }

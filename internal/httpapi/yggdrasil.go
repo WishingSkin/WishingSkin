@@ -763,7 +763,7 @@ func (a *Server) legacyRoot(w http.ResponseWriter, r *http.Request) {
 	if strings.HasSuffix(r.PathValue("file"), ".json") {
 		a.legacyPlayerJSON(w, r)
 	} else if a.cfg.Assets != nil {
-		http.FileServerFS(a.cfg.Assets).ServeHTTP(w, r)
+		a.serveAssetOrSPA(w, r)
 	} else {
 		http.NotFound(w, r)
 	}
