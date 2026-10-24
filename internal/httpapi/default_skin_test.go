@@ -2,7 +2,8 @@ package httpapi
 
 import (
 	"bytes"
-	"context"
+	"encoding/base64"
+	"encoding/json"
 	"image/png"
 	"testing"
 )
@@ -12,7 +13,7 @@ func TestDefaultSkinAssetsAndProfileMetadataBothDatabases(t *testing.T) {
 		t.Run(dialect, func(t *testing.T) {
 			f := newManagementApp(t, dialect)
 			standard := webCharacter(t, f.call(1, "POST", "/api/characters", map[string]string{"name": "DefaultSkin"}))
-			slim := webCharacter(t, f.call(1, "POST", "/api/characters", map[string]string{"name": "SlimSkin"}))
+			slim := webCharacter(t, f.call(2, "POST", "/api/characters", map[string]string{"name": "SlimSkin"}))
 			f.exec("UPDATE characters SET model=? WHERE id=?", "slim", slim.ID)
 
 			for _, check := range []struct {
@@ -23,23 +24,35 @@ func TestDefaultSkinAssetsAndProfileMetadataBothDatabases(t *testing.T) {
 				{character: standard, model: "default"},
 				{character: slim, model: "slim", slim: true},
 			} {
-				profile, err := f.app.profileResponse(context.Background(), f.db.DB, check.character.UUID, false)
+				w := f.call(0, "GET", "/api/yggdrasil/sessionserver/session/minecraft/profile/"+check.character.UUID, nil)
+				webStatus(t, w, 200)
+				var profile struct {
+					Properties []struct{ Name, Value string }
+				}
+				if err := json.Unmarshal(w.Body.Bytes(), &profile); err != nil || len(profile.Properties) != 1 || profile.Properties[0].Name != "textures" {
+					t.Fatalf("invalid profile: %v %s", err, w.Body.String())
+				}
+				data, err := base64.StdEncoding.DecodeString(profile.Properties[0].Value)
 				if err != nil {
 					t.Fatal(err)
 				}
-				textures, ok := profile["textures"].(map[string]any)
-				if !ok {
-					t.Fatalf("missing textures: %#v", profile["textures"])
+				var payload struct {
+					Textures map[string]struct {
+						URL      string
+						Metadata map[string]string
+					}
 				}
-				skin, ok := textures["SKIN"].(map[string]any)
-				if !ok || skin["url"] != "http://example.test/defaults/skins/"+check.model {
-					t.Fatalf("default skin for %s: %#v", check.model, textures["SKIN"])
+				if err := json.Unmarshal(data, &payload); err != nil {
+					t.Fatal(err)
 				}
-				metadata, hasMetadata := skin["metadata"].(map[string]string)
-				if check.slim && (!hasMetadata || metadata["model"] != "slim") {
+				skin, ok := payload.Textures["SKIN"]
+				if !ok || skin.URL != "http://example.test/defaults/skins/"+check.model {
+					t.Fatalf("default skin for %s: %#v", check.model, skin)
+				}
+				if check.slim && skin.Metadata["model"] != "slim" {
 					t.Fatalf("slim metadata missing: %#v", skin)
 				}
-				if !check.slim && hasMetadata {
+				if !check.slim && skin.Metadata != nil {
 					t.Fatalf("standard skin has metadata: %#v", skin)
 				}
 			}
