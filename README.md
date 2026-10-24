@@ -2,7 +2,7 @@
 
 面向服主自部署的开源 Minecraft 皮肤站，采用 Go 模块化单体与 Vue 3 / TypeScript / Vite，静态前端由后端提供，支持现代界面、Blessing Skin 声明契约的数据迁移及外置登录兼容能力。Kyanetwork 将作为首个使用方。
 
-2026-10-23：本地首版及设置/资料/模型展示扩展已实现，当前 schema 10。首版全站 168 组布局、本轮设置/账号 63 组与模型相关 96 组布局、双库迁移进程中断恢复及备份恢复均有证据；真实源站、外部邮件/Turnstile 和生产切换未验收，迁移状态仍为 `partial`。先看[首版结果与限制](docs/v1-local-validation.md)及[设置与资料验证](docs/settings-profile-validation.md)，部署与迁移入口见[操作说明](docs/development.md)。
+2026-10-24：本地首版及设置/资料/模型展示扩展已实现，当前 schema 11。首版全站 168 组布局、本轮设置/账号 63 组与模型相关 96 组布局、双库迁移进程中断恢复及备份恢复均有证据；真实源站、外部邮件/Turnstile 和生产切换未验收，迁移状态仍为 `partial`。先看[首版结果与限制](docs/v1-local-validation.md)及[设置与资料验证](docs/settings-profile-validation.md)，部署与迁移入口见[操作说明](docs/development.md)。
 
 当前已实现网页登录、角色增删改名、管理员调整角色上限、PNG 材质上传与皮肤/披风绑定、本人材质资料编辑与删除、衣柜收藏和公开库、浅/深主题、双数据库升级，以及 BS 合成样本的只读导出、预检查、部分导入和中断恢复。工作台分为角色管理、我的材质、我的衣柜、公开库与账号；上传位于我的材质。角色页以穿戴实际皮肤和披风的 3D 模型展示外观，支持标准/纤细手臂、正背面、旋转与缩放；PNG 仍可查看和下载。旧密码登录后升级为 Argon2id，保留角色 UUID 与材质签名密钥。
 
@@ -57,3 +57,5 @@ Yggdrasil 已实现认证、选角与令牌刷新、验证/撤销、join/hasJoin
 - [第三方依赖与许可证](THIRD_PARTY_NOTICES.md)
 
 使用 GrillMe 收敛需求、OpenSpec 记录规划，中文文档按 Humanizer-zh 审阅。
+
+公告弹窗、历史记录与本地 Git 产物清理见[本轮验证](docs/notices-git-validation.md)。当前代码已支持 schema 11；旧 8097 预览的程序更换被自动审批阻止，不能据此判断已经更新。
