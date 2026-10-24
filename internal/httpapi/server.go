@@ -90,6 +90,7 @@ func New(s *store.Store, cfg Config) (*Server, error) {
 	a.uploadIPLimit = limiter{entries: map[string]bucket{}, now: time.Now, max: 30}
 	a.mailSlots = make(chan struct{}, 2)
 	a.mux.HandleFunc("GET /api/site", a.site)
+	a.mux.HandleFunc("GET /api/notices", a.notices)
 	a.registerAccountAccess()
 	a.registerCustomization()
 	a.registerAdministration()

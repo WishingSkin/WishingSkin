@@ -68,6 +68,7 @@ func seed(t *testing.T, dialect string) (*store.Store, string) {
 	exec("INSERT INTO user_profiles(user_id,avatar_mode,character_uuid,avatar_image) VALUES(?,?,?,?)", uid, "character", uuid, "")
 	exec("INSERT INTO settings(setting_key,value) VALUES(?,?)", "service_config", "synthetic-opaque-encrypted-setting")
 	exec("INSERT INTO settings(setting_key,value) VALUES(?,?)", "site_name", "Synthetic backup site")
+	exec("INSERT INTO site_notices(notice_id,content,format,created_at) VALUES(?,?,?,?)", "synthetic-notice", "**Backup notice**", "markdown", 1760000000000)
 	exec("UPDATE settings SET value=? WHERE setting_key='character_limit'", "3")
 	exec("INSERT INTO admin_events(event_id,actor_id,action,target_type,target_id,created_at) VALUES(?,?,?,?,?,?)", strings.Repeat("a", 32), uid, "fixture", "user", "1", 1700000000)
 	exec("INSERT INTO reports(report_id,reporter_id,record_id,texture_name,reason,status,resolution,reply,reviewer_id,created_at,resolved_at) VALUES(?,?,?,?,?,?,?,?,?,?,?)", strings.Repeat("b", 32), uid, record, "Backup fixture", "Fixture reason", "pending", "", "", nil, 1700000000, 0)
@@ -124,7 +125,7 @@ func TestRoundTripBothDatabases(t *testing.T) {
 		t.Run(from, func(t *testing.T) {
 			db, _, path, r := exportFixture(t, from)
 			original := loadManifest(t, path)
-			if r.Files != 1 || r.CredentialsRevoked || r.Rows["point_entries"] != 1 || r.Rows["user_profiles"] != 1 || r.Rows["legacy_reports"] != 2 || len(original.Tables) != len(tables) {
+			if r.Files != 1 || r.CredentialsRevoked || r.Rows["point_entries"] != 1 || r.Rows["user_profiles"] != 1 || r.Rows["legacy_reports"] != 2 || r.Rows["site_notices"] != 1 || len(original.Tables) != len(tables) {
 				t.Fatal("incomplete backup report", r)
 			}
 			for _, to := range []string{"mysql", "postgres"} {

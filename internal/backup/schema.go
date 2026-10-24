@@ -18,6 +18,7 @@ var tables = []table{
 	{"account_states", "user_id,email_verified,verification_required", "ibb", "user_id"},
 	{"user_profiles", "user_id,avatar_mode,character_uuid,avatar_image", "isss", "user_id"},
 	{"settings", "setting_key,value", "ss", "setting_key"},
+	{"site_notices", "notice_id,content,format,created_at", "sssi", "notice_id"},
 	{"migration_state", "id,source_fingerprint,status,report", "isss", "id"},
 	{"admin_events", "event_id,actor_id,action,target_type,target_id,created_at", "sisssi", "event_id"},
 	{"reports", "report_id,reporter_id,record_id,texture_name,reason,status,resolution,reply,reviewer_id,created_at,resolved_at", "sissssssIii", "report_id"},

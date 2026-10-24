@@ -88,8 +88,11 @@ func (a *Server) updateSiteBranding(w http.ResponseWriter, r *http.Request) {
 	if a.s.Dialect == "mysql" {
 		query = "INSERT INTO settings(setting_key,value) VALUES(?,?) ON DUPLICATE KEY UPDATE value=VALUES(value)"
 	}
-	var err error
+	err := a.saveNoticeHistory(r.Context(), tx, body)
 	for _, field := range []struct{ key, value string }{{"site_name", body.Name}, {"site_tagline", body.Tagline}, {"site_notice", body.Notice}, {"site_notice_format", body.NoticeFormat}} {
+		if err != nil {
+			break
+		}
 		if _, err = tx.ExecContext(r.Context(), a.s.Bind(query), field.key, field.value); err != nil {
 			break
 		}

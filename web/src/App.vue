@@ -3,6 +3,7 @@ import { computed, nextTick, onBeforeUnmount, onMounted, ref, watch } from 'vue'
 import CharacterViewer from './components/CharacterViewer.vue'
 import ModelThumbnail from './components/ModelThumbnail.vue'
 import SiteFooter from './components/SiteFooter.vue'
+import NoticeCenter from './components/NoticeCenter.vue'
 import TextureBrowser from './components/TextureBrowser.vue'
 import AccountAccess from './components/AccountAccess.vue'
 import RegistrationSettings from './components/RegistrationSettings.vue'
@@ -557,7 +558,7 @@ onBeforeUnmount(() => window.removeEventListener('hashchange', readMailLink))
     <header class="topbar">
       <a class="brand" href="/" :aria-label="t('{name} 首页', { name: site.name })" :title="site.name"><img v-if="site.appearance.logoImage" class="brand-logo" :src="site.appearance.logoImage" alt="" width="32" height="32" /><span v-else class="brand-mark" aria-hidden="true"><i></i><i></i><i></i></span><span class="brand-name"><template v-if="site.name === 'WishingSkin'">Wishing<span class="brand-light">Skin</span></template><template v-else>{{ site.name }}</template></span></a>
       <div class="topbar-actions">
-        <span class="workspace-label">{{ t("角色与材质") }}</span>
+        <NoticeCenter :notice="site.notice" :format="site.noticeFormat" />
         <select class="language-select" :value="locale" :aria-label="t('界面语言')" @change="setLocale(($event.target as HTMLSelectElement).value)"><option value="zh-CN" lang="zh-CN">简体中文</option><option value="en" lang="en">English</option></select>
         <button class="icon-button theme-toggle" type="button" :aria-label="dark ? t('切换浅色主题') : t('切换深色主题')" @click="toggleTheme">
           <svg v-if="dark" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" aria-hidden="true"><circle cx="12" cy="12" r="4"/><path d="M12 2v2m0 16v2M2 12h2m16 0h2M5 5l1.5 1.5m11 11L19 19M5 19l1.5-1.5m11-11L19 5"/></svg>
@@ -566,7 +567,6 @@ onBeforeUnmount(() => window.removeEventListener('hashchange', readMailLink))
         <button v-if="user" class="topbar-user" type="button" :title="user.nickname || t('我的账号')" :aria-label="t('打开账号：{name}', { name: user.nickname || t('我的账号') })" @click="page = 'account'; publicLibraryOpen = false; accessMode = null"><img class="user-avatar" :src="'/api/avatars/' + user.id + '.png?v=' + avatarVersion" alt="" width="34" height="34" /><span>{{ user.nickname || t('我的账号') }}</span></button>
       </div>
     </header>
-    <aside v-if="site.notice" class="site-notice" :aria-label="t('站点公告')"><h2>{{ t('站点公告') }}</h2><div class="notice-content" v-html="site.noticeHtml"></div></aside>
 
     <main v-if="initializing" class="initial-state" aria-live="polite"><span class="loading-dot"></span><p>{{ t("正在打开你的工作台…") }}</p></main>
 

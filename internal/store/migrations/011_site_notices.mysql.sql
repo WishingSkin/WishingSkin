@@ -1,0 +1,6 @@
+CREATE TABLE IF NOT EXISTS site_notices (
+    notice_id VARCHAR(64) NOT NULL PRIMARY KEY,
+    content TEXT NOT NULL,
+    format VARCHAR(16) NOT NULL,
+    created_at BIGINT NOT NULL
+) ENGINE=InnoDB DEFAULT CHARACTER SET utf8mb4 COLLATE utf8mb4_0900_bin;
