@@ -71,9 +71,9 @@ function contextLost(event: Event) {
   fail('3D 显示连接已中断。可以重试预览，或查看下方 PNG 材质。')
 }
 
-async function loadTexture(hash: string, label: string, signal: AbortSignal, bitmaps: ImageBitmap[]) {
+async function loadTexture(url: string, label: string, signal: AbortSignal, bitmaps: ImageBitmap[]) {
   try {
-    const response = await fetch(`/textures/${encodeURIComponent(hash)}`, { credentials: 'same-origin', signal })
+    const response = await fetch(url, { credentials: 'same-origin', signal })
     if (!response.ok) throw new Error('texture')
     const bitmap = await createImageBitmap(await response.blob())
     if (signal.aborted) {
@@ -121,12 +121,11 @@ async function initialize() {
     resize()
     phase = 'texture'
     const [skin, cape] = await Promise.all([
-      props.skinHash ? loadTexture(props.skinHash, '皮肤', request.signal, bitmaps) : Promise.resolve(defaultPreviewSkin(props.model)),
-      props.capeHash ? loadTexture(props.capeHash, '披风', request.signal, bitmaps) : Promise.resolve(null),
+      loadTexture(props.skinHash ? `/textures/${encodeURIComponent(props.skinHash)}` : defaultPreviewSkin(props.model), '皮肤', request.signal, bitmaps),
+      props.capeHash ? loadTexture(`/textures/${encodeURIComponent(props.capeHash)}`, '披风', request.signal, bitmaps) : Promise.resolve(null),
     ])
     if (!mounted || run !== generation || request.signal.aborted) return
     current.loadSkin(skin, { model: props.model })
-    if (!props.skinHash) current.playerObject.skin.setOuterLayerVisible(false)
     if (cape) current.loadCape(cape, { backEquipment: 'cape' })
     state.value = 'ready'
     await nextTick()
@@ -222,7 +221,7 @@ onBeforeUnmount(() => {
       <div class="view-buttons"><button class="secondary-button" type="button" :disabled="state !== 'ready'" @click="setView('front')">{{ t("正面") }}</button><button class="secondary-button" type="button" :disabled="state !== 'ready'" @click="setView('back')">{{ t("背面") }}</button><button class="secondary-button" type="button" :disabled="state !== 'ready'" @click="setView('reset')">{{ t("重置视角") }}</button><button class="secondary-button zoom-button" type="button" :aria-label="t('放大角色')" :disabled="state !== 'ready'" @click="zoom(0.85)">＋</button><button class="secondary-button zoom-button" type="button" :aria-label="t('缩小角色')" :disabled="state !== 'ready'" @click="zoom(1.15)">−</button></div>
       <button class="text-button rotation-button" type="button" :aria-pressed="rotating" :disabled="state !== 'ready' || reducedMotion" @click="rotating = !rotating">{{ rotating ? t('停止旋转') : t('自动旋转') }}</button>
     </div>
-    <p v-if="state === 'ready' && !skinHash" class="viewer-note">{{ t(capeHash ? '未设置皮肤，使用 Steve 风格默认皮肤展示披风。' : '未设置皮肤，当前显示 Steve 风格默认皮肤。') }}</p>
+    <p v-if="state === 'ready' && !skinHash" class="viewer-note">{{ t(capeHash ? '未设置皮肤，使用 {name} 默认皮肤展示披风。' : '未设置皮肤，当前显示 {name} 默认皮肤。', { name: model === 'slim' ? 'Alex' : 'Steve' }) }}</p>
     <p v-if="reducedMotion" class="viewer-note">{{ t("已启用减少动态效果，自动旋转已关闭。") }}</p>
   </section>
 </template>

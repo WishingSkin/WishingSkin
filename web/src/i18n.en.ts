@@ -747,6 +747,6 @@ export const english: Record<string, string> = {
   '查看模型': 'View model',
   '“{name}”的模型预览': 'Model preview of “{name}”',
   '模型预览不可用，请打开详情重试或查看 PNG。': 'Model preview unavailable. Open details to retry or view the PNG.',
-  '未设置皮肤，使用 Steve 风格默认皮肤展示披风。': 'No skin selected. A Steve-style default skin displays this cape.',
-  '未设置皮肤，当前显示 Steve 风格默认皮肤。': 'No skin selected. Showing a Steve-style default skin.',
+  '未设置皮肤，使用 {name} 默认皮肤展示披风。': 'No skin selected. The default {name} skin displays this cape.',
+  '未设置皮肤，当前显示 {name} 默认皮肤。': 'No skin selected. Showing the default {name} skin.',
 }
