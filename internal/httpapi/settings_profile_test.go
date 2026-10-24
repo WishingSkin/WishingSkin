@@ -199,6 +199,18 @@ func TestImageAndNoticeBoundaries(t *testing.T) {
 	if err != nil || cfg.Width != 64 || cfg.Height != 64 {
 		t.Fatal("image not normalized", cfg, err)
 	}
+	logo, err := normalizedLogoImage("data:image/png;base64," + base64.StdEncoding.EncodeToString(testPNG(t, 160, 80)))
+	if err != nil {
+		t.Fatal(err)
+	}
+	logoData, err := base64.StdEncoding.DecodeString(strings.TrimPrefix(logo, "data:image/png;base64,"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	logoCfg, err := png.DecodeConfig(bytes.NewReader(logoData))
+	if err != nil || logoCfg.Width != 160 || logoCfg.Height != 160 {
+		t.Fatalf("logo not normalized to a larger square: %dx%d %v", logoCfg.Width, logoCfg.Height, err)
+	}
 	literal := renderNotice("<b>literal</b>\nsecond", "plain")
 	if strings.Contains(literal, "<b>") || !strings.Contains(literal, "&lt;b&gt;") || !strings.Contains(literal, "<br>") {
 		t.Fatal(literal)
