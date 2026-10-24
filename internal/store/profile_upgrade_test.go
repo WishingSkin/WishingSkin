@@ -27,7 +27,7 @@ func TestFreshRegistrationAndProfileUpgrade(t *testing.T) {
 				t.Fatal(err)
 			}
 			// Simulate schema 9 and DDL completed before the version 10 marker.
-			for _, q := range []string{"UPDATE settings SET value='closed' WHERE setting_key='registration_mode'", "DELETE FROM schema_migrations WHERE version=10", "INSERT INTO user_profiles(user_id,avatar_mode,character_uuid,avatar_image) VALUES(73,'default','','')"} {
+			for _, q := range []string{"UPDATE settings SET value='closed' WHERE setting_key='registration_mode'", "DELETE FROM schema_migrations WHERE version>=10", "INSERT INTO user_profiles(user_id,avatar_mode,character_uuid,avatar_image) VALUES(73,'default','','')"} {
 				if _, err := s.DB.Exec(q); err != nil {
 					t.Fatal(err)
 				}

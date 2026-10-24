@@ -73,6 +73,9 @@ func assertEmbeddedSchemasAgree(t *testing.T, migration string) {
 		t.Fatal("MySQL and PostgreSQL schema definitions differ")
 	}
 	tables := []string{"ygg_join_sessions"}
+	if migration == "011_site_notices" {
+		tables = []string{"site_notices"}
+	}
 	if migration == "010_user_profiles" {
 		tables = []string{"user_profiles"}
 	}

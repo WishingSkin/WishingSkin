@@ -39,8 +39,15 @@ func (a *Server) noticeHistory(ctx context.Context, q noticeQuery) ([]siteNotice
 }
 
 func legacyNotice(brand siteBranding) siteNotice {
-	sum := sha256.Sum256([]byte(brand.NoticeFormat + "\n" + brand.Notice))
+	sum := sha256.Sum256([]byte(normalizedNoticeFormat(brand.NoticeFormat) + "\n" + brand.Notice))
 	return siteNotice{ID: hex.EncodeToString(sum[:]), Content: brand.Notice, Format: brand.NoticeFormat}
+}
+
+func normalizedNoticeFormat(value string) string {
+	if value == "markdown" {
+		return "markdown"
+	}
+	return "plain"
 }
 
 func (a *Server) saveNoticeHistory(ctx context.Context, tx *sql.Tx, body siteBranding) error {
@@ -65,7 +72,7 @@ func (a *Server) saveNoticeHistory(ctx context.Context, tx *sql.Tx, body siteBra
 		}
 		items = append(items, item)
 	}
-	if body.Notice != "" && (body.Notice != previous.Notice || body.NoticeFormat != previous.NoticeFormat) {
+	if body.Notice != "" && (body.Notice != previous.Notice || normalizedNoticeFormat(body.NoticeFormat) != normalizedNoticeFormat(previous.NoticeFormat)) {
 		id, err := randomUUID()
 		if err != nil {
 			return err
@@ -108,7 +115,7 @@ func (a *Server) notices(w http.ResponseWriter, r *http.Request) {
 	for i := len(items) - 1; i >= 0; i-- {
 		item := items[i]
 		result = append(result, publicNotice{item.ID, renderNotice(item.Content, item.Format), item.CreatedAt})
-		if currentID == "" && brand.Notice != "" && item.Content == brand.Notice && item.Format == brand.NoticeFormat {
+		if currentID == "" && brand.Notice != "" && item.Content == brand.Notice && normalizedNoticeFormat(item.Format) == normalizedNoticeFormat(brand.NoticeFormat) {
 			currentID = item.ID
 		}
 	}

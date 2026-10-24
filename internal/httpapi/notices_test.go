@@ -35,6 +35,10 @@ func TestNoticeHistoryBothDatabases(t *testing.T) {
 			if len(legacy.Notices) != 1 || legacy.CurrentID == "" || legacy.Notices[0].CreatedAt != 0 {
 				t.Fatal(legacy)
 			}
+			webStatus(t, f.call(3, "PATCH", "/api/admin/branding", siteBranding{Name: "Name only", Notice: "迁移公告", NoticeFormat: "plain"}), 200)
+			if result := read(); len(result.Notices) != 1 || result.CurrentID != legacy.CurrentID {
+				t.Fatal("legacy plain format published a duplicate", result)
+			}
 			body := siteBranding{Name: "Test", Notice: "**新公告** <script>alert(1)</script>", NoticeFormat: "markdown"}
 			webStatus(t, f.call(1, "PATCH", "/api/admin/branding", body), 403)
 			f.exec("ALTER TABLE admin_events RENAME COLUMN action TO unavailable_action")
