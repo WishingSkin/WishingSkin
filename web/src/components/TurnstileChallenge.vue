@@ -24,7 +24,7 @@ function loadTurnstile() {
 <script setup lang="ts">
 import { onBeforeUnmount, onMounted, ref, watch } from 'vue'
 import { locale, t } from '../i18n'
-const props = defineProps<{ siteKey: string; action: 'login' | 'register'; dark: boolean }>()
+const props = defineProps<{ siteKey: string; action: 'login' | 'register' | 'admin-test'; dark: boolean }>()
 const emit = defineEmits<{ token: [value: string] }>()
 const host = ref<HTMLElement | null>(null)
 const failed = ref(false)

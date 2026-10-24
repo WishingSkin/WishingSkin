@@ -1,7 +1,8 @@
 <script setup lang="ts">
 import { onMounted, ref } from 'vue'
 import { t } from '../i18n'
-interface Services { smtpEnabled: boolean; address: string; from: string; username: string; tlsMode: string; passwordConfigured: boolean; turnstileEnabled: boolean; siteKey: string; secretConfigured: boolean; source: string; editable?: boolean }
+import TurnstileChallenge from './TurnstileChallenge.vue'
+interface Services { smtpEnabled: boolean; address: string; from: string; username: string; tlsMode: string; passwordConfigured: boolean; turnstileEnabled: boolean; siteKey: string; secretConfigured: boolean; source: string; testRecipient: string; editable?: boolean }
 const props = defineProps<{ csrfToken: string }>()
 const emit = defineEmits<{ updated: []; expired: [] }>()
 const draft = ref<Services | null>(null)
@@ -12,6 +13,9 @@ const clearSecret = ref(false)
 const loading = ref(false)
 const busy = ref(false)
 const testBusy = ref(false)
+const turnstileTestBusy = ref(false)
+const turnstileTestToken = ref('')
+const turnstileChallenge = ref<InstanceType<typeof TurnstileChallenge> | null>(null)
 const error = ref('')
 const message = ref('')
 async function load() {
@@ -19,9 +23,9 @@ async function load() {
   try {
     const response = await fetch('/api/admin/services', { credentials: 'same-origin' })
     if (response.status === 401) { emit('expired'); return }
-    const data = await response.json()
+    const data = await response.json() as Services & { error?: string }
     if (!response.ok) { error.value = data.error || '暂时无法读取服务设置'; return }
-    draft.value = data
+    draft.value = { ...data, testRecipient: data.testRecipient || '' }
   } catch { error.value = '暂时无法读取服务设置' }
   finally { loading.value = false }
 }
@@ -42,13 +46,25 @@ async function sendTest() {
   if (testBusy.value || busy.value) return
   testBusy.value = true; error.value = ''; message.value = ''
   try {
-    const response = await fetch('/api/admin/services/test', { method: 'POST', credentials: 'same-origin', headers: { 'X-CSRF-Token': props.csrfToken } })
-    const data = await response.json().catch(() => ({})) as { error?: string; message?: string }
+    const response = await fetch('/api/admin/services/test', { method: 'POST', credentials: 'same-origin', headers: { 'Content-Type': 'application/json', 'X-CSRF-Token': props.csrfToken }, body: JSON.stringify({ recipient: draft.value?.testRecipient || '' }) })
+    const data = await response.json().catch(() => ({})) as { error?: string; message?: string; recipient?: string }
     if (response.status === 401) { emit('expired'); return }
     if (!response.ok) { error.value = data.error || '测试邮件发送失败，请检查 SMTP 配置'; return }
-    message.value = data.message || '测试邮件已提交到当前管理员邮箱'
+    message.value = `${data.message || '测试邮件已提交'}：${data.recipient || draft.value?.testRecipient || ''}`
   } catch { error.value = '无法确认测试邮件结果，请检查管理员邮箱。' }
   finally { testBusy.value = false }
+}
+async function testTurnstile() {
+  if (turnstileTestBusy.value || busy.value || !turnstileTestToken.value) return
+  turnstileTestBusy.value = true; error.value = ''; message.value = ''
+  try {
+    const response = await fetch('/api/admin/services/turnstile-test', { method: 'POST', credentials: 'same-origin', headers: { 'Content-Type': 'application/json', 'X-CSRF-Token': props.csrfToken }, body: JSON.stringify({ turnstileToken: turnstileTestToken.value }) })
+    const data = await response.json().catch(() => ({})) as { error?: string; message?: string }
+    if (response.status === 401) { emit('expired'); return }
+    if (!response.ok) { error.value = data.error || 'Turnstile 测试失败，请重试'; return }
+    message.value = data.message || 'Turnstile 测试通过'
+  } catch { error.value = '无法确认 Turnstile 测试结果，请重试。' }
+  finally { turnstileTestBusy.value = false; turnstileTestToken.value = ''; void turnstileChallenge.value?.reset() }
 }
 onMounted(load)
 </script>
@@ -68,6 +84,8 @@ onMounted(load)
       <label class="binding-field"><span>Secret key <small>{{ draft.secretConfigured ? t('已配置') : t('未配置') }}</small></span><input v-model="secret" type="password" maxlength="256" autocomplete="new-password" :disabled="clearSecret" /></label>
       <label class="settings-check"><input v-model="clearSecret" type="checkbox" />{{ t('清除已保存的 Turnstile Secret') }}</label>
       <p class="password-rule">{{ t('密码与 Secret 留空会保留现有值；勾选清除后才会移除。启用中的服务必须配置完整。') }}</p>
+      <div class="mail-test-settings"><label class="binding-field"><span>{{ t('SMTP 测试收件地址') }}</span><input v-model="draft.testRecipient" type="email" :placeholder="t('默认使用当前管理员邮箱')" /></label><p class="password-rule">{{ t('测试邮件只发送到这里，不会修改站点发件人配置。') }}</p></div>
+      <div v-if="draft.turnstileEnabled" class="turnstile-test-settings"><h5>{{ t('测试 Turnstile') }}</h5><p class="password-rule">{{ t('使用当前已保存配置验证 hostname 和 action，不会计入登录失败次数。') }}</p><TurnstileChallenge ref="turnstileChallenge" :site-key="draft.siteKey" action="admin-test" :dark="false" @token="turnstileTestToken = $event" /><button class="secondary-button" type="button" :disabled="turnstileTestBusy || busy || !turnstileTestToken" @click="testTurnstile">{{ turnstileTestBusy ? t('正在测试 Turnstile…') : t('测试 Turnstile') }}</button></div>
       <div class="settings-actions"><button class="primary-button" type="submit">{{ busy ? t('正在保存…') : t('保存邮件与验证设置') }}</button><button class="secondary-button" type="button" :disabled="testBusy || busy || !draft.smtpEnabled" @click="sendTest">{{ testBusy ? t('正在发送测试邮件…') : t('发送测试邮件') }}</button></div>
     </fieldset></form><p v-if="message" class="action-success" role="status">{{ t(message) }}</p>
   </section>

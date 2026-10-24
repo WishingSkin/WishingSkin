@@ -10,6 +10,7 @@ import (
 	"encoding/json"
 	"errors"
 	"net/http"
+	"net/mail"
 	"net/url"
 	"strings"
 
@@ -98,7 +99,8 @@ func serviceView(value serviceSettings, saved bool) map[string]any {
 	return map[string]any{"smtpEnabled": value.SMTPEnabled, "address": value.Address, "from": value.From, "username": value.Username, "tlsMode": value.TLSMode, "passwordConfigured": value.Password != "", "turnstileEnabled": value.TurnstileEnabled, "siteKey": value.SiteKey, "secretConfigured": value.Secret != "", "source": map[bool]string{true: "database", false: "environment"}[saved]}
 }
 func (a *Server) adminServices(w http.ResponseWriter, r *http.Request) {
-	if _, ok := a.adminRead(w, r); !ok {
+	u, ok := a.adminRead(w, r)
+	if !ok {
 		return
 	}
 	value, saved, err := a.serviceSettings(r.Context())
@@ -108,6 +110,7 @@ func (a *Server) adminServices(w http.ResponseWriter, r *http.Request) {
 	}
 	view := serviceView(value, saved)
 	view["editable"] = len(a.cfg.SettingsKey) == 32
+	view["testRecipient"] = u.Email
 	respond(w, 200, view)
 }
 func (a *Server) updateServices(w http.ResponseWriter, r *http.Request) {
@@ -216,6 +219,21 @@ func (a *Server) testServices(w http.ResponseWriter, r *http.Request) {
 		failure(w, 400, "请先启用并保存 SMTP 设置")
 		return
 	}
+	var body struct {
+		Recipient string `json:"recipient"`
+	}
+	if !decode(w, r, &body) {
+		return
+	}
+	recipient := strings.TrimSpace(body.Recipient)
+	if recipient == "" {
+		recipient = u.Email
+	}
+	address, parseErr := mail.ParseAddress(recipient)
+	if parseErr != nil || address.Address != recipient || strings.ContainsAny(recipient, "\r\n") {
+		failure(w, 400, "测试收件地址无效")
+		return
+	}
 	select {
 	case a.mailSlots <- struct{}{}:
 		defer func() { <-a.mailSlots }()
@@ -223,9 +241,25 @@ func (a *Server) testServices(w http.ResponseWriter, r *http.Request) {
 		failure(w, 429, "邮件处理繁忙，请稍后重试")
 		return
 	}
-	if err := services.Mail.Send(r.Context(), u.Email, "test", ""); err != nil {
+	if err := services.Mail.Send(r.Context(), recipient, "test", ""); err != nil {
 		failure(w, 503, "测试邮件发送失败，请检查 SMTP 配置")
 		return
 	}
-	respond(w, 200, map[string]string{"message": "测试邮件已提交到当前管理员邮箱"})
+	respond(w, 200, map[string]string{"message": "测试邮件已提交", "recipient": recipient})
+}
+
+func (a *Server) testTurnstile(w http.ResponseWriter, r *http.Request) {
+	if _, ok := a.adminRequest(w, r); !ok {
+		return
+	}
+	var body struct {
+		TurnstileToken string `json:"turnstileToken"`
+	}
+	if !decode(w, r, &body) {
+		return
+	}
+	if !a.challenge(w, r, body.TurnstileToken, "admin-test") {
+		return
+	}
+	respond(w, 200, map[string]string{"message": "Turnstile 测试通过，当前站点密钥和 action 有效"})
 }

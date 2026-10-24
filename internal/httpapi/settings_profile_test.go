@@ -108,6 +108,14 @@ func TestSettingsAndProfileBothDatabases(t *testing.T) {
 				t.Fatal("unexpected SMTP test message", mailbox.messages)
 			}
 			mailbox.mu.Unlock()
+			webStatus(t, f.call(3, "POST", "/api/admin/services/test", map[string]string{"recipient": "qa@example.test"}), 200)
+			mailbox.mu.Lock()
+			if len(mailbox.messages) != 2 || mailbox.messages[1].To != "qa@example.test" {
+				mailbox.mu.Unlock()
+				t.Fatal("custom SMTP recipient was not used", mailbox.messages)
+			}
+			mailbox.mu.Unlock()
+			webStatus(t, f.call(3, "POST", "/api/admin/services/test", map[string]string{"recipient": "invalid recipient"}), 400)
 			mailbox.fail = true
 			webStatus(t, f.call(3, "POST", "/api/admin/services/test", nil), 503)
 			for _, path := range []string{"/api/admin/services", "/api/admin/plugins/invitations"} {
@@ -156,6 +164,23 @@ func TestSettingsAndProfileBothDatabases(t *testing.T) {
 		})
 	}
 }
+
+func TestTurnstileAdminDiagnosticDoesNotTouchLoginFailuresBothDatabases(t *testing.T) {
+	for _, dialect := range []string{"mysql", "postgres"} {
+		t.Run(dialect, func(t *testing.T) {
+			f := newManagementApp(t, dialect)
+			f.app.cfg.Challenge = testChallenge{}
+			f.app.cfg.TurnstileSiteKey = "synthetic-site-key"
+			before := len(f.app.loginFailures.entries)
+			webStatus(t, f.call(3, "POST", "/api/admin/services/turnstile-test", map[string]string{"turnstileToken": "valid"}), 200)
+			webStatus(t, f.call(3, "POST", "/api/admin/services/turnstile-test", map[string]string{"turnstileToken": "invalid"}), 403)
+			if len(f.app.loginFailures.entries) != before {
+				t.Fatal("Turnstile diagnostic changed login failure state")
+			}
+		})
+	}
+}
+
 func TestInvitationPluginEmailGateBothDatabases(t *testing.T) {
 	for _, dialect := range []string{"mysql", "postgres"} {
 		t.Run(dialect, func(t *testing.T) {
