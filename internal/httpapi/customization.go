@@ -114,6 +114,9 @@ func normalizedLogoImage(value string) (string, error) {
 	if err := png.Encode(&out, result); err != nil {
 		return "", err
 	}
+	if out.Len() > 512<<10 {
+		return "", fmt.Errorf("encoded image too large")
+	}
 	return "data:image/png;base64," + base64.StdEncoding.EncodeToString(out.Bytes()), nil
 }
 
