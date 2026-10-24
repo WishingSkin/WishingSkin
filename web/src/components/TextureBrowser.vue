@@ -101,7 +101,7 @@ onBeforeUnmount(() => { active = false; request?.abort(); lifetime.abort() })
 
 <template>
   <section class="texture-browser">
-    <div class="page-heading"><div><h1>{{ mode === 'library' ? t('公开库') : t('我的衣柜') }}<span class="heading-pixel" aria-hidden="true"></span></h1><p>{{ mode === 'library' ? t('发现公开的皮肤与披风，收藏后前往角色管理穿戴。') : t('收藏喜欢的材质，为自己的收藏起个名字。') }}</p></div><button type="button" class="secondary-button" :disabled="pending || busy" @click="load">{{ pending ? t('正在刷新…') : t('刷新列表') }}</button></div>
+    <div class="page-heading"><div><h1>{{ mode === 'library' ? t('公开库') : t('我的衣柜') }}<span class="heading-pixel" aria-hidden="true"></span></h1></div><button type="button" class="secondary-button" :disabled="pending || busy" @click="load">{{ pending ? t('正在刷新…') : t('刷新列表') }}</button></div>
     <form v-if="mode === 'library'" class="library-filters panel" role="search" @submit.prevent="search">
       <label class="binding-field library-search"><span>{{ t("材质名称") }}</span><input v-model="query" maxlength="255" :placeholder="t('搜索材质名称')" /></label>
       <label class="binding-field"><span>{{ t("类型") }}</span><select v-model="kind" @change="search"><option value="">{{ t("全部材质") }}</option><option value="skin">{{ t("皮肤") }}</option><option value="cape">{{ t("披风") }}</option></select></label>

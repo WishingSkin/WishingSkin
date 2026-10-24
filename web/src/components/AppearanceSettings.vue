@@ -30,7 +30,7 @@ async function save() {
 }
 </script>
 <template>
-  <section class="settings-section"><h3>{{ t('个性化') }}</h3><p>{{ t('配置站点标识、配色和默认主题。用户自己的浅深选择优先。') }}</p>
+  <section class="settings-section"><h3>{{ t('个性化') }}</h3>
     <form class="settings-form" @submit.prevent="save"><fieldset :disabled="busy || imageBusy">
       <div class="image-setting"><img v-if="draft.logoImage" :src="draft.logoImage" :alt="t('Logo 预览')" width="96" height="96" /><span v-else class="image-placeholder large">W</span><div><label class="binding-field"><span>{{ t('站点 Logo') }}</span><input type="file" accept="image/png,image/jpeg" @change="pick" /></label><button class="text-button" type="button" :disabled="!draft.logoImage" @click="draft.logoImage = ''">{{ t('恢复默认标识') }}</button></div></div>
       <p class="password-rule">{{ t('PNG 或 JPEG，最大 512 KiB、2048×2048；保存为最长 512 px 的正方形 PNG。') }}</p>

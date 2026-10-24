@@ -221,7 +221,7 @@ onBeforeUnmount(() => {
       <div class="view-buttons"><button class="secondary-button" type="button" :disabled="state !== 'ready'" @click="setView('front')">{{ t("正面") }}</button><button class="secondary-button" type="button" :disabled="state !== 'ready'" @click="setView('back')">{{ t("背面") }}</button><button class="secondary-button" type="button" :disabled="state !== 'ready'" @click="setView('reset')">{{ t("重置视角") }}</button><button class="secondary-button zoom-button" type="button" :aria-label="t('放大角色')" :disabled="state !== 'ready'" @click="zoom(0.85)">＋</button><button class="secondary-button zoom-button" type="button" :aria-label="t('缩小角色')" :disabled="state !== 'ready'" @click="zoom(1.15)">−</button></div>
       <button class="text-button rotation-button" type="button" :aria-pressed="rotating" :disabled="state !== 'ready' || reducedMotion" @click="rotating = !rotating">{{ rotating ? t('停止旋转') : t('自动旋转') }}</button>
     </div>
-    <p v-if="state === 'ready' && !skinHash" class="viewer-note">{{ t(capeHash ? '未设置皮肤，使用 {name} 默认皮肤展示披风。' : '未设置皮肤，当前显示 {name} 默认皮肤。', { name: model === 'slim' ? 'Alex' : 'Steve' }) }}</p>
+    <p v-if="state === 'ready' && !skinHash" class="viewer-note">{{ t('默认皮肤：{name}', { name: model === 'slim' ? 'Alex' : 'Steve' }) }}</p>
     <p v-if="reducedMotion" class="viewer-note">{{ t("已启用减少动态效果，自动旋转已关闭。") }}</p>
   </section>
 </template>

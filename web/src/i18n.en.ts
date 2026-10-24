@@ -230,6 +230,8 @@ export const english: Record<string, string> = {
   '暂无公告': 'No notices yet.',
   '最新公告': 'Latest notice',
   '历史公告': 'Earlier notices',
+  '默认皮肤：{name}': 'Default skin: {name}',
+  '保存会发布新公告；清空后保留历史记录。': 'Saving changed content publishes a new notice. Clearing it keeps the history.',
   '站点文案公开展示，按纯文本显示；不要填写密码或其他秘密。': 'Site text is public and displayed as plain text. Do not enter passwords or other secrets.',
   '简介留空使用默认文案；公告留空后不展示。': 'Leave the description empty to use the default text. An empty notice is hidden.',
   '保存品牌与公告': 'Save branding and notice',
