@@ -327,7 +327,7 @@ func (a *Server) register(w http.ResponseWriter, r *http.Request) {
 			failure(w, 503, "暂时无法注册")
 			return
 		}
-		if _, err = tx.ExecContext(r.Context(), a.s.Bind("UPDATE invitation_codes SET remaining_uses=remaining_uses-1 WHERE code_hash=?"), tokenHash(strings.TrimSpace(body.Invitation))); err != nil {
+		if _, err = tx.ExecContext(r.Context(), a.s.Bind("UPDATE invitation_codes SET remaining_uses=remaining_uses-1,used_at=? WHERE code_hash=?"), time.Now().Unix(), tokenHash(strings.TrimSpace(body.Invitation))); err != nil {
 			failure(w, 503, "暂时无法注册")
 			return
 		}

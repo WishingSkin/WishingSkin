@@ -33,6 +33,44 @@ func TestRegistrationDomainAndPermanentInvitationBothDatabases(t *testing.T) {
 			second := registrationBody("second@allowed.example.test")
 			second["invitation"] = generated.Codes[0]
 			webStatus(t, f.call(0, "POST", "/api/auth/register", second), 201)
+			clearMailLimits(f)
+			third := registrationBody("third@allowed.example.test")
+			third["invitation"] = generated.Codes[0]
+			webStatus(t, f.call(0, "POST", "/api/auth/register", third), 400)
+		})
+	}
+}
+
+func TestInvitationRepeatableExportsBothDatabases(t *testing.T) {
+	for _, dialect := range []string{"mysql", "postgres"} {
+		t.Run(dialect, func(t *testing.T) {
+			f := newManagementApp(t, dialect)
+			webStatus(t, f.call(3, "PATCH", "/api/admin/plugins/invitations", map[string]bool{"enabled": true, "required": true}), 200)
+			response := f.call(3, "POST", "/api/admin/plugins/invitations/codes", map[string]int{"count": 2})
+			webStatus(t, response, 201)
+			var generated struct {
+				Codes []string `json:"codes"`
+			}
+			if err := json.Unmarshal(response.Body.Bytes(), &generated); err != nil || len(generated.Codes) != 2 {
+				t.Fatalf("generated invitations: %s", response.Body)
+			}
+			for _, format := range []string{"txt", "csv"} {
+				for _, status := range []string{"unused", "all"} {
+					response = f.call(3, "GET", "/api/admin/plugins/invitations/export?status="+status+"&format="+format, nil)
+					webStatus(t, response, 200)
+					for _, code := range generated.Codes {
+						if !strings.Contains(response.Body.String(), code) {
+							t.Fatalf("%s %s export omitted code", status, format)
+						}
+					}
+				}
+			}
+			var target string
+			if err := f.db.DB.QueryRow("SELECT target_id FROM admin_events WHERE action='invitation.export' ORDER BY event_id DESC LIMIT 1").Scan(&target); err != nil || strings.Contains(target, generated.Codes[0]) {
+				t.Fatalf("export audit leaked code: %q %v", target, err)
+			}
+			f.app.cfg.SettingsKey = nil
+			webStatus(t, f.call(3, "GET", "/api/admin/plugins/invitations/export?status=all&format=txt", nil), 503)
 		})
 	}
 }

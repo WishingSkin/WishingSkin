@@ -233,6 +233,7 @@ func (a *Server) registerCustomization() {
 	a.mux.HandleFunc("GET /api/admin/plugins/invitations", a.invitationPlugin)
 	a.mux.HandleFunc("PATCH /api/admin/plugins/invitations", a.updateInvitationPlugin)
 	a.mux.HandleFunc("POST /api/admin/plugins/invitations/codes", a.createInvitationBatch)
+	a.mux.HandleFunc("GET /api/admin/plugins/invitations/export", a.exportInvitationCodes)
 }
 
 func copyFace(skin image.Image) image.Image {

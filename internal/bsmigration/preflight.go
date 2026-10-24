@@ -15,12 +15,14 @@ import (
 	"path/filepath"
 	"regexp"
 	"strings"
+	"time"
 	"unicode/utf8"
 
 	"wishingskin/internal/credential"
 )
 
 var hashPattern = regexp.MustCompile(`^[0-9a-fA-F]{32,128}$`)
+var invitationHashPattern = regexp.MustCompile(`^[0-9a-f]{64}$`)
 var uuidPattern = regexp.MustCompile(`^[0-9a-f]{32}$`)
 var sourceUUIDPattern = regexp.MustCompile(`(?i)^(?:[0-9a-f]{32}|[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12})$`)
 var namePattern = regexp.MustCompile(`^[A-Za-z0-9_]{1,16}$`)
@@ -54,6 +56,7 @@ func Preflight(s *Snapshot, sourceDir string) (Report, error) {
 	r.Characters = len(s.Characters)
 	r.Textures = len(s.Textures)
 	r.Collections = len(s.Wardrobe)
+	checkInvitations(s, &r, block)
 	r.Unsupported = append(r.Unsupported, s.Omitted...)
 	if len(s.Schema) == 0 {
 		r.Unsupported = append(r.Unsupported, Omitted{Scope: "source_schema_inventory", Count: -1, Reason: "Snapshot has no source schema inventory; extra tables and columns have not been checked."})
@@ -289,6 +292,71 @@ func Preflight(s *Snapshot, sourceDir string) (Report, error) {
 		return r, fmt.Errorf("preflight blocked by %d issue(s)", len(r.Blockers))
 	}
 	return r, nil
+}
+
+func checkInvitations(s *Snapshot, r *Report, block func(string, string, string)) {
+	if len(s.InvitationCodes) == 0 {
+		return
+	}
+	r.Invitations = InvitationReport{Source: "included", Total: len(s.InvitationCodes)}
+	ids := map[int64]bool{}
+	hashes := map[string]bool{}
+	for _, item := range s.InvitationCodes {
+		scope := fmt.Sprintf("invitation:%d", item.ID)
+		if item.ID <= 0 || ids[item.ID] {
+			block("duplicate_id", scope, "invalid or duplicate source invitation ID")
+		}
+		ids[item.ID] = true
+		if item.Code == "" || len(item.Code) > 255 || !utf8.ValidString(item.Code) {
+			block("invitation_code", scope, "source invitation code is empty, too long or invalid UTF-8")
+		}
+		hash := sha256.Sum256([]byte(item.Code))
+		expected := hex.EncodeToString(hash[:])
+		if !invitationHashPattern.MatchString(item.CodeHash) || item.CodeHash != expected {
+			block("invitation_hash", scope, "source invitation SHA-256 does not match its value")
+		}
+		if hashes[expected] {
+			block("invitation_conflict", scope, "duplicate invitation value")
+		}
+		hashes[expected] = true
+		if item.UsedBy < 0 {
+			block("invitation_status", scope, "source invitation user ID cannot be negative")
+		}
+		used := item.UsedBy != 0 || item.UsedAt != nil
+		if used {
+			r.Invitations.Used++
+		} else {
+			r.Invitations.Unused++
+		}
+		if item.UsedBy == 0 && item.UsedAt != nil || item.UsedBy != 0 && item.UsedAt == nil {
+			block("invitation_status", scope, "source invitation used_by and used_at disagree")
+		}
+		if _, err := parseSourceTime(item.GeneratedAt, false); err != nil {
+			block("invitation_time", scope, "source invitation generated_at is invalid")
+		}
+		if item.UsedAt != nil {
+			if _, err := parseSourceTime(*item.UsedAt, true); err != nil {
+				block("invitation_time", scope, "source invitation used_at is invalid")
+			}
+		}
+	}
+}
+
+func parseSourceTime(value string, nullable bool) (int64, error) {
+	if nullable && value == "" {
+		return 0, nil
+	}
+	if value == "0000-00-00 00:00:00" {
+		return 0, fmt.Errorf("zero timestamp")
+	}
+	parsed, err := time.ParseInLocation("2006-01-02 15:04:05", value, time.UTC)
+	if err != nil {
+		parsed, err = time.ParseInLocation("2006-01-02 15:04:05.999999", value, time.UTC)
+	}
+	if err != nil {
+		return 0, err
+	}
+	return parsed.Unix(), nil
 }
 
 func validatePrivateKey(value string) error {

@@ -12,6 +12,7 @@ import (
 	"strings"
 	"sync"
 
+	"wishingskin/internal/securebox"
 	"wishingskin/internal/store"
 )
 
@@ -26,9 +27,20 @@ type fileJournal struct {
 // before copying files. A matching journal permits recovery of completed copies.
 // It must run with application writes stopped.
 func Import(ctx context.Context, db *store.Store, snapshot *Snapshot, sourceDir, targetDir string) (Report, error) {
+	return ImportWithSettingsKey(ctx, db, snapshot, sourceDir, targetDir, nil)
+}
+
+// ImportWithSettingsKey imports a snapshot that may contain recoverable
+// invitation values. A settings key is mandatory whenever those values are
+// present; Import remains as a compatibility wrapper for snapshots without
+// invitation records.
+func ImportWithSettingsKey(ctx context.Context, db *store.Store, snapshot *Snapshot, sourceDir, targetDir string, settingsKey []byte) (Report, error) {
 	r, err := Preflight(snapshot, sourceDir)
 	if err != nil {
 		return r, err
+	}
+	if len(snapshot.InvitationCodes) > 0 && len(settingsKey) != 32 {
+		return r, fmt.Errorf("settings key is required to import invitation codes")
 	}
 	importMutex.Lock()
 	defer importMutex.Unlock()
@@ -152,6 +164,29 @@ func Import(ctx context.Context, db *store.Store, snapshot *Snapshot, sourceDir,
 			}
 		}
 	}
+	for _, item := range snapshot.InvitationCodes {
+		sealed, sealErr := securebox.Seal(settingsKey, item.Code, "wishingskin:invitation_code:v1")
+		if sealErr != nil {
+			return r, fmt.Errorf("encrypt migrated invitation %d: %w", item.ID, sealErr)
+		}
+		generated, _ := parseSourceTime(item.GeneratedAt, false)
+		usedAt := any(nil)
+		if item.UsedAt != nil {
+			used, parseErr := parseSourceTime(*item.UsedAt, true)
+			if parseErr != nil {
+				return r, fmt.Errorf("parse migrated invitation %d used_at: %w", item.ID, parseErr)
+			}
+			usedAt = used
+		}
+		remaining := 1
+		if item.UsedBy != 0 || item.UsedAt != nil {
+			remaining = 0
+		}
+		_, err = tx.ExecContext(ctx, db.Bind("INSERT INTO invitation_codes(code_hash,expires_at,remaining_uses,encrypted_code,source_id,generated_at,used_at,source_user_id) VALUES(?,?,?, ?,?,?,?,?)"), item.CodeHash, int64(0), remaining, sealed, item.ID, generated, usedAt, nullableSourceUser(item.UsedBy))
+		if err != nil {
+			return r, fmt.Errorf("insert migrated invitation %d: %w", item.ID, err)
+		}
+	}
 	committedReport.Imported = true
 	reportJSON, _ := json.Marshal(committedReport)
 	_, err = tx.ExecContext(ctx, db.Bind("UPDATE migration_state SET status=?,report=? WHERE id=1"), "partial", string(reportJSON))
@@ -163,6 +198,13 @@ func Import(ctx context.Context, db *store.Store, snapshot *Snapshot, sourceDir,
 	}
 	r.Imported = true
 	return r, nil
+}
+
+func nullableSourceUser(id int64) any {
+	if id == 0 {
+		return nil
+	}
+	return id
 }
 
 func textureKind(t Texture) (string, string) {

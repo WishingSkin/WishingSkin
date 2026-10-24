@@ -79,6 +79,12 @@ func assertEmbeddedSchemasAgree(t *testing.T, migration string) {
 	if migration == "012_plugins" {
 		tables = []string{"plugins"}
 	}
+	if migration == "013_invitation_export" {
+		tables = nil
+		if !strings.Contains(string(mysql), "ALTER TABLE invitation_codes") || !strings.Contains(string(postgres), "ALTER TABLE invitation_codes") {
+			t.Errorf("missing invitation_codes upgrade")
+		}
+	}
 	if migration == "010_user_profiles" {
 		tables = []string{"user_profiles"}
 	}

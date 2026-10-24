@@ -114,7 +114,15 @@ func run() error {
 		if err != nil {
 			return err
 		}
-		report, err := bsmigration.Import(ctx, db, snap, *source, cfg.TextureDir)
+		keyPath := os.Getenv("WS_SETTINGS_KEY_FILE")
+		if keyPath == "" {
+			keyPath = filepath.Join(cfg.TextureDir, ".settings.key")
+		}
+		settingsKey, err := config.SettingsKey(keyPath)
+		if err != nil {
+			return fmt.Errorf("settings key unavailable: %w", err)
+		}
+		report, err := bsmigration.ImportWithSettingsKey(ctx, db, snap, *source, cfg.TextureDir, settingsKey)
 		_ = json.NewEncoder(os.Stdout).Encode(report)
 		return err
 	}

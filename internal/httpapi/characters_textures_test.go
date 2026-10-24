@@ -39,7 +39,7 @@ func newManagementApp(t *testing.T, dialect string) *managementApp {
 		f.exec("INSERT INTO web_sessions(token_hash,user_id,expires_at) VALUES(?,?,?)", tokenHash(fmt.Sprintf("%064d", id)), id, time.Now().Add(time.Hour).Unix())
 	}
 	var err error
-	f.app, err = New(db, Config{PublicURL: "http://example.test", TextureDir: t.TempDir()})
+	f.app, err = New(db, Config{PublicURL: "http://example.test", TextureDir: t.TempDir(), SettingsKey: bytes.Repeat([]byte{9}, 32)})
 	if err != nil {
 		t.Fatal(err)
 	}

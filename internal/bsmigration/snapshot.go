@@ -64,6 +64,17 @@ type Collection struct {
 	Name      *string `json:"name"`
 }
 
+// InvitationCode contains the recoverable source value only in a protected
+// migration snapshot. Reports and logs never include Code.
+type InvitationCode struct {
+	ID          int64   `json:"id"`
+	Code        string  `json:"code"`
+	CodeHash    string  `json:"code_hash"`
+	GeneratedAt string  `json:"generated_at"`
+	UsedBy      int64   `json:"used_by"`
+	UsedAt      *string `json:"used_at"`
+}
+
 // Source references are historical values, not foreign keys to current users or records.
 type LegacyReport struct {
 	ID       int64   `json:"id"`
@@ -97,6 +108,7 @@ type Snapshot struct {
 	Omitted             []Omitted           `json:"omitted"`
 	Schema              map[string][]string `json:"schema,omitempty"`
 	Wardrobe            []Collection        `json:"wardrobe,omitempty"`
+	InvitationCodes     []InvitationCode    `json:"invitation_codes,omitempty"`
 	ScoreRules          map[string]string   `json:"score_rules,omitempty"`
 	Branding            map[string]string   `json:"branding,omitempty"`
 	LegacyReports       *LegacyReports      `json:"legacy_reports,omitempty"`
@@ -127,6 +139,14 @@ type Report struct {
 	Verification    VerificationReport  `json:"verification"`
 	Branding        string              `json:"branding"`
 	LegacyReports   LegacyReportsReport `json:"legacy_reports"`
+	Invitations     InvitationReport    `json:"invitations"`
+}
+
+type InvitationReport struct {
+	Source string `json:"source"`
+	Total  int    `json:"total"`
+	Unused int    `json:"unused"`
+	Used   int    `json:"used"`
 }
 
 type LegacyReportsReport struct {

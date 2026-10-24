@@ -2,7 +2,9 @@ package bsmigration
 
 import (
 	"context"
+	"crypto/sha256"
 	"database/sql"
+	"encoding/hex"
 	"fmt"
 	"regexp"
 	"sort"
@@ -222,6 +224,40 @@ func ExportMySQL(ctx context.Context, db *sql.DB, opts ExportOptions) (*Snapshot
 	} else {
 		s.Omitted = append(s.Omitted, Omitted{Scope: "legacy_reports", Count: -1, Reason: "Source reports table is missing; history was not checked."})
 	}
+	if _, present := s.Schema["invitation_codes"]; present {
+		columns := map[string]bool{}
+		for _, column := range s.Schema["invitation_codes"] {
+			columns[column] = true
+		}
+		for _, column := range []string{"id", "code", "generated_at", "used_by", "used_at"} {
+			if !columns[column] {
+				return nil, fmt.Errorf("required source invitation_codes column %s is missing", column)
+			}
+		}
+		rows, err = tx.QueryContext(ctx, "SELECT id,CAST(code AS CHAR),CAST(generated_at AS CHAR),used_by,CAST(used_at AS CHAR) FROM "+q("invitation_codes")+" ORDER BY id")
+		if err != nil {
+			return nil, fmt.Errorf("read source invitation codes: %w", err)
+		}
+		for rows.Next() {
+			var item InvitationCode
+			var usedAt sql.NullString
+			if err := rows.Scan(&item.ID, &item.Code, &item.GeneratedAt, &item.UsedBy, &usedAt); err != nil {
+				rows.Close()
+				return nil, fmt.Errorf("read source invitation code row: %w", err)
+			}
+			if usedAt.Valid {
+				item.UsedAt = &usedAt.String
+			}
+			hash := sha256.Sum256([]byte(item.Code))
+			item.CodeHash = hex.EncodeToString(hash[:])
+			s.InvitationCodes = append(s.InvitationCodes, item)
+		}
+		if err := rows.Err(); err != nil {
+			rows.Close()
+			return nil, fmt.Errorf("read source invitation codes: %w", err)
+		}
+		rows.Close()
+	}
 	selected := map[string]string{
 		"users":                "uid,email,nickname,password,score,permission,verified",
 		"players":              "pid,uid,name,tid_skin,tid_cape",
@@ -231,6 +267,7 @@ func ExportMySQL(ctx context.Context, db *sql.DB, opts ExportOptions) (*Snapshot
 		"uuid":                 "id,name,uuid",
 		"options":              "option_name,option_value",
 		"reports":              "id,tid,uploader,reporter,reason,status,report_at",
+		"invitation_codes":     "id,code,generated_at,used_by,used_at",
 	}
 	tables := make([]string, 0, len(s.Schema))
 	for name := range s.Schema {
