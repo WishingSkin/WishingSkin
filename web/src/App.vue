@@ -647,6 +647,7 @@ onBeforeUnmount(() => {
     <header class="topbar">
       <a class="brand" href="/" :aria-label="t('{name} 首页', { name: site.name })" :title="site.name"><img v-if="site.appearance.logoImage" class="brand-logo" :src="site.appearance.logoImage" alt="" width="32" height="32" /><span v-else class="brand-mark" aria-hidden="true"><i></i><i></i><i></i></span><span class="brand-name"><template v-if="site.name === 'WishingSkin'">Wishing<span class="brand-light">Skin</span></template><template v-else>{{ site.name }}</template></span></a>
       <div class="topbar-actions">
+        <button class="topbar-link" :class="{ active: routePath === '/library' }" type="button" :aria-current="routePath === '/library' ? 'page' : undefined" @click="navigate('/library')">{{ t('公开库') }}</button>
         <NoticeCenter :notice="site.notice" :format="site.noticeFormat" />
         <select class="language-select" :value="locale" :aria-label="t('界面语言')" @change="setLocale(($event.target as HTMLSelectElement).value)"><option value="zh-CN" lang="zh-CN">简体中文</option><option value="en" lang="en">English</option></select>
         <button class="icon-button theme-toggle" type="button" :aria-label="dark ? t('切换浅色主题') : t('切换深色主题')" @click="toggleTheme">
@@ -654,6 +655,7 @@ onBeforeUnmount(() => {
           <svg v-else viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" aria-hidden="true"><path d="M20.5 13.2A8.5 8.5 0 0 1 10.8 3.5a8.5 8.5 0 1 0 9.7 9.7Z"/></svg>
         </button>
         <button v-if="user" class="topbar-user" type="button" :title="user.nickname || t('我的账号')" :aria-label="t('打开账号：{name}', { name: user.nickname || t('我的账号') })" @click="navigate('/user/account')"><img class="user-avatar" :src="'/api/avatars/' + user.id + '.png?v=' + avatarVersion" alt="" width="34" height="34" /><span>{{ user.nickname || t('我的账号') }}</span></button>
+        <button v-if="user" class="secondary-button topbar-logout" type="button" :disabled="logoutBusy" @click="logout">{{ logoutBusy ? t('正在退出…') : t('退出登录') }}</button>
       </div>
     </header>
 

@@ -16,7 +16,7 @@ func TestEncryptedServicesBothDatabases(t *testing.T) {
 		t.Run(dialect, func(t *testing.T) {
 			f := newManagementApp(t, dialect)
 			f.app.cfg.SettingsKey = bytes.Repeat([]byte{7}, 32)
-			body := map[string]any{"smtpEnabled": true, "address": "127.0.0.1:2525", "from": "mail@example.test", "username": "fixture", "password": "only-in-ciphertext", "tlsMode": "local", "turnstileEnabled": true, "siteKey": "site-fixture", "secret": "never-return-this-secret"}
+			body := map[string]any{"smtpEnabled": true, "address": "127.0.0.1:2525", "from": "mail@example.test", "username": "fixture", "password": "only-in-ciphertext", "tlsMode": "local", "testRecipient": "qa@example.test", "turnstileEnabled": true, "siteKey": "site-fixture", "secret": "never-return-this-secret"}
 			w := f.call(3, "PATCH", "/api/admin/services", body)
 			webStatus(t, w, 200)
 			if strings.Contains(w.Body.String(), "only-in-ciphertext") || strings.Contains(w.Body.String(), "never-return-this-secret") {
@@ -32,8 +32,13 @@ func TestEncryptedServicesBothDatabases(t *testing.T) {
 			body["from"] = "updated@example.test"
 			webStatus(t, f.call(3, "PATCH", "/api/admin/services", body), 200)
 			saved, _, err := f.app.serviceSettings(context.Background())
-			if err != nil || saved.Password != "only-in-ciphertext" || saved.Secret != "never-return-this-secret" {
+			if err != nil || saved.Password != "only-in-ciphertext" || saved.Secret != "never-return-this-secret" || saved.TestRecipient != "qa@example.test" {
 				t.Fatal("secret preservation", err)
+			}
+			view := f.call(3, "GET", "/api/admin/services", nil)
+			webStatus(t, view, 200)
+			if !strings.Contains(view.Body.String(), `"testRecipient":"qa@example.test"`) {
+				t.Fatal("SMTP test recipient was not persisted", view.Body)
 			}
 			reloaded, err := New(f.db, Config{PublicURL: "http://example.test", SettingsKey: f.app.cfg.SettingsKey})
 			if err != nil {
@@ -43,6 +48,9 @@ func TestEncryptedServicesBothDatabases(t *testing.T) {
 			if err != nil || services.Mail == nil || services.Challenge == nil || services.SiteKey != "site-fixture" {
 				t.Fatal("restart not applied", err)
 			}
+			body["testRecipient"] = "invalid recipient"
+			webStatus(t, f.call(3, "PATCH", "/api/admin/services", body), 400)
+			body["testRecipient"] = "qa@example.test"
 			f.exec("ALTER TABLE admin_events RENAME COLUMN action TO unavailable_action")
 			body["from"] = "unaudited@example.test"
 			webStatus(t, f.call(3, "PATCH", "/api/admin/services", body), 503)

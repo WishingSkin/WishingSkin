@@ -25,6 +25,7 @@ type serviceSettings struct {
 	Username         string `json:"username"`
 	Password         string `json:"password"`
 	TLSMode          string `json:"tlsMode"`
+	TestRecipient    string `json:"testRecipient"`
 	TurnstileEnabled bool   `json:"turnstileEnabled"`
 	SiteKey          string `json:"siteKey"`
 	Secret           string `json:"secret"`
@@ -96,7 +97,7 @@ func (a *Server) services(ctx context.Context) (runtimeServices, error) {
 	return result, nil
 }
 func serviceView(value serviceSettings, saved bool) map[string]any {
-	return map[string]any{"smtpEnabled": value.SMTPEnabled, "address": value.Address, "from": value.From, "username": value.Username, "tlsMode": value.TLSMode, "passwordConfigured": value.Password != "", "turnstileEnabled": value.TurnstileEnabled, "siteKey": value.SiteKey, "secretConfigured": value.Secret != "", "source": map[bool]string{true: "database", false: "environment"}[saved]}
+	return map[string]any{"smtpEnabled": value.SMTPEnabled, "address": value.Address, "from": value.From, "username": value.Username, "tlsMode": value.TLSMode, "testRecipient": value.TestRecipient, "passwordConfigured": value.Password != "", "turnstileEnabled": value.TurnstileEnabled, "siteKey": value.SiteKey, "secretConfigured": value.Secret != "", "source": map[bool]string{true: "database", false: "environment"}[saved]}
 }
 func (a *Server) adminServices(w http.ResponseWriter, r *http.Request) {
 	u, ok := a.adminRead(w, r)
@@ -110,7 +111,9 @@ func (a *Server) adminServices(w http.ResponseWriter, r *http.Request) {
 	}
 	view := serviceView(value, saved)
 	view["editable"] = len(a.cfg.SettingsKey) == 32
-	view["testRecipient"] = u.Email
+	if value.TestRecipient == "" {
+		view["testRecipient"] = u.Email
+	}
 	respond(w, 200, view)
 }
 func (a *Server) updateServices(w http.ResponseWriter, r *http.Request) {
@@ -128,6 +131,7 @@ func (a *Server) updateServices(w http.ResponseWriter, r *http.Request) {
 		From             string  `json:"from"`
 		Username         string  `json:"username"`
 		TLSMode          string  `json:"tlsMode"`
+		TestRecipient    string  `json:"testRecipient"`
 		TurnstileEnabled bool    `json:"turnstileEnabled"`
 		SiteKey          string  `json:"siteKey"`
 		Password         *string `json:"password"`
@@ -153,6 +157,7 @@ func (a *Server) updateServices(w http.ResponseWriter, r *http.Request) {
 	value.From = strings.TrimSpace(body.From)
 	value.Username = body.Username
 	value.TLSMode = body.TLSMode
+	value.TestRecipient = strings.TrimSpace(body.TestRecipient)
 	value.TurnstileEnabled = body.TurnstileEnabled
 	value.SiteKey = strings.TrimSpace(body.SiteKey)
 	if body.Password != nil && *body.Password != "" {
@@ -171,6 +176,13 @@ func (a *Server) updateServices(w http.ResponseWriter, r *http.Request) {
 		smtp := &mailer.SMTP{Address: value.Address, From: value.From, Username: value.Username, Password: value.Password, TLSMode: value.TLSMode}
 		if smtp.Validate() != nil {
 			failure(w, 400, "SMTP 配置无效，请检查地址、发件人、认证和 TLS")
+			return
+		}
+	}
+	if value.TestRecipient != "" {
+		address, parseErr := mail.ParseAddress(value.TestRecipient)
+		if parseErr != nil || address.Address != value.TestRecipient || strings.ContainsAny(value.TestRecipient, "\r\n") {
+			failure(w, 400, "测试收件地址无效")
 			return
 		}
 	}
