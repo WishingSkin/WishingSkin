@@ -13,12 +13,12 @@ import (
 //go:embed migrations/*.sql
 var migrationFiles embed.FS
 
-const schemaVersion = 11
+const schemaVersion = 12
 
 // CurrentSchemaVersion identifies the schema understood by offline backups.
 const CurrentSchemaVersion = schemaVersion
 
-var schemaMigrations = []string{"001_initial", "002_ygg_sessions", "003_texture_records", "004_wardrobe", "005_account_access", "006_admin_events", "007_reports", "008_points", "009_legacy_reports", "010_user_profiles", "011_site_notices"}
+var schemaMigrations = []string{"001_initial", "002_ygg_sessions", "003_texture_records", "004_wardrobe", "005_account_access", "006_admin_events", "007_reports", "008_points", "009_legacy_reports", "010_user_profiles", "011_site_notices", "012_plugins"}
 
 // Migrate serializes initialization across processes using a session lock.
 // Each DDL statement is independently retryable; MySQL DDL is not transactional.

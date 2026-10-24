@@ -19,6 +19,7 @@ import (
 
 	"wishingskin/internal/credential"
 	"wishingskin/internal/mailer"
+	pluginregistry "wishingskin/internal/plugins"
 	"wishingskin/internal/store"
 )
 
@@ -50,6 +51,7 @@ type Server struct {
 	mailSlots          chan struct{}
 	dummy              string
 	pointsNow          func() time.Time
+	plugins            *pluginregistry.Registry
 }
 type User struct {
 	ID             int64  `json:"id"`
@@ -79,7 +81,11 @@ func New(s *store.Store, cfg Config) (*Server, error) {
 	if err != nil {
 		return nil, err
 	}
-	a := &Server{s: s, cfg: cfg, mux: http.NewServeMux(), hashes: make(chan struct{}, 2), uploads: make(chan struct{}, 2), dummy: dummy, loginLimit: limiter{entries: map[string]bucket{}, now: time.Now}, passwordLimit: limiter{entries: map[string]bucket{}, now: time.Now}}
+	registry, err := pluginregistry.NewRegistry(pluginregistry.Builtins()...)
+	if err != nil {
+		return nil, err
+	}
+	a := &Server{s: s, cfg: cfg, mux: http.NewServeMux(), hashes: make(chan struct{}, 2), uploads: make(chan struct{}, 2), dummy: dummy, plugins: registry, loginLimit: limiter{entries: map[string]bucket{}, now: time.Now}, passwordLimit: limiter{entries: map[string]bucket{}, now: time.Now}}
 	a.mux.HandleFunc("GET /healthz", func(w http.ResponseWriter, r *http.Request) { respond(w, 200, map[string]string{"status": "alive"}) })
 	a.mux.HandleFunc("GET /readyz", a.ready)
 	a.registrationLimit = limiter{entries: map[string]bucket{}, now: time.Now, max: 5, window: time.Hour}
@@ -97,6 +103,7 @@ func New(s *store.Store, cfg Config) (*Server, error) {
 	a.registerModeration()
 	a.registerResourceAdministration()
 	a.registerReports()
+	a.registerPlugins()
 	a.registerPoints()
 	a.pointsNow = time.Now
 	a.mux.HandleFunc("POST /api/auth/login", a.login)

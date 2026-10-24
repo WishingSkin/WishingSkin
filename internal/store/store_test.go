@@ -76,6 +76,9 @@ func assertEmbeddedSchemasAgree(t *testing.T, migration string) {
 	if migration == "011_site_notices" {
 		tables = []string{"site_notices"}
 	}
+	if migration == "012_plugins" {
+		tables = []string{"plugins"}
+	}
 	if migration == "010_user_profiles" {
 		tables = []string{"user_profiles"}
 	}

@@ -28,6 +28,18 @@ func (a *Server) invitationOptions(ctx context.Context, reader settingReader, mo
 		return result, err
 	}
 	err = json.Unmarshal([]byte(raw), &result)
+	if err == nil {
+		var enabled bool
+		pluginErr := reader.QueryRowContext(ctx, "SELECT enabled FROM plugins WHERE plugin_id='wishingskin.invitations'").Scan(&enabled)
+		if errors.Is(pluginErr, sql.ErrNoRows) {
+			enabled = true
+		} else if pluginErr != nil {
+			return result, pluginErr
+		}
+		if !enabled {
+			result = invitationOptions{}
+		}
+	}
 	return result, err
 }
 func (a *Server) invitationPlugin(w http.ResponseWriter, r *http.Request) {
@@ -65,6 +77,9 @@ func (a *Server) updateInvitationPlugin(w http.ResponseWriter, r *http.Request) 
 	err := tx.QueryRowContext(r.Context(), "SELECT value FROM settings WHERE setting_key='registration_mode' FOR UPDATE").Scan(&mode)
 	if err == nil {
 		err = a.putSetting(r.Context(), tx, "official_invitation", body)
+	}
+	if err == nil {
+		_, err = tx.ExecContext(r.Context(), a.s.Bind("UPDATE plugins SET enabled=? WHERE plugin_id='wishingskin.invitations'"), body.Enabled)
 	}
 	if err == nil && mode == "invitation" {
 		_, err = tx.ExecContext(r.Context(), "UPDATE settings SET value='open' WHERE setting_key='registration_mode'")

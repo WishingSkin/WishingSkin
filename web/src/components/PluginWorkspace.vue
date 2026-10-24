@@ -2,24 +2,57 @@
 import { onMounted, ref } from 'vue'
 import { t } from '../i18n'
 import InvitationPlugin from './InvitationPlugin.vue'
+import PointsSettings from './PointsSettings.vue'
+import type { PointRules } from '../pointTypes'
+
+interface Plugin { id: string; version: string; dependencies: string[]; capabilities: string[]; events: string[]; enabled: boolean; error?: string }
 const props = defineProps<{ csrfToken: string }>()
 const emit = defineEmits<{ updated: []; expired: [] }>()
-const selected = ref(false)
-const enabled = ref<boolean | null>(null)
+const plugins = ref<Plugin[]>([])
+const pointsRules = ref<PointRules>({ enabled: false, dailyReward: 0, uploadCost: 0, characterCost: 0 })
+const selected = ref('')
+const loading = ref(false)
+const busy = ref('')
+const error = ref('')
+
 async function load() {
+  loading.value = true; error.value = ''
   try {
-    const response = await fetch('/api/admin/plugins/invitations', { credentials: 'same-origin' })
-    if (response.status === 401) { emit('expired'); return }
-    if (response.ok) enabled.value = (await response.json()).enabled
-  } catch { enabled.value = null }
+    const [pluginResponse, siteResponse] = await Promise.all([
+      fetch('/api/admin/plugins', { credentials: 'same-origin' }),
+      fetch('/api/site', { credentials: 'same-origin' }),
+    ])
+    if (pluginResponse.status === 401 || siteResponse.status === 401) { emit('expired'); return }
+    const pluginData = await pluginResponse.json().catch(() => ({})) as { plugins?: Plugin[]; error?: string }
+    const siteData = await siteResponse.json().catch(() => ({})) as { points?: PointRules }
+    if (!pluginResponse.ok) { error.value = pluginData.error || '暂时无法读取插件状态'; return }
+    plugins.value = pluginData.plugins || []
+    if (siteData.points) pointsRules.value = siteData.points
+  } catch { error.value = '暂时无法读取插件状态' }
+  finally { loading.value = false }
 }
-function updated() { void load(); emit('updated') }
+async function toggle(plugin: Plugin) {
+  if (busy.value) return
+  busy.value = plugin.id; error.value = ''
+  try {
+    const response = await fetch(`/api/admin/plugins/${encodeURIComponent(plugin.id)}`, { method: 'PATCH', credentials: 'same-origin', headers: { 'Content-Type': 'application/json', 'X-CSRF-Token': props.csrfToken }, body: JSON.stringify({ enabled: !plugin.enabled }) })
+    if (response.status === 401) { emit('expired'); return }
+    const data = await response.json().catch(() => ({})) as { error?: string }
+    if (!response.ok) { error.value = data.error || '插件状态保存失败'; return }
+    await load(); emit('updated')
+  } catch { error.value = '无法确认插件状态，请刷新重试。' }
+  finally { busy.value = '' }
+}
+function label(id: string) { return id === 'wishingskin.points' ? '积分与签到' : id === 'wishingskin.invitations' ? '邀请码' : id }
+function open(plugin: Plugin) { selected.value = selected.value === plugin.id ? '' : plugin.id }
 onMounted(load)
 </script>
+
 <template>
   <section class="plugin-workspace" :aria-label="t('官方插件区域')">
     <header class="plugin-workspace-heading"><div><h2>{{ t('官方插件') }}</h2><p>{{ t('随程序发行的官方模块，可独立启停与配置。') }}</p></div><span class="plugin-origin">WishingSkin</span></header>
-    <div class="plugin-catalog"><article class="plugin-card panel" :class="{ selected }"><div class="plugin-card-heading"><span class="plugin-symbol" aria-hidden="true">＋</span><div><h3>{{ t('邀请码') }}</h3><span class="plugin-origin">{{ t('官方模块') }}</span></div><span v-if="enabled !== null" class="plugin-status">{{ enabled ? t('已启用') : t('已停用') }}</span></div><p>{{ t('为邮箱验证注册增加可选或必填的邀请码，支持批量生成和导出。') }}</p><button class="secondary-button" type="button" :aria-expanded="selected" aria-controls="invitation-plugin-settings" @click="selected = !selected">{{ selected ? t('收起设置') : t('配置插件') }}</button></article></div>
-    <InvitationPlugin v-if="selected" id="invitation-plugin-settings" class="plugin-settings panel" :csrf-token="props.csrfToken" @expired="emit('expired')" @updated="updated" />
+    <p v-if="loading" role="status">{{ t('正在加载…') }}</p><p v-if="error" class="form-error" role="alert">{{ t(error) }} <button class="text-button" type="button" @click="load">{{ t('重试') }}</button></p>
+    <div v-if="!loading" class="plugin-catalog"><article v-for="plugin in plugins" :key="plugin.id" class="plugin-card panel" :class="{ selected: selected === plugin.id }"><div class="plugin-card-heading"><span class="plugin-symbol" aria-hidden="true">＋</span><div><h3>{{ t(label(plugin.id)) }}</h3><span class="plugin-origin">{{ plugin.id }} · v{{ plugin.version }}</span></div><span class="plugin-status">{{ plugin.enabled ? t('已启用') : t('已停用') }}</span></div><p>{{ t(plugin.id === 'wishingskin.points' ? '管理每日签到、上传费用和新建角色费用。' : '为邮箱验证注册增加可选或必填的邀请码，支持批量生成和导出。') }}</p><p v-if="plugin.dependencies.length" class="password-rule">{{ t('依赖') }}：{{ plugin.dependencies.join(', ') }}</p><p v-if="plugin.error" class="form-error">{{ t(plugin.error) }}</p><div class="settings-actions"><button class="secondary-button" type="button" :aria-expanded="selected === plugin.id" @click="open(plugin)">{{ selected === plugin.id ? t('收起设置') : t('配置插件') }}</button><button class="secondary-button" type="button" :disabled="busy === plugin.id" @click="toggle(plugin)">{{ busy === plugin.id ? t('正在保存…') : plugin.enabled ? t('停用') : t('启用') }}</button></div></article></div>
+    <div v-for="plugin in plugins" :key="plugin.id + '-settings'" v-show="selected === plugin.id" class="plugin-settings panel"><InvitationPlugin v-if="plugin.id === 'wishingskin.invitations'" :csrf-token="props.csrfToken" @expired="emit('expired')" @updated="load" /><PointsSettings v-else-if="plugin.id === 'wishingskin.points'" :rules="pointsRules" :csrf-token="props.csrfToken" @expired="emit('expired')" @updated="load" /></div>
   </section>
 </template>

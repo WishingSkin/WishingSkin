@@ -60,6 +60,18 @@ func readPointRules(ctx context.Context, q interface {
 	if err == nil {
 		err = json.Unmarshal([]byte(raw), &rules)
 	}
+	if err == nil {
+		var moduleEnabled bool
+		moduleErr := q.QueryRowContext(ctx, "SELECT enabled FROM plugins WHERE plugin_id='wishingskin.points'").Scan(&moduleEnabled)
+		if errors.Is(moduleErr, sql.ErrNoRows) {
+			moduleEnabled = true
+		} else if moduleErr != nil {
+			return rules, moduleErr
+		}
+		if !moduleEnabled {
+			rules.Enabled = false
+		}
+	}
 	if err == nil && !validPointRules(rules) {
 		err = errors.New("invalid points rules")
 	}

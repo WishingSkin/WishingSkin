@@ -12,7 +12,6 @@ import BrandingSettings from './components/BrandingSettings.vue'
 import SettingsWorkspace from './components/SettingsWorkspace.vue'
 import ProfileSettings from './components/ProfileSettings.vue'
 import ReportsView from './components/ReportsView.vue'
-import PointsSettings from './components/PointsSettings.vue'
 import PointsPanel from './components/PointsPanel.vue'
 import IntegrationPanel from './components/IntegrationPanel.vue'
 import TurnstileChallenge from './components/TurnstileChallenge.vue'
@@ -705,7 +704,6 @@ onBeforeUnmount(() => {
           <template v-if="actionPage === 'administration'"><p v-if="actionError" class="form-error" role="alert">{{ t(actionError) }}</p><p v-if="actionMessage" class="action-success" role="status">{{ t(actionMessage) }}</p></template>
           <RegistrationSettings :site="site" :csrf-token="csrfToken" @updated="loadSite" @expired="expireSession" />
           <BrandingSettings :site="site" :csrf-token="csrfToken" @updated="loadSite" @expired="expireSession" />
-          <PointsSettings :rules="site.points" :csrf-token="csrfToken" @updated="loadSite" @expired="expireSession" />
           </SettingsWorkspace></template></Administration>
         <TextureBrowser v-if="page === 'wardrobe' || page === 'library'" :key="`${user.id}:${page}`" :mode="page" :csrf-token="csrfToken" :wardrobe="wardrobe" :wardrobe-busy="wardrobeBusy" :wardrobe-error="wardrobeError" @refresh="loadWardrobe" @changed="loadWardrobe" @wear="wearCollected" @expired="expireSession" />
         <template v-if="page === 'characters'">
