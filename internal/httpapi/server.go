@@ -166,7 +166,10 @@ func (a *Server) serveAssetOrSPA(w http.ResponseWriter, r *http.Request) {
 	}
 	if isSPAPath(r.URL.Path) {
 		clone := r.Clone(r.Context())
-		clone.URL.Path = "/index.html"
+		// Serve the root directory so FileServerFS can select index.html without
+		// redirecting the SPA route back to ./.
+		clone.URL.Path = "/"
+		clone.URL.RawPath = ""
 		http.FileServerFS(a.cfg.Assets).ServeHTTP(w, clone)
 		return
 	}
