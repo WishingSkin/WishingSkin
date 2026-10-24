@@ -11,6 +11,7 @@ const clearPassword = ref(false)
 const clearSecret = ref(false)
 const loading = ref(false)
 const busy = ref(false)
+const testBusy = ref(false)
 const error = ref('')
 const message = ref('')
 async function load() {
@@ -37,6 +38,18 @@ async function save() {
   } catch { error.value = '无法确认操作结果，请重新检查设置。' }
   finally { busy.value = false }
 }
+async function sendTest() {
+  if (testBusy.value || busy.value) return
+  testBusy.value = true; error.value = ''; message.value = ''
+  try {
+    const response = await fetch('/api/admin/services/test', { method: 'POST', credentials: 'same-origin', headers: { 'X-CSRF-Token': props.csrfToken } })
+    const data = await response.json().catch(() => ({})) as { error?: string; message?: string }
+    if (response.status === 401) { emit('expired'); return }
+    if (!response.ok) { error.value = data.error || '测试邮件发送失败，请检查 SMTP 配置'; return }
+    message.value = data.message || '测试邮件已提交到当前管理员邮箱'
+  } catch { error.value = '无法确认测试邮件结果，请检查管理员邮箱。' }
+  finally { testBusy.value = false }
+}
 onMounted(load)
 </script>
 <template>
@@ -55,7 +68,7 @@ onMounted(load)
       <label class="binding-field"><span>Secret key <small>{{ draft.secretConfigured ? t('已配置') : t('未配置') }}</small></span><input v-model="secret" type="password" maxlength="256" autocomplete="new-password" :disabled="clearSecret" /></label>
       <label class="settings-check"><input v-model="clearSecret" type="checkbox" />{{ t('清除已保存的 Turnstile Secret') }}</label>
       <p class="password-rule">{{ t('密码与 Secret 留空会保留现有值；勾选清除后才会移除。启用中的服务必须配置完整。') }}</p>
-      <button class="primary-button" type="submit">{{ busy ? t('正在保存…') : t('保存邮件与验证设置') }}</button>
+      <div class="settings-actions"><button class="primary-button" type="submit">{{ busy ? t('正在保存…') : t('保存邮件与验证设置') }}</button><button class="secondary-button" type="button" :disabled="testBusy || busy || !draft.smtpEnabled" @click="sendTest">{{ testBusy ? t('正在发送测试邮件…') : t('发送测试邮件') }}</button></div>
     </fieldset></form><p v-if="message" class="action-success" role="status">{{ t(message) }}</p>
   </section>
 </template>

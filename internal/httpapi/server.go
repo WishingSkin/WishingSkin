@@ -347,7 +347,26 @@ func (a *Server) sameOrigin(r *http.Request) bool {
 		return false
 	}
 	o := r.Header.Get("Origin")
-	return o == "" || o == a.cfg.PublicURL
+	if o == "" || o == a.cfg.PublicURL {
+		return true
+	}
+	// Local previews are commonly opened once as localhost and once as
+	// 127.0.0.1. Keep production origins strict while allowing only equivalent
+	// loopback hosts on the same scheme and port.
+	expected, expectedErr := url.Parse(a.cfg.PublicURL)
+	actual, actualErr := url.Parse(o)
+	if expectedErr != nil || actualErr != nil || expected.Scheme != actual.Scheme || expected.Port() != actual.Port() || expected.User != nil || actual.User != nil || expected.Path != "" && expected.Path != "/" || actual.Path != "" && actual.Path != "/" {
+		return false
+	}
+	return loopbackOriginHost(expected.Hostname()) && loopbackOriginHost(actual.Hostname())
+}
+
+func loopbackOriginHost(host string) bool {
+	if strings.EqualFold(host, "localhost") {
+		return true
+	}
+	address, err := netip.ParseAddr(host)
+	return err == nil && address.IsLoopback()
 }
 func (a *Server) authError(w http.ResponseWriter, err error) {
 	switch {

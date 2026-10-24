@@ -99,6 +99,17 @@ func TestSettingsAndProfileBothDatabases(t *testing.T) {
 	for _, dialect := range []string{"mysql", "postgres"} {
 		t.Run(dialect, func(t *testing.T) {
 			f := newManagementApp(t, dialect)
+			mailbox := &testMailbox{}
+			f.app.cfg.MailSender = mailbox
+			webStatus(t, f.call(3, "POST", "/api/admin/services/test", nil), 200)
+			mailbox.mu.Lock()
+			if len(mailbox.messages) != 1 || mailbox.messages[0].To != "3@example.test" || mailbox.messages[0].Purpose != "test" || mailbox.messages[0].Link != "" {
+				mailbox.mu.Unlock()
+				t.Fatal("unexpected SMTP test message", mailbox.messages)
+			}
+			mailbox.mu.Unlock()
+			mailbox.fail = true
+			webStatus(t, f.call(3, "POST", "/api/admin/services/test", nil), 503)
 			for _, path := range []string{"/api/admin/services", "/api/admin/plugins/invitations"} {
 				webStatus(t, f.call(0, "GET", path, nil), 401)
 				webStatus(t, f.call(1, "GET", path, nil), 403)

@@ -201,3 +201,31 @@ func (a *Server) updateServices(w http.ResponseWriter, r *http.Request) {
 	}
 	respond(w, 200, serviceView(value, true))
 }
+
+func (a *Server) testServices(w http.ResponseWriter, r *http.Request) {
+	u, ok := a.adminRequest(w, r)
+	if !ok {
+		return
+	}
+	services, err := a.services(r.Context())
+	if err != nil {
+		failure(w, 503, "无法读取服务设置")
+		return
+	}
+	if services.Mail == nil {
+		failure(w, 400, "请先启用并保存 SMTP 设置")
+		return
+	}
+	select {
+	case a.mailSlots <- struct{}{}:
+		defer func() { <-a.mailSlots }()
+	default:
+		failure(w, 429, "邮件处理繁忙，请稍后重试")
+		return
+	}
+	if err := services.Mail.Send(r.Context(), u.Email, "test", ""); err != nil {
+		failure(w, 503, "测试邮件发送失败，请检查 SMTP 配置")
+		return
+	}
+	respond(w, 200, map[string]string{"message": "测试邮件已提交到当前管理员邮箱"})
+}

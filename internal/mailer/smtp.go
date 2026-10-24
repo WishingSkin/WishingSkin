@@ -85,6 +85,10 @@ func (s *SMTP) Send(ctx context.Context, to, purpose, link string) error {
 	if purpose == "reset" {
 		subject = "WishingSkin - Reset your password / 找回密码"
 		text = "通过以下链接设置新密码。链接有效期为 30 分钟，只能使用一次。\r\nSet a new password using the link below. It expires in 30 minutes and can be used once."
+	} else if purpose == "test" {
+		subject = "WishingSkin - SMTP test / SMTP 测试"
+		text = "这是一封 WishingSkin SMTP 测试邮件，说明当前配置可以提交邮件。\r\nThis is a WishingSkin SMTP test message. The current configuration accepted the message for delivery."
+		link = ""
 	}
 	// Both languages keep a forwarded link understandable without guessing the recipient's locale.
 	message := fmt.Sprintf("From: %s\r\nTo: %s\r\nSubject: %s\r\nMIME-Version: 1.0\r\nContent-Type: text/plain; charset=UTF-8\r\nContent-Transfer-Encoding: 8bit\r\n\r\n%s\r\n\r\n%s\r\n\r\n若非本人操作，请忽略此邮件。If you did not request this, ignore this email.\r\n", s.From, to, mime.QEncoding.Encode("UTF-8", subject), text, link)

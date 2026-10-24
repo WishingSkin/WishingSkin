@@ -228,6 +228,7 @@ func (a *Server) registerCustomization() {
 	a.mux.HandleFunc("GET /api/avatars/{id}", a.avatar)
 	a.mux.HandleFunc("GET /api/admin/services", a.adminServices)
 	a.mux.HandleFunc("PATCH /api/admin/services", a.updateServices)
+	a.mux.HandleFunc("POST /api/admin/services/test", a.testServices)
 	a.mux.HandleFunc("GET /api/admin/plugins/invitations", a.invitationPlugin)
 	a.mux.HandleFunc("PATCH /api/admin/plugins/invitations", a.updateInvitationPlugin)
 	a.mux.HandleFunc("POST /api/admin/plugins/invitations/codes", a.createInvitationBatch)

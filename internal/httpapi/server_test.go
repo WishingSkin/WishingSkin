@@ -44,6 +44,24 @@ func TestLimiterExpiryAndAddressBoundary(t *testing.T) {
 	}
 }
 
+func TestSameOriginAllowsLoopbackAliasOnly(t *testing.T) {
+	a := &Server{cfg: Config{PublicURL: "http://localhost:8098"}}
+	for _, origin := range []string{"http://localhost:8098", "http://127.0.0.1:8098", "http://[::1]:8098"} {
+		r := httptest.NewRequest("POST", "http://localhost:8098/api/auth/login", nil)
+		r.Header.Set("Origin", origin)
+		if !a.sameOrigin(r) {
+			t.Fatalf("loopback origin rejected: %s", origin)
+		}
+	}
+	for _, origin := range []string{"http://localhost:8099", "https://localhost:8098", "http://example.test:8098", "http://localhost:8098.evil.test"} {
+		r := httptest.NewRequest("POST", "http://localhost:8098/api/auth/login", nil)
+		r.Header.Set("Origin", origin)
+		if a.sameOrigin(r) {
+			t.Fatalf("invalid origin accepted: %s", origin)
+		}
+	}
+}
+
 func TestMalformedProtocolBody(t *testing.T) {
 	w := httptest.NewRecorder()
 	r := httptest.NewRequest("POST", "/", bytes.NewBufferString(`{}garbage`))
