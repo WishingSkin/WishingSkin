@@ -37,3 +37,29 @@ func TestOfficialPluginsAndPointsDisablePreserveLedgerBothDatabases(t *testing.T
 		})
 	}
 }
+
+func TestOfficialPluginManifestListsEmptyCollectionsAsArraysBothDatabases(t *testing.T) {
+	for _, dialect := range []string{"mysql", "postgres"} {
+		t.Run(dialect, func(t *testing.T) {
+			f := newManagementApp(t, dialect)
+			response := f.call(3, "GET", "/api/admin/plugins", nil)
+			webStatus(t, response, 200)
+			var payload struct {
+				Plugins []struct {
+					Dependencies json.RawMessage `json:"dependencies"`
+				} `json:"plugins"`
+			}
+			if err := json.Unmarshal(response.Body.Bytes(), &payload); err != nil {
+				t.Fatal("invalid plugin response", err)
+			}
+			if len(payload.Plugins) == 0 {
+				t.Fatal("plugin response is empty")
+			}
+			for _, plugin := range payload.Plugins {
+				if string(plugin.Dependencies) == "null" || len(plugin.Dependencies) == 0 || plugin.Dependencies[0] != '[' {
+					t.Fatalf("plugin dependencies must be an array, got %s", plugin.Dependencies)
+				}
+			}
+		})
+	}
+}

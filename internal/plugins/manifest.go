@@ -47,7 +47,7 @@ func (m Manifest) Validate() error {
 
 func Builtins() []Manifest {
 	return []Manifest{
-		{ID: "wishingskin.points", Version: "1.0.0", SettingsNamespace: "wishingskin.points", MigrationVersion: 12, Capabilities: []string{"points", "checkin"}, Events: []string{"points.checkin", "points.change", "texture.upload", "character.create"}, Pages: []PageContribution{{ID: "points", Area: "admin.plugins", Label: "积分与签到"}}, Permissions: []string{"user"}},
-		{ID: "wishingskin.invitations", Version: "1.1.0", SettingsNamespace: "wishingskin.invitations", MigrationVersion: 13, Capabilities: []string{"registration-invitation", "repeatable-export"}, Events: []string{"registration"}, Pages: []PageContribution{{ID: "invitations", Area: "admin.plugins", Label: "邀请码"}}, Permissions: []string{"admin"}},
+		{ID: "wishingskin.points", Version: "1.0.0", Dependencies: []string{}, Routes: []string{}, Tasks: []TaskDeclaration{}, SettingsNamespace: "wishingskin.points", MigrationVersion: 12, Capabilities: []string{"points", "checkin"}, Events: []string{"points.checkin", "points.change", "texture.upload", "character.create"}, Pages: []PageContribution{{ID: "points", Area: "admin.plugins", Label: "积分与签到"}}, Permissions: []string{"user"}},
+		{ID: "wishingskin.invitations", Version: "1.1.0", Dependencies: []string{}, Routes: []string{}, Tasks: []TaskDeclaration{}, SettingsNamespace: "wishingskin.invitations", MigrationVersion: 13, Capabilities: []string{"registration-invitation", "repeatable-export"}, Events: []string{"registration"}, Pages: []PageContribution{{ID: "invitations", Area: "admin.plugins", Label: "邀请码"}}, Permissions: []string{"admin"}},
 	}
 }

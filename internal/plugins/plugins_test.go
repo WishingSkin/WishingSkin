@@ -1,10 +1,30 @@
 package plugins
 
 import (
+	"bytes"
 	"context"
+	"encoding/json"
 	"errors"
 	"testing"
 )
+
+func TestBuiltinsUseJSONArraysForOptionalManifestCollections(t *testing.T) {
+	for _, manifest := range Builtins() {
+		encoded, err := json.Marshal(manifest)
+		if err != nil {
+			t.Fatal(err)
+		}
+		for _, field := range []string{`"dependencies":`, `"routes":`, `"tasks":`} {
+			if !containsJSONArray(encoded, field) {
+				t.Fatalf("%s uses null for %s: %s", manifest.ID, field, encoded)
+			}
+		}
+	}
+}
+
+func containsJSONArray(encoded []byte, field string) bool {
+	return bytes.Contains(encoded, []byte(field+"[]"))
+}
 
 func TestRegistryRejectsDuplicateAndKeepsMissingDependencyDisabled(t *testing.T) {
 	r, err := NewRegistry(Manifest{ID: "base", Version: "1.0.0", SettingsNamespace: "base"}, Manifest{ID: "child", Version: "1.0.0", SettingsNamespace: "child", Dependencies: []string{"missing"}})

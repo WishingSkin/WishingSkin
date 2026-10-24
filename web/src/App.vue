@@ -254,7 +254,8 @@ function acceptSession(session: Session) {
   user.value = session.user
   csrfToken.value = session.csrfToken
   sessionError.value = ''
-  navigate(pendingNext.value || '/user', true)
+  const currentPath = normalizePath(window.location.pathname)
+  navigate(pendingNext.value || (currentPath === '/' ? '/' : '/user'), true)
   pendingNext.value = null
 }
 
@@ -661,7 +662,7 @@ onBeforeUnmount(() => {
     <main v-else-if="accessMode" class="access-layout"><AccountAccess :mode="accessMode" :token="linkToken" :site="site" :email="user?.email || email" :dark="dark" @back="navigate('/login'); linkToken = ''" @completed="accessCompleted" /></main>
 
     <main v-else-if="!user && publicLibraryOpen" class="public-library-layout"><button class="secondary-button public-library-back" type="button" @click="navigate('/')">{{ t("返回主页") }}</button><TextureBrowser mode="library" csrf-token="" :wardrobe="[]" :wardrobe-busy="false" wardrobe-error="" @login="navigate('/login')" /></main>
-    <main v-else-if="!user && publicHome" class="public-home-layout">
+    <main v-else-if="publicHome" class="public-home-layout">
       <template v-for="block in homepageBlocks" :key="block.id">
         <section v-if="block.enabled && block.kind === 'intro'" class="public-home-hero" :aria-labelledby="`public-home-title-${block.id}`"><div class="public-home-copy"><span class="small-square" aria-hidden="true"></span><p class="eyebrow">{{ t('Minecraft 外观工作台') }}</p><h1 :id="`public-home-title-${block.id}`">{{ block.title || site.name }}</h1><p class="public-home-tagline">{{ block.body || site.tagline || t('每一个像素，都是你的模样。') }}</p><div v-if="block.buttonLabel && block.buttonHref" class="public-home-actions"><a class="primary-button" :href="block.buttonHref" @click="homepageLink($event, block.buttonHref)">{{ block.buttonLabel }}<span aria-hidden="true">↗</span></a></div></div></section>
         <section v-else-if="block.enabled && block.kind === 'features'" class="public-home-features" :aria-label="block.title || t('站点功能')"><div class="public-home-section-heading"><h2>{{ block.title }}</h2><p v-if="block.body">{{ block.body }}</p></div><div class="public-home-feature-grid"><article v-for="(feature, featureIndex) in block.features || []" :key="`${block.id}-${featureIndex}`" class="public-home-feature panel"><span>{{ String(featureIndex + 1).padStart(2, '0') }}</span><h2>{{ feature.title }}</h2><p>{{ feature.body }}</p><a v-if="feature.href" :href="feature.href" @click="homepageLink($event, feature.href)">{{ t('查看') }} <span aria-hidden="true">↗</span></a></article></div></section>

@@ -4,11 +4,11 @@ import { t } from '../i18n'
 import InvitationPlugin from './InvitationPlugin.vue'
 import PointsSettings from './PointsSettings.vue'
 import type { PointRules } from '../pointTypes'
+import { normalizePluginManifests, type PluginManifest } from '../pluginModel'
 
-interface Plugin { id: string; version: string; dependencies: string[]; capabilities: string[]; events: string[]; enabled: boolean; error?: string }
 const props = defineProps<{ csrfToken: string }>()
 const emit = defineEmits<{ updated: []; expired: [] }>()
-const plugins = ref<Plugin[]>([])
+const plugins = ref<PluginManifest[]>([])
 const pointsRules = ref<PointRules>({ enabled: false, dailyReward: 0, uploadCost: 0, characterCost: 0 })
 const selected = ref('')
 const loading = ref(false)
@@ -23,15 +23,15 @@ async function load() {
       fetch('/api/site', { credentials: 'same-origin' }),
     ])
     if (pluginResponse.status === 401 || siteResponse.status === 401) { emit('expired'); return }
-    const pluginData = await pluginResponse.json().catch(() => ({})) as { plugins?: Plugin[]; error?: string }
+    const pluginData = await pluginResponse.json().catch(() => ({})) as { plugins?: unknown[]; error?: string }
     const siteData = await siteResponse.json().catch(() => ({})) as { points?: PointRules }
     if (!pluginResponse.ok) { error.value = pluginData.error || '暂时无法读取插件状态'; return }
-    plugins.value = pluginData.plugins || []
+    plugins.value = normalizePluginManifests(pluginData.plugins)
     if (siteData.points) pointsRules.value = siteData.points
   } catch { error.value = '暂时无法读取插件状态' }
   finally { loading.value = false }
 }
-async function toggle(plugin: Plugin) {
+async function toggle(plugin: PluginManifest) {
   if (busy.value) return
   busy.value = plugin.id; error.value = ''
   try {
@@ -44,7 +44,7 @@ async function toggle(plugin: Plugin) {
   finally { busy.value = '' }
 }
 function label(id: string) { return id === 'wishingskin.points' ? '积分与签到' : id === 'wishingskin.invitations' ? '邀请码' : id }
-function open(plugin: Plugin) { selected.value = selected.value === plugin.id ? '' : plugin.id }
+function open(plugin: PluginManifest) { selected.value = selected.value === plugin.id ? '' : plugin.id }
 onMounted(load)
 </script>
 
