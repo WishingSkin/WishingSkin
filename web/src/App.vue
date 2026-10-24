@@ -593,7 +593,6 @@ onBeforeUnmount(() => window.removeEventListener('hashchange', readMailLink))
         <div class="public-home-preview checkerboard" :aria-label="t('默认角色预览')"><ModelThumbnail class="login-model-thumbnail" name="Steve" model="default" skin-hash="" cape-hash="" /><ModelThumbnail class="login-model-thumbnail" name="Alex" model="slim" skin-hash="" cape-hash="" /></div>
       </section>
       <section class="public-home-features" :aria-label="t('站点功能')"><article class="public-home-feature panel"><span>01</span><h2>{{ t('角色与外观') }}</h2><p>{{ t('用模型预览管理标准和纤细模型，皮肤与披风分别绑定。') }}</p></article><article class="public-home-feature panel"><span>02</span><h2>{{ t('公开库') }}</h2><p>{{ t('浏览公开材质并收藏到自己的衣柜。') }}</p></article><article class="public-home-feature panel"><span>03</span><h2>{{ t('游戏接入') }}</h2><p>{{ t('使用本站提供的 Yggdrasil 或兼容地址加载外观。') }}</p></article></section>
-      <NoticeCenter v-if="site.notice" :notice="site.notice" :format="site.noticeFormat" />
     </main>
     <main v-else-if="!user" class="login-layout">
       <section class="welcome-panel" aria-labelledby="welcome-title">
