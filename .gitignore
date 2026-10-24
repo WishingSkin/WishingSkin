@@ -1,6 +1,8 @@
 /bin/
 /data/
 /artifacts/
+/.playwright-cli/
+/output/
 /@misc/
 /web/node_modules/
 /web/dist/
