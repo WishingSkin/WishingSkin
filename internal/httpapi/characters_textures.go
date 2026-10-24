@@ -3,6 +3,7 @@ package httpapi
 import (
 	"bytes"
 	"context"
+	"crypto/md5"
 	"crypto/rand"
 	"crypto/sha256"
 	"crypto/subtle"
@@ -97,18 +98,14 @@ func (a *Server) createCharacter(w http.ResponseWriter, r *http.Request) {
 		failure(w, 500, "无法创建角色")
 		return
 	}
-	uuid, err := randomUUID()
-	if err != nil {
-		failure(w, 500, "无法创建角色")
-		return
-	}
+	uuid := offlinePlayerUUID(name)
 	if err := a.chargePoints(ctx, tx, u.ID, "character", uuid, body.ExpectedCost); err != nil {
 		pointError(w, err)
 		return
 	}
 	if _, err := tx.ExecContext(ctx, a.s.Bind("INSERT INTO characters(id,user_id,uuid,name,name_key,model) VALUES(?,?,?,?,?,'default')"), id, u.ID, uuid, name, strings.ToLower(name)); err != nil {
 		if uniqueViolation(err) {
-			failure(w, 409, "这个角色名已被使用")
+			failure(w, 409, "这个角色名或 UUID 已被使用")
 		} else {
 			failure(w, 503, "暂时无法创建角色")
 		}
@@ -606,6 +603,15 @@ func randomUUID() (string, error) {
 	b[6] = (b[6] & 0x0f) | 0x40
 	b[8] = (b[8] & 0x3f) | 0x80
 	return hex.EncodeToString(b[:]), nil
+}
+
+// offlinePlayerUUID is Minecraft's UUID v3 compatibility algorithm used by
+// Blessing Skin and the vanilla offline player profile convention.
+func offlinePlayerUUID(name string) string {
+	sum := md5.Sum([]byte("OfflinePlayer:" + name))
+	sum[6] = sum[6]&0x0f | 0x30
+	sum[8] = sum[8]&0x3f | 0x80
+	return hex.EncodeToString(sum[:])
 }
 
 func uniqueViolation(err error) bool {
