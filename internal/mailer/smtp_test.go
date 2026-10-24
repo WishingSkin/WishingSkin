@@ -5,6 +5,7 @@ import (
 	"context"
 	"io"
 	"mime"
+	"mime/multipart"
 	"net"
 	"net/mail"
 	"net/textproto"
@@ -80,10 +81,113 @@ func TestLocalDeliveryAndEncoding(t *testing.T) {
 			if err != nil || !strings.Contains(subject, "WishingSkin") {
 				t.Fatal("subject encoding", err)
 			}
-			if !strings.Contains(message, link) || !strings.Contains(message, "只能使用一次") {
-				t.Fatal("missing one-time link copy")
+			mediaType, params, err := mime.ParseMediaType(parsed.Header.Get("Content-Type"))
+			if err != nil || mediaType != "multipart/alternative" {
+				t.Fatalf("expected multipart alternative, got %q: %v", parsed.Header.Get("Content-Type"), err)
+			}
+			reader := multipart.NewReader(parsed.Body, params["boundary"])
+			var plain, htmlPart string
+			for {
+				part, err := reader.NextPart()
+				if err == io.EOF {
+					break
+				}
+				if err != nil {
+					t.Fatal(err)
+				}
+				content, err := io.ReadAll(part)
+				if err != nil {
+					t.Fatal(err)
+				}
+				switch {
+				case strings.HasPrefix(part.Header.Get("Content-Type"), "text/plain"):
+					plain = string(content)
+				case strings.HasPrefix(part.Header.Get("Content-Type"), "text/html"):
+					htmlPart = string(content)
+				}
+			}
+			if !strings.Contains(plain, link) || !strings.Contains(plain, "只能使用一次") {
+				t.Fatal("missing one-time link copy in plain part")
+			}
+			button := "确认邮箱"
+			if purpose == "reset" {
+				button = "设置新密码"
+			}
+			if !strings.Contains(htmlPart, "<html") || !strings.Contains(htmlPart, button) || !strings.Contains(htmlPart, `href="`+link+`"`) {
+				t.Fatal("missing HTML email CTA")
 			}
 		})
+	}
+}
+
+func TestHTMLMailEscapesLinksAndTestTemplateHasNoCTA(t *testing.T) {
+	address, messages := smtpFixture(t, false)
+	s := SMTP{Address: address, From: "site@example.test", TLSMode: "local"}
+	unsafeLink := `https://skin.example.test/#verify=synthetic" onmouseover="alert(1)`
+	if err := s.Send(context.Background(), "user@example.test", "verify", unsafeLink); err != nil {
+		t.Fatal(err)
+	}
+	message := <-messages
+	parsed, err := mail.ReadMessage(strings.NewReader(message))
+	if err != nil {
+		t.Fatal(err)
+	}
+	_, params, err := mime.ParseMediaType(parsed.Header.Get("Content-Type"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	reader := multipart.NewReader(parsed.Body, params["boundary"])
+	var htmlPart string
+	for {
+		part, err := reader.NextPart()
+		if err == io.EOF {
+			break
+		}
+		if err != nil {
+			t.Fatal(err)
+		}
+		content, _ := io.ReadAll(part)
+		if strings.HasPrefix(part.Header.Get("Content-Type"), "text/html") {
+			htmlPart = string(content)
+		}
+	}
+	if strings.Contains(htmlPart, unsafeLink) || !strings.Contains(htmlPart, "&#34; onmouseover=&#34;") {
+		t.Fatal("HTML link was not escaped")
+	}
+
+	address, messages = smtpFixture(t, false)
+	s.Address = address
+	if err := s.Send(context.Background(), "user@example.test", "test", ""); err != nil {
+		t.Fatal(err)
+	}
+	message = <-messages
+	parsed, err = mail.ReadMessage(strings.NewReader(message))
+	if err != nil {
+		t.Fatal(err)
+	}
+	mediaType, params, err := mime.ParseMediaType(parsed.Header.Get("Content-Type"))
+	if err != nil || mediaType != "multipart/alternative" {
+		t.Fatalf("expected multipart test message, got %q: %v", parsed.Header.Get("Content-Type"), err)
+	}
+	reader = multipart.NewReader(parsed.Body, params["boundary"])
+	var testPlain, testHTML string
+	for {
+		part, err := reader.NextPart()
+		if err == io.EOF {
+			break
+		}
+		if err != nil {
+			t.Fatal(err)
+		}
+		content, _ := io.ReadAll(part)
+		if strings.HasPrefix(part.Header.Get("Content-Type"), "text/plain") {
+			testPlain = string(content)
+		} else if strings.HasPrefix(part.Header.Get("Content-Type"), "text/html") {
+			testHTML = string(content)
+		}
+	}
+	if !strings.Contains(testPlain, "SMTP 测试邮件") || !strings.Contains(testPlain, "SMTP test message") || !strings.Contains(testHTML, "SMTP 测试") || strings.Contains(testHTML, "href=") {
+		t.Fatal("test template should have status without CTA")
 	}
 }
 
