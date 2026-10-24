@@ -6,6 +6,7 @@ const props = defineProps<{ site: SiteAccess; csrfToken: string }>()
 const emit = defineEmits<{ updated: []; expired: [] }>()
 const name = ref(props.site.name || 'WishingSkin')
 const tagline = ref(props.site.tagline || '')
+const footer = ref(props.site.footer || '')
 const notice = ref(props.site.notice || '')
 const format = ref(props.site.noticeFormat || 'plain')
 const preview = ref('')
@@ -15,16 +16,17 @@ const message = ref('')
 const nameLength = computed(() => Array.from(name.value.trim()).length)
 const taglineLength = computed(() => Array.from(tagline.value).length)
 const noticeLength = computed(() => Array.from(notice.value).length)
-watch([() => props.site.name, () => props.site.tagline, () => props.site.notice, () => props.site.noticeFormat], () => { name.value = props.site.name || 'WishingSkin'; tagline.value = props.site.tagline || ''; notice.value = props.site.notice || ''; format.value = props.site.noticeFormat || 'plain'; preview.value = '' })
+watch([() => props.site.name, () => props.site.tagline, () => props.site.footer, () => props.site.notice, () => props.site.noticeFormat], () => { name.value = props.site.name || 'WishingSkin'; tagline.value = props.site.tagline || ''; footer.value = props.site.footer || ''; notice.value = props.site.notice || ''; format.value = props.site.noticeFormat || 'plain'; preview.value = '' })
 async function save() {
   if (busy.value) return
   error.value = ''; message.value = ''
   if (!nameLength.value || nameLength.value > 64) { error.value = '站点名称须为 1–64 个字符且不能换行'; return }
   if (taglineLength.value > 200) { error.value = '站点简介最多 200 个字符且不能换行'; return }
+  if (Array.from(footer.value).length > 200 || /[\r\n]/.test(footer.value)) { error.value = '页脚信息最多 200 个字符且不能换行'; return }
   if (noticeLength.value > 1000) { error.value = '站点公告最多 1000 个字符'; return }
   busy.value = true
   try {
-    const response = await fetch('/api/admin/branding', { method: 'PATCH', credentials: 'same-origin', headers: { 'Content-Type': 'application/json', 'X-CSRF-Token': props.csrfToken }, body: JSON.stringify({ name: name.value, tagline: tagline.value, notice: notice.value, noticeFormat: format.value }) })
+    const response = await fetch('/api/admin/branding', { method: 'PATCH', credentials: 'same-origin', headers: { 'Content-Type': 'application/json', 'X-CSRF-Token': props.csrfToken }, body: JSON.stringify({ name: name.value, tagline: tagline.value, footer: footer.value, notice: notice.value, noticeFormat: format.value }) })
     if (response.status === 401) { emit('expired'); return }
     if (!response.ok) { const data = await response.json().catch(() => ({})); error.value = data.error || '暂时无法保存站点设置'; return }
     message.value = '站点文案已保存。'; emit('updated')
@@ -47,5 +49,5 @@ watch([notice, format], () => { preview.value = '' })
 </script>
 
 <template>
-  <section class="account-password branding-settings" aria-labelledby="branding-title"><h3 id="branding-title">{{ t('品牌与公告') }}</h3><form class="password-form" @submit.prevent="save"><fieldset :disabled="busy"><label class="binding-field"><span>{{ t('站点名称') }} <small>{{ nameLength }}/64</small></span><input v-model="name" required /></label><label class="binding-field"><span>{{ t('站点简介') }} <small>{{ taglineLength }}/200</small></span><input v-model="tagline" /></label><label class="binding-field"><span>{{ t('公告格式') }}</span><select v-model="format"><option value="plain">{{ t('纯文本') }}</option><option value="markdown">Markdown + HTML</option></select></label><label class="binding-field"><span>{{ t('站点公告') }} <small>{{ noticeLength }}/1000</small></span><textarea v-model="notice" rows="5"></textarea></label><p v-if="format === 'markdown'" class="password-rule">{{ t('支持粗体、链接、列表等排版，脚本、图片和自定义样式会被过滤。') }}</p><button class="secondary-button" type="button" @click="previewNotice">{{ t('预览公告') }}</button><div v-if="preview" class="notice-content notice-preview" v-html="preview"></div><p class="password-rule">{{ t('保存会发布新公告；清空后保留历史记录。') }}</p><p v-if="error" class="form-error" role="alert">{{ t(error) }}</p><button class="primary-button" type="submit">{{ busy ? t('正在保存…') : t('保存品牌与公告') }}</button></fieldset></form><p v-if="message" class="action-success" role="status">{{ t(message) }}</p></section>
+  <section class="account-password branding-settings" aria-labelledby="branding-title"><h3 id="branding-title">{{ t('品牌与公告') }}</h3><form class="password-form" @submit.prevent="save"><fieldset :disabled="busy"><label class="binding-field"><span>{{ t('站点名称') }} <small>{{ nameLength }}/64</small></span><input v-model="name" required /></label><label class="binding-field"><span>{{ t('站点简介') }} <small>{{ taglineLength }}/200</small></span><input v-model="tagline" /></label><label class="binding-field"><span>{{ t('自定义页脚信息') }} <small>{{ Array.from(footer).length }}/200</small></span><input v-model="footer" :placeholder="t('显示在项目页脚旁，不会替换 Powered by WishingSkin')" /></label><label class="binding-field"><span>{{ t('公告格式') }}</span><select v-model="format"><option value="plain">{{ t('纯文本') }}</option><option value="markdown">Markdown + HTML</option></select></label><label class="binding-field"><span>{{ t('站点公告') }} <small>{{ noticeLength }}/1000</small></span><textarea v-model="notice" rows="5"></textarea></label><p v-if="format === 'markdown'" class="password-rule">{{ t('支持粗体、链接、列表等排版，脚本、图片和自定义样式会被过滤。') }}</p><button class="secondary-button" type="button" @click="previewNotice">{{ t('预览公告') }}</button><div v-if="preview" class="notice-content notice-preview" v-html="preview"></div><p class="password-rule">{{ t('保存会发布新公告；清空后保留历史记录。') }}</p><p v-if="error" class="form-error" role="alert">{{ t(error) }}</p><button class="primary-button" type="submit">{{ busy ? t('正在保存…') : t('保存品牌与公告') }}</button></fieldset></form><p v-if="message" class="action-success" role="status">{{ t(message) }}</p></section>
 </template>

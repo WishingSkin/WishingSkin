@@ -57,6 +57,7 @@ async function submit() {
         </template>
         <template v-if="mode === 'register'">
           <label for="access-nickname">{{ t('昵称') }}</label><input id="access-nickname" v-model="nickname" autocomplete="nickname" />
+          <p v-if="site.emailDomains.length" class="password-rule">{{ t('仅允许这些邮箱域名注册：') }}{{ site.emailDomains.join('、') }}</p>
           <template v-if="site.registration === 'invitation'"><label for="access-invitation">{{ t('邀请码') }}</label><input id="access-invitation" v-model="invitation" autocomplete="off" required /></template>
         </template>
         <template v-if="mode === 'mail'">

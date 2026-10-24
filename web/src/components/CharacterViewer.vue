@@ -12,6 +12,7 @@ const state = ref<'loading' | 'ready' | 'error'>('loading')
 const error = ref('')
 const attempt = ref(0)
 const rotating = ref(false)
+const walking = ref(false)
 const reducedMotion = ref(false)
 let viewer: SkinViewer | undefined
 let controller: AbortController | undefined
@@ -21,6 +22,7 @@ let inView = true
 let resizeObserver: ResizeObserver | undefined
 let intersectionObserver: IntersectionObserver | undefined
 let motionQuery: MediaQueryList | undefined
+let WalkingAnimationClass: typeof import('skinview3d').WalkingAnimation | undefined
 
 function draw() {
   if (viewer && state.value === 'ready' && !document.hidden && inView) viewer.render()
@@ -29,7 +31,10 @@ function draw() {
 function updateMotion() {
   if (!viewer) return
   viewer.autoRotate = rotating.value && !reducedMotion.value && !document.hidden && inView
-  viewer.renderPaused = !viewer.autoRotate
+	const shouldWalk = walking.value && !reducedMotion.value && !document.hidden && inView
+	if (shouldWalk && WalkingAnimationClass && !viewer.animation) viewer.animation = new WalkingAnimationClass()
+	if (!shouldWalk) viewer.animation = null
+	viewer.renderPaused = !(viewer.autoRotate || shouldWalk)
   draw()
 }
 
@@ -52,6 +57,7 @@ function releaseViewer() {
   current.canvas.removeEventListener('webglcontextlost', contextLost)
   current.controls.removeEventListener('change', draw)
   current.autoRotate = false
+	current.animation = null
   current.renderPaused = true
   disposePreview(current)
 }
@@ -60,6 +66,7 @@ function fail(message: string) {
   state.value = 'error'
   error.value = message
   rotating.value = false
+	walking.value = false
   controller?.abort()
   releaseViewer()
   emit('fallback')
@@ -107,7 +114,8 @@ async function initialize() {
       fail('此角色的模型类型暂不受支持。可查看下方 PNG 材质。')
       return
     }
-    const { SkinViewer } = await import('skinview3d')
+		const { SkinViewer, WalkingAnimation } = await import('skinview3d')
+		WalkingAnimationClass = WalkingAnimation
     if (!mounted || run !== generation) return
     phase = 'webgl'
     const current = new SkinViewer({ canvas: canvas.value, pixelRatio: Math.min(window.devicePixelRatio || 1, 2), renderPaused: true, zoom: 0.78 })
@@ -168,15 +176,17 @@ function zoom(factor: number) {
 
 function visibilityChanged() {
   if (document.hidden) stopRotation()
-  else draw()
+	else updateMotion()
 }
 
 function motionChanged() {
   reducedMotion.value = motionQuery?.matches ?? false
   if (reducedMotion.value) stopRotation()
+	else updateMotion()
 }
 
 watch(rotating, updateMotion)
+watch(walking, updateMotion)
 onMounted(() => {
   mounted = true
   motionQuery = window.matchMedia('(prefers-reduced-motion: reduce)')
@@ -189,7 +199,7 @@ onMounted(() => {
     intersectionObserver = new IntersectionObserver(entries => {
       inView = entries[0]?.isIntersecting ?? false
       if (!inView) stopRotation()
-      else draw()
+      else updateMotion()
     })
     intersectionObserver.observe(stage.value)
   }
@@ -219,7 +229,7 @@ onBeforeUnmount(() => {
     </div>
     <div class="viewer-controls" role="group" :aria-label="t('外观视角控制')">
       <div class="view-buttons"><button class="secondary-button" type="button" :disabled="state !== 'ready'" @click="setView('front')">{{ t("正面") }}</button><button class="secondary-button" type="button" :disabled="state !== 'ready'" @click="setView('back')">{{ t("背面") }}</button><button class="secondary-button" type="button" :disabled="state !== 'ready'" @click="setView('reset')">{{ t("重置视角") }}</button><button class="secondary-button zoom-button" type="button" :aria-label="t('放大角色')" :disabled="state !== 'ready'" @click="zoom(0.85)">＋</button><button class="secondary-button zoom-button" type="button" :aria-label="t('缩小角色')" :disabled="state !== 'ready'" @click="zoom(1.15)">−</button></div>
-      <button class="text-button rotation-button" type="button" :aria-pressed="rotating" :disabled="state !== 'ready' || reducedMotion" @click="rotating = !rotating">{{ rotating ? t('停止旋转') : t('自动旋转') }}</button>
+      <div class="viewer-motion-buttons"><button class="text-button rotation-button" type="button" :aria-pressed="rotating" :disabled="state !== 'ready' || reducedMotion" @click="rotating = !rotating">{{ rotating ? t('停止旋转') : t('自动旋转') }}</button><button class="text-button rotation-button" type="button" :aria-pressed="walking" :disabled="state !== 'ready' || reducedMotion" @click="walking = !walking">{{ walking ? t('停止走动') : t('走动') }}</button></div>
     </div>
     <p v-if="state === 'ready' && !skinHash" class="viewer-note">{{ t('默认皮肤：{name}', { name: model === 'slim' ? 'Alex' : 'Steve' }) }}</p>
     <p v-if="reducedMotion" class="viewer-note">{{ t("已启用减少动态效果，自动旋转已关闭。") }}</p>
@@ -227,7 +237,7 @@ onBeforeUnmount(() => {
 </template>
 
 <style scoped>
-.character-viewer{margin-top:24px}.appearance-heading{display:flex;align-items:center;justify-content:space-between;margin-bottom:12px}.appearance-heading h3{font-size:13px;font-weight:600}.appearance-heading>span{font-size:11px;color:var(--muted)}.viewer-stage{height:420px;position:relative;overflow:hidden;border:1px solid var(--border);border-radius:7px;background:radial-gradient(ellipse at 50% 85%,var(--accent-soft),transparent 62%),var(--subtle)}.viewer-stage::after{content:"";position:absolute;left:22%;right:22%;bottom:36px;height:1px;background:var(--border);pointer-events:none}.character-canvas{display:block;visibility:hidden;touch-action:none;cursor:grab;max-width:100%}.character-canvas:active{cursor:grabbing}.canvas-ready{visibility:visible}.viewer-message{position:absolute;inset:0;display:flex;align-items:center;justify-content:center;flex-direction:column;gap:15px;padding:30px;text-align:center;color:var(--muted);font-size:13px;line-height:1.9}.viewer-error{max-width:420px;margin:auto}.viewer-error-symbol{font-size:32px;color:var(--muted)}.viewer-message .secondary-button{margin-top:4px}.viewer-interaction-hint{position:absolute;bottom:14px;left:12px;right:12px;text-align:center;font-size:11px;color:var(--muted);pointer-events:none}.viewer-controls{display:flex;align-items:center;justify-content:space-between;flex-wrap:wrap;gap:14px;padding-top:13px}.view-buttons{display:flex;gap:7px;flex-wrap:wrap}.view-buttons .secondary-button{font-size:11px;min-height:33px;padding:7px 11px}.view-buttons .zoom-button{font-size:16px;width:33px;padding:4px}.rotation-button{font-size:11px;color:var(--accent);text-decoration:none;min-height:33px}.rotation-button[aria-pressed=true]{font-weight:600}.rotation-button:disabled{color:var(--muted);cursor:default}.viewer-note{font-size:11px;line-height:1.8;margin-top:12px;color:var(--muted)}
+.character-viewer{margin-top:24px}.appearance-heading{display:flex;align-items:center;justify-content:space-between;margin-bottom:12px}.appearance-heading h3{font-size:13px;font-weight:600}.appearance-heading>span{font-size:11px;color:var(--muted)}.viewer-stage{height:420px;position:relative;overflow:hidden;border:1px solid var(--border);border-radius:7px;background:radial-gradient(ellipse at 50% 85%,var(--accent-soft),transparent 62%),var(--subtle)}.viewer-stage::after{content:"";position:absolute;left:22%;right:22%;bottom:36px;height:1px;background:var(--border);pointer-events:none}.character-canvas{display:block;visibility:hidden;touch-action:none;cursor:grab;max-width:100%}.character-canvas:active{cursor:grabbing}.canvas-ready{visibility:visible}.viewer-message{position:absolute;inset:0;display:flex;align-items:center;justify-content:center;flex-direction:column;gap:15px;padding:30px;text-align:center;color:var(--muted);font-size:13px;line-height:1.9}.viewer-error{max-width:420px;margin:auto}.viewer-error-symbol{font-size:32px;color:var(--muted)}.viewer-message .secondary-button{margin-top:4px}.viewer-interaction-hint{position:absolute;bottom:14px;left:12px;right:12px;text-align:center;font-size:11px;color:var(--muted);pointer-events:none}.viewer-motion-buttons{display:flex;gap:12px;flex-wrap:wrap}.viewer-controls{display:flex;align-items:center;justify-content:space-between;flex-wrap:wrap;gap:14px;padding-top:13px}.view-buttons{display:flex;gap:7px;flex-wrap:wrap}.view-buttons .secondary-button{font-size:11px;min-height:33px;padding:7px 11px}.view-buttons .zoom-button{font-size:16px;width:33px;padding:4px}.rotation-button{font-size:11px;color:var(--accent);text-decoration:none;min-height:33px}.rotation-button[aria-pressed=true]{font-weight:600}.rotation-button:disabled{color:var(--muted);cursor:default}.viewer-note{font-size:11px;line-height:1.8;margin-top:12px;color:var(--muted)}
 @media(max-width:1100px){.viewer-stage{height:370px}}
 @media(max-width:560px){.viewer-stage{height:340px}.viewer-controls{gap:7px}.view-buttons{gap:5px}.view-buttons .secondary-button{padding:6px 9px}.view-buttons .zoom-button{width:30px}.viewer-interaction-hint{font-size:10px}.viewer-note{font-size:10px}.viewer-message{padding:22px;font-size:12px}}
 </style>

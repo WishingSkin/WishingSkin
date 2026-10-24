@@ -45,6 +45,7 @@ type Page = 'characters' | 'materials' | 'wardrobe' | 'library' | 'account' | 'a
 const page = ref<Page>('characters')
 const publicLibraryOpen = ref(false)
 const materialTab = ref<'skin' | 'cape' | 'upload'>('skin')
+const materialSearch = ref('')
 const characters = ref<Character[]>([])
 const selectedId = ref<number | null>(null)
 const charactersBusy = ref(false)
@@ -87,7 +88,7 @@ const failedImages = ref<string[]>([])
 const selected = computed(() => characters.value.find(character => character.id === selectedId.value))
 const viewerKey = computed(() => selected.value ? `${selected.value.id}:${selected.value.model}:${selected.value.skinHash}:${selected.value.capeHash}` : '')
 const fallbackViewer = ref('')
-const site = ref<SiteAccess>({ appearance: { logoImage: '', accent: 'blue', defaultTheme: 'system' }, noticeFormat: '', noticeHtml: '', name: 'WishingSkin', tagline: '', notice: '', registration: 'closed', mailEnabled: false, turnstileSiteKey: '', points: { enabled: false, dailyReward: 0, uploadCost: 0, characterCost: 0 } })
+const site = ref<SiteAccess>({ appearance: { logoImage: '', accent: 'blue', defaultTheme: 'system' }, noticeFormat: '', noticeHtml: '', name: 'WishingSkin', tagline: '', footer: '', notice: '', registration: 'closed', emailDomains: [], mailEnabled: false, turnstileSiteKey: '', points: { enabled: false, dailyReward: 0, uploadCost: 0, characterCost: 0 } })
 watch([() => site.value.name, locale], () => { document.title = `${site.value.name} · ${t('角色与材质')}` }, { immediate: true, flush: 'sync' })
 const siteError = ref(false)
 const accessMode = ref<AccessMode | null>(null)
@@ -199,6 +200,7 @@ function clearSession() {
   texturesBusy.value = false
   selectedTextureId.value = ''
   materialTab.value = 'skin'
+  materialSearch.value = ''
   materialFallback.value = ''
   editingTextureId.value = ''
   editTextureName.value = ''
@@ -263,7 +265,8 @@ async function loadTextures() {
   texturesBusy.value = true
   textureError.value = ''
   try {
-    const response = await api('/api/textures')
+    const params = new URLSearchParams({ q: materialSearch.value.trim() })
+    const response = await api(`/api/textures?${params}`)
     if (version !== sessionVersion) return
     if (response.status === 401) { clearSession(); loginError.value = '登录已过期，请重新登录。'; return }
     if (!response.ok) throw new Error('textures')
@@ -276,6 +279,11 @@ async function loadTextures() {
   } finally {
     if (version === sessionVersion) texturesBusy.value = false
   }
+}
+
+function searchMaterials() {
+  selectedTextureId.value = ''
+  void loadTextures()
 }
 
 async function loadWardrobe() {
@@ -664,6 +672,7 @@ onBeforeUnmount(() => window.removeEventListener('hashchange', readMailLink))
           </nav>
           <div v-if="materialTab !== 'upload'" class="materials-workspace">
             <section class="material-library panel" :aria-label="materialTab === 'skin' ? t('皮肤列表') : t('披风列表')" :aria-busy="texturesBusy">
+              <form class="library-filters material-search" role="search" @submit.prevent="searchMaterials"><label class="binding-field"><span>{{ t('搜索我的材质') }}</span><input v-model="materialSearch" maxlength="255" :placeholder="t('名称、描述或图片哈希')" :disabled="texturesBusy" /></label><button class="primary-button" type="submit" :disabled="texturesBusy">{{ t('搜索') }}</button></form>
               <div class="panel-title"><h2>{{ materialTab === 'skin' ? t('皮肤') : t('披风') }}</h2><span>{{ t('{count} 份材质', { count: visibleTextures.length }) }}</span></div>
               <div v-if="texturesBusy" class="empty-state" role="status"><span class="loading-dot"></span><h2>{{ t("正在加载材质…") }}</h2></div>
               <div v-else-if="textureError" class="empty-state" role="alert"><span class="empty-symbol" aria-hidden="true">!</span><h2>{{ t("暂时没有加载出来") }}</h2><p>{{ t(textureError) }}</p><button class="secondary-button" type="button" @click="loadTextures">{{ t("重新加载") }}</button></div>
@@ -698,17 +707,17 @@ onBeforeUnmount(() => window.removeEventListener('hashchange', readMailLink))
         </section>
         <template v-if="page === 'account'">
           <div class="page-heading"><div><h1>{{ t("账号") }}<span class="heading-pixel" aria-hidden="true"></span></h1><p>{{ t("当前登录的账号信息。") }}</p></div></div>
-          <section class="account-panel panel" aria-labelledby="account-title"><div class="account-profile"><img class="user-avatar large" :src="'/api/avatars/' + user.id + '.png?v=' + avatarVersion" alt="" width="64" height="64" /><div><h2 id="account-title">{{ user.nickname || t('我的账号') }}</h2><p>{{ t('已登录 {name}', { name: site.name }) }}</p></div></div><dl class="account-fields"><div><dt>{{ t("昵称") }}</dt><dd>{{ user.nickname || t('未设置') }}</dd></div><div><dt>{{ t("邮箱") }}</dt><dd>{{ user.email }}</dd></div><div><dt>{{ t('邮箱状态') }}</dt><dd>{{ user.emailVerified ? t('已验证') : t('未验证') }}</dd></div></dl>
+          <section class="account-panel panel" aria-labelledby="account-title"><div class="account-block account-overview"><div class="account-section-heading"><span>01</span><div><h2>{{ t('账号概览') }}</h2><p>{{ t('登录邮箱和站内身份信息。') }}</p></div></div><div class="account-profile"><img class="user-avatar large" :src="'/api/avatars/' + user.id + '.png?v=' + avatarVersion" alt="" width="64" height="64" /><div><h2 id="account-title">{{ user.nickname || t('我的账号') }}</h2><p>{{ t('已登录 {name}', { name: site.name }) }}</p></div></div><dl class="account-fields"><div><dt>{{ t("昵称") }}</dt><dd>{{ user.nickname || t('未设置') }}</dd></div><div><dt>{{ t("邮箱") }}</dt><dd>{{ user.email }}</dd></div><div><dt>{{ t('邮箱状态') }}</dt><dd>{{ user.emailVerified ? t('已验证') : t('未验证') }}</dd></div></dl></div><div class="account-block account-security"><div class="account-section-heading"><span>02</span><div><h2>{{ t('登录与安全') }}</h2><p>{{ t('更新个人资料、邮箱验证和密码。') }}</p></div></div>
             <ProfileSettings :csrf-token="csrfToken" :characters="characters" @updated="profileUpdated" @expired="expireSession" />
             <section v-if="!user.emailVerified" class="account-password"><h3>{{ t('验证邮箱') }}</h3><p v-if="user.legacyAccount">{{ t('迁移账号可继续使用，邮箱尚未验证。') }}</p><p v-else>{{ t('本机创建的管理员可先配置站点，邮箱尚未验证。') }}</p><button class="secondary-button" type="button" @click="accessMode = 'mail'">{{ t('发送验证邮件') }}</button></section>
-            <section class="account-password" aria-labelledby="password-title"><h3 id="password-title">{{ t("修改密码") }}</h3><p>{{ t("修改后会退出所有网页会话并撤销游戏令牌，需要重新登录。") }}</p><form class="password-form" @submit.prevent="changePassword"><fieldset :disabled="passwordBusy"><input type="hidden" name="username" :value="user.email" autocomplete="username" /><label class="binding-field"><span>{{ t("当前密码") }}</span><input v-model="currentPassword" type="password" autocomplete="current-password" required /></label><label class="binding-field"><span>{{ t("新密码") }}</span><input v-model="newPassword" type="password" autocomplete="new-password" required aria-describedby="password-rule" /></label><p id="password-rule" class="password-rule">{{ t("8–128 个字符，须同时包含英文字母、数字和符号；空白不计作符号。") }}</p><label class="binding-field"><span>{{ t("确认新密码") }}</span><input v-model="confirmPassword" type="password" autocomplete="new-password" required /></label><p v-if="passwordError" class="form-error" role="alert">{{ t(passwordError) }}</p><button class="primary-button" type="submit" :disabled="passwordBusy || actionBusy">{{ passwordBusy ? t('正在修改…') : t('修改密码并重新登录') }}</button></fieldset></form></section><div class="account-logout"><div><h3>{{ t("退出当前账号") }}</h3><p>{{ t("下次使用工作台时需要重新登录。") }}</p></div><button class="secondary-button" type="button" :disabled="logoutBusy || passwordBusy || actionBusy || charactersBusy || texturesBusy || wardrobeBusy" @click="logout">{{ logoutBusy ? t('正在退出…') : t('退出登录') }}</button></div><p v-if="logoutError" class="form-error" role="alert">{{ t(logoutError) }}</p></section>
+            <section class="account-password" aria-labelledby="password-title"><h3 id="password-title">{{ t("修改密码") }}</h3><p>{{ t("修改后会退出所有网页会话并撤销游戏令牌，需要重新登录。") }}</p><form class="password-form" @submit.prevent="changePassword"><fieldset :disabled="passwordBusy"><input type="hidden" name="username" :value="user.email" autocomplete="username" /><label class="binding-field"><span>{{ t("当前密码") }}</span><input v-model="currentPassword" type="password" autocomplete="current-password" required /></label><label class="binding-field"><span>{{ t("新密码") }}</span><input v-model="newPassword" type="password" autocomplete="new-password" required aria-describedby="password-rule" /></label><p id="password-rule" class="password-rule">{{ t("8–128 个字符，须同时包含英文字母、数字和符号；空白不计作符号。") }}</p><label class="binding-field"><span>{{ t("确认新密码") }}</span><input v-model="confirmPassword" type="password" autocomplete="new-password" required /></label><p v-if="passwordError" class="form-error" role="alert">{{ t(passwordError) }}</p><button class="primary-button" type="submit" :disabled="passwordBusy || actionBusy">{{ passwordBusy ? t('正在修改…') : t('修改密码并重新登录') }}</button></fieldset></form></section><div class="account-logout"><div><h3>{{ t("退出当前账号") }}</h3><p>{{ t("下次使用工作台时需要重新登录。") }}</p></div><button class="secondary-button" type="button" :disabled="logoutBusy || passwordBusy || actionBusy || charactersBusy || texturesBusy || wardrobeBusy" @click="logout">{{ logoutBusy ? t('正在退出…') : t('退出登录') }}</button></div><p v-if="logoutError" class="form-error" role="alert">{{ t(logoutError) }}</p></div></section>
         </template>
         <PointsPanel v-if="page === 'account'" :csrf-token="csrfToken" @expired="expireSession" />
         <IntegrationPanel v-if="page === 'account'" />
         <ReportsView v-if="page === 'account'" :csrf-token="csrfToken" @expired="expireSession" />
-        <SiteFooter :name="site.name" :tagline="site.tagline || t('每一个像素，都是你的模样。')" />
+        <SiteFooter :name="site.name" :tagline="site.tagline || t('每一个像素，都是你的模样。')" :footer="site.footer" />
       </main>
     </div>
-    <SiteFooter v-if="!user" class="public-site-footer" :name="site.name" :tagline="site.tagline" />
+    <SiteFooter v-if="!user" class="public-site-footer" :name="site.name" :tagline="site.tagline" :footer="site.footer" />
   </div>
 </template>

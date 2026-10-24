@@ -24,8 +24,8 @@ func (a *Server) setRegistration(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	var body struct {
-		Mode         string   `json:"mode"`
-		EmailDomains []string `json:"emailDomains"`
+		Mode         string    `json:"mode"`
+		EmailDomains *[]string `json:"emailDomains"`
 	}
 	if !decode(w, r, &body) {
 		return
@@ -34,7 +34,13 @@ func (a *Server) setRegistration(w http.ResponseWriter, r *http.Request) {
 		failure(w, 400, "注册模式无效")
 		return
 	}
-	domains, err := normalizeEmailDomains(body.EmailDomains)
+	domains := []string{}
+	var err error
+	if body.EmailDomains == nil {
+		domains, err = a.registrationEmailDomains(r.Context(), a.s.DB)
+	} else {
+		domains, err = normalizeEmailDomains(*body.EmailDomains)
+	}
 	if err != nil {
 		failure(w, 400, "注册邮箱域名格式无效")
 		return

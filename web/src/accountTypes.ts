@@ -7,8 +7,10 @@ export interface SiteAccess {
   points: PointRules
   name: string
   tagline: string
+  footer: string
   notice: string
   registration: 'closed' | 'open' | 'invitation'
+  emailDomains: string[]
   mailEnabled: boolean
   turnstileSiteKey: string
 }

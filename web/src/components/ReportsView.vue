@@ -10,6 +10,7 @@ const items = ref<Item[]>([])
 const page = ref(1)
 const total = ref(0)
 const status = ref(props.admin ? 'pending' : '')
+const query = ref('')
 const busy = ref(false)
 const saving = ref(false)
 const error = ref('')
@@ -27,7 +28,7 @@ async function load() {
   if (busy.value || saving.value) return
   busy.value = true; error.value = ''
   try {
-    const response = await fetch(`${props.admin ? '/api/admin/reports' : '/api/reports'}?${new URLSearchParams({ page: String(page.value), status: status.value })}`, { credentials: 'same-origin' })
+    const response = await fetch(`${props.admin ? '/api/admin/reports' : '/api/reports'}?${new URLSearchParams({ page: String(page.value), status: status.value, q: query.value.trim() })}`, { credentials: 'same-origin' })
     if (response.status === 401) { emit('expired'); return }
     if (!response.ok) { const data = await response.json().catch(() => ({})); error.value = data.error || '暂时无法读取举报'; return }
     const data = await response.json() as { reports: Item[]; total: number }
@@ -59,7 +60,7 @@ onMounted(load)
   <section class="reports-section" :aria-label="admin ? t('举报管理') : t('我的举报')">
     <h2 v-if="!admin">{{ t('我的举报') }}</h2>
     <p>{{ admin ? t('查看举报原因并选择处置；处理说明会向举报人展示。') : t('在公开库或衣柜的材质详情中提交举报，在这里查看进度。') }}</p>
-    <form class="admin-search panel" @submit.prevent="filter"><label class="binding-field"><span>{{ t('举报状态') }}</span><select v-model="status" :disabled="busy || saving"><option value="">{{ t('全部状态') }}</option><option v-for="(label, key) in statuses" :key="key" :value="key">{{ t(label) }}</option></select></label><button class="primary-button" type="submit" :disabled="busy || saving">{{ t('筛选') }}</button><button class="secondary-button" type="button" :disabled="busy || saving" @click="load">{{ t('刷新列表') }}</button></form>
+    <form class="admin-search panel" @submit.prevent="filter"><label class="binding-field"><span>{{ t('搜索举报') }}</span><input v-model="query" maxlength="255" :placeholder="t('材质名称、哈希、原因或账号')" :disabled="busy || saving" /></label><label class="binding-field"><span>{{ t('举报状态') }}</span><select v-model="status" :disabled="busy || saving"><option value="">{{ t('全部状态') }}</option><option v-for="(label, key) in statuses" :key="key" :value="key">{{ t(label) }}</option></select></label><button class="primary-button" type="submit" :disabled="busy || saving">{{ t('搜索') }}</button><button class="secondary-button" type="button" :disabled="busy || saving" @click="load">{{ t('刷新列表') }}</button></form>
     <form v-if="selected" class="admin-confirm panel report-fields" role="alertdialog" aria-modal="false" aria-labelledby="report-resolution-title" @submit.prevent="resolve">
       <h2 id="report-resolution-title">{{ t('处理举报') }}</h2><p class="admin-identity">{{ selected.name }}</p>
       <label class="binding-field"><span>{{ t('处理方式') }}</span><select v-model="action" :disabled="saving"><option value="dismiss">{{ t('驳回举报') }}</option><option value="disable">{{ t('下架整份图片') }}</option><option value="ban" :disabled="!selected.ownerId">{{ t('封禁上传者') }}</option></select></label>

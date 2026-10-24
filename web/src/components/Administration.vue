@@ -17,6 +17,8 @@ const users = ref<AdminUser[]>([])
 const events = ref<AdminEvent[]>([])
 const userPage = ref(1)
 const eventPage = ref(1)
+const eventSearch = ref('')
+const eventQuery = ref('')
 const userTotal = ref(0)
 const eventTotal = ref(0)
 const usersBusy = ref(false)
@@ -63,13 +65,22 @@ async function loadEvents() {
   if (eventsBusy.value) return
   eventsBusy.value = true; eventError.value = ''
   try {
-    const response = await fetch(`/api/admin/events?page=${eventPage.value}`, { credentials: 'same-origin' })
+    const response = await fetch(`/api/admin/events?${new URLSearchParams({ page: String(eventPage.value), q: eventQuery.value })}`, { credentials: 'same-origin' })
     if (response.status === 401) { emit('expired'); return }
     if (!response.ok) { const data = await response.json().catch(() => ({})); eventError.value = data.error || '暂时无法读取管理记录'; return }
     const data = await response.json() as { events: AdminEvent[]; total: number }
     events.value = data.events; eventTotal.value = data.total
   } catch { eventError.value = '暂时无法读取管理记录' }
   finally { eventsBusy.value = false }
+}
+function findEvents() { eventPage.value = 1; eventQuery.value = eventSearch.value.trim(); loadEvents() }
+async function exportEvents() {
+  if (eventsBusy.value) return
+  const response = await fetch(`/api/admin/events/export?${new URLSearchParams({ q: eventQuery.value })}`, { credentials: 'same-origin' })
+  if (response.status === 401) { emit('expired'); return }
+  if (!response.ok) { eventError.value = '暂时无法导出管理记录'; return }
+  const blob = await response.blob()
+  const url = URL.createObjectURL(blob); const link = document.createElement('a'); link.href = url; link.download = 'wishingskin-admin-events.csv'; link.click(); setTimeout(() => URL.revokeObjectURL(url), 1000)
 }
 function findUsers() { if (usersBusy.value || saving.value) return; query.value = search.value; userPage.value = 1; pending.value = null; loadUsers() }
 function turnPage(kind: 'users' | 'events', offset: number) { if (kind === 'users') { userPage.value += offset; pending.value = null; loadUsers() } else { eventPage.value += offset; loadEvents() } }
@@ -114,7 +125,8 @@ onMounted(loadUsers)
     </section>
     <ReportsView v-if="tab === 'reports'" admin :csrf-token="csrfToken" @expired="emit('expired')" />
     <section v-show="tab === 'events'" :aria-label="t('管理记录')">
-      <div class="admin-record-heading"><p>{{ t('这里只展示已成功提交的管理变更。') }}</p><button type="button" class="secondary-button" :disabled="eventsBusy" @click="loadEvents">{{ t('刷新列表') }}</button></div>
+      <form class="admin-search panel" @submit.prevent="findEvents"><label class="binding-field"><span>{{ t('搜索管理记录') }}</span><input v-model="eventSearch" maxlength="255" :placeholder="t('动作、对象类型、对象编号或操作者')" :disabled="eventsBusy" /></label><button type="submit" class="primary-button" :disabled="eventsBusy">{{ t('搜索') }}</button><button type="button" class="secondary-button" :disabled="eventsBusy" @click="loadEvents">{{ t('刷新列表') }}</button><button type="button" class="secondary-button" :disabled="eventsBusy" @click="exportEvents">{{ t('导出 CSV') }}</button></form>
+      <div class="admin-record-heading"><p>{{ t('这里只展示已成功提交的管理变更。') }}</p></div>
       <div v-if="eventsBusy" class="empty-state panel" role="status"><p>{{ t('正在加载管理记录…') }}</p></div><div v-else-if="eventError" class="empty-state panel" role="alert"><p>{{ t(eventError) }}</p><button class="secondary-button" type="button" @click="loadEvents">{{ t('重新加载') }}</button></div>
       <div v-else class="panel admin-list"><p v-if="!events.length" class="empty-state">{{ t('暂无管理记录。') }}</p><article v-for="item in events" :key="item.id" class="admin-event"><h2>{{ t(actionNames[item.action] || '其他管理操作') }}</h2><time :datetime="new Date(item.createdAt * 1000).toISOString()">{{ timeLabel(item.createdAt) }}</time><p>{{ t('操作者') }}：{{ item.actorId === '0' ? t('本机初始化') : `#${item.actorId}` }}</p><p>{{ t(targetNames[item.targetType] || '管理对象') }}：{{ item.targetType === 'site' ? t(settingNames[item.targetId] || '站点设置') : item.targetType === 'invitation' ? t('已生成（不显示邀请码）') : `#${item.targetId}` }}</p></article><div class="library-pagination"><button class="secondary-button" type="button" :disabled="eventPage <= 1" @click="turnPage('events', -1)">{{ t('上一页') }}</button><span>{{ t('第 {page} 页，共 {total} 条记录', { page: eventPage, total: eventTotal }) }}</span><button class="secondary-button" type="button" :disabled="eventPage * 20 >= eventTotal" @click="turnPage('events', 1)">{{ t('下一页') }}</button></div></div>
     </section>

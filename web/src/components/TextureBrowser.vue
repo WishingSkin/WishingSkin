@@ -25,7 +25,11 @@ const selectedId = ref('')
 const alias = ref('')
 const fallback = ref('')
 const failedImages = ref<string[]>([])
-const items = computed(() => props.mode === 'library' ? records.value : props.wardrobe)
+const items = computed(() => {
+  if (props.mode === 'library') return records.value
+  const needle = query.value.trim().toLowerCase()
+  return props.wardrobe.filter(item => (!kind.value || item.kind === kind.value) && (!needle || [item.displayName, item.name, item.fileHash, item.description].some(value => value.toLowerCase().includes(needle))))
+})
 const selected = computed(() => items.value.find(item => item.id === selectedId.value))
 const pending = computed(() => props.mode === 'library' ? loading.value : props.wardrobeBusy)
 const error = computed(() => props.mode === 'library' ? loadError.value : props.wardrobeError)
@@ -108,6 +112,11 @@ onBeforeUnmount(() => { active = false; request?.abort(); lifetime.abort() })
       <label class="binding-field"><span>{{ t("排序") }}</span><select v-model="sort" @change="search"><option value="name">{{ t("名称升序") }}</option><option value="name-desc">{{ t("名称降序") }}</option><option value="collections">{{ t("收藏最多") }}</option></select></label>
       <button class="primary-button" type="submit" :disabled="pending">{{ t("搜索") }}</button>
       <p v-if="owner" class="owner-filter">{{ t("上传者：") }}{{ ownerName || t('这位上传者') }} <button type="button" class="text-button" @click="owner = ''; ownerName = ''; search()">{{ t("查看所有上传者") }}</button></p>
+    </form>
+    <form v-else class="library-filters panel" role="search" @submit.prevent="selectedId = ''; void load()">
+      <label class="binding-field library-search"><span>{{ t('搜索我的衣柜') }}</span><input v-model="query" maxlength="255" :placeholder="t('收藏名、材质名称或图片哈希')" /></label>
+      <label class="binding-field"><span>{{ t('类型') }}</span><select v-model="kind"><option value="">{{ t('全部材质') }}</option><option value="skin">{{ t('皮肤') }}</option><option value="cape">{{ t('披风') }}</option></select></label>
+      <button class="primary-button" type="submit">{{ t('搜索') }}</button>
     </form>
     <p v-if="actionError" class="form-error action-feedback" role="alert">{{ t(actionError) }}</p><p v-if="message" class="action-success" role="status">{{ t(message) }}</p>
     <div class="materials-workspace">

@@ -8,6 +8,7 @@ const items = ref<Item[]>([])
 const page = ref(1)
 const total = ref(0)
 const status = ref('')
+const query = ref('')
 const busy = ref(false)
 const loaded = ref(false)
 const error = ref('')
@@ -16,7 +17,7 @@ async function load() {
   if (busy.value) return
   busy.value = true; error.value = ''
   try {
-    const response = await fetch(`/api/admin/legacy-reports?${new URLSearchParams({ page: String(page.value), status: status.value })}`, { credentials: 'same-origin' })
+    const response = await fetch(`/api/admin/legacy-reports?${new URLSearchParams({ page: String(page.value), status: status.value, q: query.value.trim() })}`, { credentials: 'same-origin' })
     if (response.status === 401) { emit('expired'); return }
     if (!response.ok) { const data = await response.json().catch(() => ({})); error.value = data.error || '暂时无法读取历史举报'; return }
     const data = await response.json() as { reports: Item[]; total: number }
@@ -36,6 +37,7 @@ function turn(offset: number) { page.value += offset; load() }
       <p>{{ t('这里只显示已导入的旧举报。编号和状态来自原站，不关联新站账号或材质；待处理项请在新后台另行核查处置。') }}</p>
       <p>{{ t('原站未记录处理人、处理动作和处理时间。下方为原始时间文本，未换算时区；空值表示缺失，零日期保留原样。') }}</p>
       <form class="admin-search panel" @submit.prevent="filter">
+        <label class="binding-field"><span>{{ t('搜索历史举报') }}</span><input v-model="query" maxlength="255" :placeholder="t('原因、材质或用户编号')" :disabled="busy" /></label>
         <label class="binding-field"><span>{{ t('原站举报状态') }}</span><select v-model="status" :disabled="busy"><option value="">{{ t('全部状态') }}</option><option v-for="(label, index) in statuses" :key="index" :value="String(index)">{{ t(label) }}</option></select></label>
         <button class="primary-button" type="submit" :disabled="busy">{{ t('筛选') }}</button><button class="secondary-button" type="button" :disabled="busy" @click="load">{{ t('刷新列表') }}</button>
       </form>
