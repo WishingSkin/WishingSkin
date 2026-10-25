@@ -92,7 +92,12 @@ func (a *Server) site(w http.ResponseWriter, r *http.Request) {
 		failure(w, 503, "暂时无法读取注册设置")
 		return
 	}
-	respond(w, 200, map[string]any{"appearance": custom, "homepage": homepage, "noticeFormat": brand.NoticeFormat, "noticeHtml": renderNotice(brand.Notice, brand.NoticeFormat), "name": brand.Name, "tagline": brand.Tagline, "footer": brand.Footer, "notice": brand.Notice, "registration": mode, "emailDomains": domains, "mailEnabled": services.Mail != nil, "turnstileSiteKey": services.SiteKey, "points": points})
+	oidcConfig, err := a.oidcSettings(r.Context())
+	if err != nil {
+		failure(w, 503, "暂时无法读取站点设置")
+		return
+	}
+	respond(w, 200, map[string]any{"appearance": custom, "homepage": publicHomepage(homepage), "oidc": map[string]any{"enabled": oidcConfig.Enabled, "name": oidcConfig.Name}, "noticeFormat": brand.NoticeFormat, "noticeHtml": renderNotice(brand.Notice, brand.NoticeFormat), "name": brand.Name, "tagline": brand.Tagline, "footer": brand.Footer, "notice": brand.Notice, "registration": mode, "emailDomains": domains, "mailEnabled": services.Mail != nil, "turnstileSiteKey": services.SiteKey, "points": points})
 }
 
 func validEmail(value string) bool {
@@ -257,9 +262,24 @@ func (a *Server) register(w http.ResponseWriter, r *http.Request) {
 		failure(w, 429, "注册尝试过于频繁，请稍后重试")
 		return
 	}
-	var body struct{ Email, Nickname, Password, Invitation, TurnstileToken string }
+	var body struct {
+		Email, Nickname, Password, Invitation, TurnstileToken string
+		OIDC                                                  bool
+	}
 	if !decode(w, r, &body) {
 		return
+	}
+	var signupCookie *http.Cookie
+	if body.OIDC {
+		signupCookie, err = r.Cookie("ws_oidc_signup")
+		if err != nil {
+			failure(w, 400, "OIDC 注册已失效，请重新登录")
+			return
+		}
+		if _, err := a.readOIDCFlow(r.Context(), a.s.DB, signupCookie.Value, "signup", false); err != nil {
+			failure(w, 400, "OIDC 注册已失效，请重新登录")
+			return
+		}
 	}
 	body.Email = strings.TrimSpace(body.Email)
 	body.Nickname = strings.TrimSpace(body.Nickname)
@@ -337,6 +357,15 @@ func (a *Server) register(w http.ResponseWriter, r *http.Request) {
 			return
 		}
 	}
+	var signup oidcFlow
+	if body.OIDC {
+		signup, err = a.readOIDCFlow(r.Context(), tx, signupCookie.Value, "signup", true)
+		config, configErr := a.oidcSettings(r.Context())
+		if err != nil || configErr != nil || !config.Enabled || signup.ConfigHash != oidcFingerprint(config) {
+			failure(w, 400, "OIDC 注册已失效，请重新登录")
+			return
+		}
+	}
 	_, err = tx.ExecContext(r.Context(), a.s.Bind("INSERT INTO users(id,email,email_key,nickname,password_hash,password_method,password_salt) VALUES(?,?,?,?,?,'ARGON2ID','')"), id, body.Email, strings.ToLower(body.Email), body.Nickname, hash)
 	if uniqueViolation(err) {
 		failure(w, 409, "此邮箱已注册，请登录或找回密码")
@@ -344,6 +373,16 @@ func (a *Server) register(w http.ResponseWriter, r *http.Request) {
 	}
 	if err == nil {
 		_, err = tx.ExecContext(r.Context(), a.s.Bind("INSERT INTO account_states(user_id,email_verified,verification_required) VALUES(?,?,?)"), id, false, true)
+	}
+	if err == nil && body.OIDC {
+		err = a.insertOIDCIdentity(r.Context(), tx, id, signup)
+		if uniqueViolation(err) {
+			failure(w, 409, "此 OIDC 身份已绑定，请重新登录")
+			return
+		}
+		if err == nil {
+			_, err = tx.ExecContext(r.Context(), a.s.Bind("DELETE FROM oidc_flows WHERE flow_hash=?"), tokenHash(signupCookie.Value))
+		}
 	}
 	if err == nil {
 		err = a.issueAccountMail(r.Context(), tx, id, body.Email, "verify")
@@ -354,6 +393,9 @@ func (a *Server) register(w http.ResponseWriter, r *http.Request) {
 	if err != nil {
 		failure(w, 503, "注册未完成，邮件可能未发送，请稍后重试")
 		return
+	}
+	if body.OIDC {
+		a.oidcCookie(w, "ws_oidc_signup", "", -1)
 	}
 	respond(w, 201, map[string]string{"message": "账号已创建，验证邮件已提交发送。请验证邮箱后登录。"})
 }

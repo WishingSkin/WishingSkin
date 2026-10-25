@@ -17,6 +17,7 @@ var tables = []table{
 	{"wardrobe", "user_id,record_id,display_name,collected_at", "issi", "user_id,record_id"},
 	{"account_states", "user_id,email_verified,verification_required", "ibb", "user_id"},
 	{"user_profiles", "user_id,avatar_mode,character_uuid,avatar_image", "isss", "user_id"},
+	{"oidc_identities", "identity_key,issuer_key,user_id,issuer,subject,created_at", "ssissi", "identity_key"},
 	{"settings", "setting_key,value", "ss", "setting_key"},
 	{"site_notices", "notice_id,content,format,created_at", "sssi", "notice_id"},
 	{"migration_state", "id,source_fingerprint,status,report", "isss", "id"},
@@ -26,7 +27,7 @@ var tables = []table{
 	{"legacy_reports", "id,tid,uploader,reporter,reason,status,report_at", "iiiisiS", "id"},
 }
 
-var credentialTables = []string{"web_sessions", "ygg_join_sessions", "game_tokens", "account_tokens", "invitation_codes"}
+var credentialTables = []string{"web_sessions", "ygg_join_sessions", "game_tokens", "account_tokens", "invitation_codes", "oidc_flows"}
 
 func (t table) insert() string {
 	return "INSERT INTO " + t.name + "(" + t.columns + ") VALUES(" + strings.TrimSuffix(strings.Repeat("?,", len(t.types)), ",") + ")"

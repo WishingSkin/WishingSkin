@@ -15,8 +15,10 @@ import (
 	"net/netip"
 	"net/url"
 	"strings"
+	"sync"
 	"time"
 
+	"github.com/coreos/go-oidc/v3/oidc"
 	"wishingskin/internal/credential"
 	"wishingskin/internal/mailer"
 	pluginregistry "wishingskin/internal/plugins"
@@ -33,6 +35,7 @@ type Config struct {
 	SettingsKey           []byte
 	SMTP                  *mailer.SMTP
 	TurnstileSecret       string
+	OIDC                  OIDCSettings
 }
 type Server struct {
 	s                  *store.Store
@@ -52,6 +55,9 @@ type Server struct {
 	dummy              string
 	pointsNow          func() time.Time
 	plugins            *pluginregistry.Registry
+	oidcMu             sync.Mutex
+	oidcProvider       *oidc.Provider
+	oidcConfigHash     string
 }
 type User struct {
 	ID             int64  `json:"id"`
@@ -98,6 +104,7 @@ func New(s *store.Store, cfg Config) (*Server, error) {
 	a.mux.HandleFunc("GET /api/site", a.site)
 	a.mux.HandleFunc("GET /api/notices", a.notices)
 	a.registerAccountAccess()
+	a.registerOIDC()
 	a.registerCustomization()
 	a.registerAdministration()
 	a.registerModeration()
@@ -247,6 +254,10 @@ func (a *Server) ready(w http.ResponseWriter, r *http.Request) {
 	}
 	if _, _, err := a.serviceSettings(ctx); err != nil {
 		failure(w, 503, "服务设置不可用，请检查本地设置密钥")
+		return
+	}
+	if _, err := a.oidcSettings(ctx); err != nil {
+		failure(w, 503, "OIDC 设置不可用，请检查本地设置密钥")
 		return
 	}
 	respond(w, 200, map[string]string{"status": "ready"})

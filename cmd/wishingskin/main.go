@@ -137,7 +137,7 @@ func run() error {
 	}
 	// A restored encrypted configuration must never silently generate a replacement key.
 	var encryptedCount int
-	if err := db.DB.QueryRowContext(ctx, "SELECT COUNT(*) FROM settings WHERE setting_key='service_config'").Scan(&encryptedCount); err != nil {
+	if err := db.DB.QueryRowContext(ctx, "SELECT COUNT(*) FROM settings WHERE setting_key IN ('service_config','oidc_config')").Scan(&encryptedCount); err != nil {
 		return fmt.Errorf("cannot inspect service settings")
 	}
 	if encryptedCount > 0 {

@@ -35,7 +35,7 @@ B04 的现代预览、B11 的具体限流方式属于新站设计建议，不表
 | E04 | 开放/关闭注册、每账号角色数量限制 | `disable-registration`、`single-player-limit` | 首版内建，已确认；作为站点设置，不需要管理员另装插件 | S12 |
 | E05 | 材质描述 | `texture-description` | 首版内建，已确认；提供简短描述，富文本不作为默认需求 | S12 |
 | E06 | 注册邮箱域名白/黑名单 | `restricted-email-domains` | 可选，尚未纳入首版；按服主反滥用需求另行确认 | S12 |
-| E07 | 第三方网页登录 | `oauth` 客户端核心及 GitHub、Google、LittleSkin、Microsoft Live 登录插件 | OIDC 已确认后续接入；不照搬各供应商专用插件作为首版目标 | S12 |
+| E07 | 第三方网页登录 | `oauth` 客户端核心及 GitHub、Google、LittleSkin、Microsoft Live 登录插件 | OIDC 已提前实现单提供商登录、绑定和保留本站注册规则的新账号创建；本地 Logto 验证见 [验收记录](homepage-oidc-validation.md) | S12 |
 | E08 | 把皮肤站作为其他应用的 OAuth2 授权服务 | 核心已有 OAuth2 应用管理及受 scope 保护的 API | 建议后续；与通过 OIDC 登录本站方向相反，分开设计 | S1、S8 |
 | E09 | Minecraft 正版验证及绑定 | `mojang-verification` | 建议后续；不能用普通 Microsoft 登录成功代替正版持有验证 | S13 |
 | E10 | AuthMe、论坛等既有账号系统对接 | 官方 README 列为插件能力，具体连接器需按源站盘点 | 按实际使用情况规划；不默认首版适配所有外部账号库 | S7、S12 |
@@ -69,7 +69,7 @@ E01 的两个 BS 插件存在迁移差异：Connect 的 UUID 关联方式及令�
 
 ## 已确认的首版组合
 
-B01–B12、E01–E05、N05–N06 和 M01–M04 已确认为首版范围。其中 B07 的积分/签到允许关闭，E03 的邀请码现采用随程序发行的官方模块，新安装默认邮箱验证注册。首版包含本地账号、邮箱验证与找回；OIDC 后续接入。其余候选保留，需另行确认。2026-10-23 新增站点设置/资料及模型展示范围见[设置扩展](../openspec/changes/add-settings-and-profiles/proposal.md)。
+B01–B12、E01–E05、N05–N06 和 M01–M04 已确认为首版范围。其中 B07 的积分/签到允许关闭，E03 的邀请码现采用随程序发行的官方模块，新安装默认邮箱验证注册。首版包含本地账号、邮箱验证与找回；OIDC 已提前实现，仍保留本站注册、验证码、邀请码和邮件验证规则。其余候选保留，需另行确认。2026-10-23 新增站点设置/资料及模型展示范围见[设置扩展](../openspec/changes/add-settings-and-profiles/proposal.md)。
 
 E01–E05 按用途内建，首版不做插件运行机制。其他暂不需要内建的能力，后续可考虑官方插件；具体哪些能力做插件、采用何种运行机制，均未确定。Webhook、开放 API 或可加载插件运行时仍是后续可讨论的方向；Webhook 不表示能替代所有 BS 插件。
 

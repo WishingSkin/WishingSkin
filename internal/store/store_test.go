@@ -54,6 +54,7 @@ func assertEmbeddedSchemasAgree(t *testing.T, migration string) {
 	mysqlOptions := regexp.MustCompile(` ENGINE=InnoDB DEFAULT CHARACTER SET utf8mb4 COLLATE utf8mb4_0900_bin`)
 	ownerIndex := regexp.MustCompile(`,? KEY texture_records_owner\s*\(owner_id\)|CREATE INDEX IF NOT EXISTS texture_records_owner ON texture_records\(owner_id\);`)
 	wardrobeIndex := regexp.MustCompile(`CREATE INDEX IF NOT EXISTS wardrobe_record_id_idx ON wardrobe\(record_id\);`)
+	oidcIndex := regexp.MustCompile(`, INDEX oidc_flow_expiry\(expires_at\)|CREATE INDEX IF NOT EXISTS oidc_flow_expiry ON oidc_flows\(expires_at\);`)
 	normalize := func(source string) string {
 		// Compare DDL here; dialect-specific backfill/upsert behavior is tested against both databases.
 		source = strings.SplitN(source, "INSERT INTO", 2)[0]
@@ -67,12 +68,20 @@ func assertEmbeddedSchemasAgree(t *testing.T, migration string) {
 		source = ownerIndex.ReplaceAllString(source, "")
 		// InnoDB creates this index for the foreign key automatically.
 		source = wardrobeIndex.ReplaceAllString(source, "")
+		// The same OIDC expiry index is declared inline on MySQL.
+		source = oidcIndex.ReplaceAllString(source, "")
 		return strings.Join(strings.Fields(source), " ")
 	}
 	if normalize(string(mysql)) != normalize(string(postgres)) {
 		t.Fatal("MySQL and PostgreSQL schema definitions differ")
 	}
 	tables := []string{"ygg_join_sessions"}
+	if migration == "015_oidc" {
+		tables = []string{"oidc_identities", "oidc_flows"}
+		if !strings.Contains(string(mysql), "INDEX oidc_flow_expiry(expires_at)") || !strings.Contains(string(postgres), "INDEX IF NOT EXISTS oidc_flow_expiry ON oidc_flows(expires_at)") {
+			t.Error("missing OIDC expiry index")
+		}
+	}
 	if migration == "011_site_notices" {
 		tables = []string{"site_notices"}
 	}
