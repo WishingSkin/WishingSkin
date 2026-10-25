@@ -67,6 +67,15 @@ func (s *Store) Migrate(ctx context.Context) (err error) {
 			if statement == "" {
 				continue
 			}
+			if next == 13 {
+				exists, err := s.invitationExportDDLExists(ctx, conn, statement)
+				if err != nil {
+					return fmt.Errorf("inspect schema migration 13: %w", err)
+				}
+				if exists {
+					continue
+				}
+			}
 			if _, err := conn.ExecContext(ctx, statement); err != nil {
 				return fmt.Errorf("apply schema migration %d: %w", next, err)
 			}
@@ -76,6 +85,30 @@ func (s *Store) Migrate(ctx context.Context) (err error) {
 		}
 	}
 	return nil
+}
+
+// MySQL lacks ADD COLUMN IF NOT EXISTS. Inspect each schema-13 DDL under the
+// migration lock so an exit between statements can resume without losing data.
+func (s *Store) invitationExportDDLExists(ctx context.Context, conn *sql.Conn, statement string) (bool, error) {
+	var query, name string
+	if strings.HasPrefix(statement, "ALTER TABLE invitation_codes ADD COLUMN ") {
+		name = strings.Fields(statement)[5]
+		query = "SELECT COUNT(*) FROM information_schema.columns WHERE table_schema=current_schema() AND table_name='invitation_codes' AND column_name=?"
+		if s.Dialect == "mysql" {
+			query = "SELECT COUNT(*) FROM information_schema.columns WHERE table_schema=DATABASE() AND table_name='invitation_codes' AND column_name=?"
+		}
+	} else if strings.HasPrefix(statement, "CREATE UNIQUE INDEX invitation_codes_source_id ") {
+		name = "invitation_codes_source_id"
+		query = "SELECT COUNT(*) FROM pg_indexes WHERE schemaname=current_schema() AND tablename='invitation_codes' AND indexname=?"
+		if s.Dialect == "mysql" {
+			query = "SELECT COUNT(*) FROM information_schema.statistics WHERE table_schema=DATABASE() AND table_name='invitation_codes' AND index_name=?"
+		}
+	} else {
+		return false, fmt.Errorf("unexpected invitation export DDL")
+	}
+	var count int
+	err := conn.QueryRowContext(ctx, s.Bind(query), name).Scan(&count)
+	return count != 0, err
 }
 
 func (s *Store) lockMigration(ctx context.Context, conn *sql.Conn) error {

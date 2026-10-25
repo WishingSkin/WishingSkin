@@ -172,7 +172,7 @@ func (a *Server) publicWrite(w http.ResponseWriter, r *http.Request) bool {
 func (a *Server) challenge(w http.ResponseWriter, r *http.Request, token, action string) bool {
 	services, serviceErr := a.services(r.Context())
 	if serviceErr != nil || services.Challenge == nil || services.SiteKey == "" {
-		failure(w, 503, "人机验证尚未配置，请联系管理员")
+		respond(w, 503, map[string]any{"error": "人机验证尚未配置，请联系管理员", "captchaRequired": true})
 		return false
 	}
 	err := services.Challenge.Verify(r.Context(), token, connectionIP(r), action)
@@ -181,7 +181,7 @@ func (a *Server) challenge(w http.ResponseWriter, r *http.Request, token, action
 		return false
 	}
 	if err != nil {
-		failure(w, 503, "人机验证暂不可用，请重试")
+		respond(w, 503, map[string]any{"error": "人机验证暂不可用，请重试", "captchaRequired": true})
 		return false
 	}
 	return true

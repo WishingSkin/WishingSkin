@@ -288,12 +288,48 @@ func TestLoginChallengeAndRecoveryWindowBothDatabases(t *testing.T) {
 	}
 }
 
+type unavailableChallenge struct{}
+
+func (unavailableChallenge) Verify(context.Context, string, string, string) error {
+	return errors.New("synthetic provider unavailable")
+}
+
+func TestLoginChallengeFreshPageAndIPWindowBothDatabases(t *testing.T) {
+	for _, dialect := range []string{"mysql", "postgres"} {
+		t.Run(dialect, func(t *testing.T) {
+			f, _ := accessApp(t, dialect)
+			seedPassword(t, f, 1, "old")
+			seedPassword(t, f, 2, "other")
+			for i := 0; i < 5; i++ {
+				w := f.call(0, "POST", "/api/auth/login", map[string]string{"email": " 1@EXAMPLE.TEST ", "password": "wrong"})
+				webStatus(t, w, 401)
+				if strings.Contains(w.Body.String(), `"captchaRequired":true`) != (i == 4) {
+					t.Fatal("incorrect challenge threshold")
+				}
+			}
+			for _, provider := range []ChallengeVerifier{nil, unavailableChallenge{}} {
+				f.app.cfg.Challenge = provider
+				w := f.call(0, "POST", "/api/auth/login", map[string]string{"email": "2@example.test", "password": "other"})
+				webStatus(t, w, 503)
+				if !strings.Contains(w.Body.String(), `"captchaRequired":true`) || len(w.Result().Cookies()) != 0 {
+					t.Fatal("fresh page lost challenge or bypassed IP gate")
+				}
+			}
+			f.app.cfg.Challenge = testChallenge{}
+			f.app.loginLimit.now = func() time.Time { return time.Now().Add(16 * time.Minute) }
+			f.app.loginFailures.now = func() time.Time { return time.Now().Add(16 * time.Minute) }
+			webStatus(t, f.call(0, "POST", "/api/auth/login", map[string]string{"email": "1@example.test", "password": "old"}), 200)
+		})
+	}
+}
+
 func TestRegistrationAdministrationAuditBothDatabases(t *testing.T) {
 	for _, dialect := range []string{"mysql", "postgres"} {
 		t.Run(dialect, func(t *testing.T) {
 			f, _ := accessApp(t, dialect)
 			// Enable the module without an audit event so this case isolates audit rollback.
 			f.exec("INSERT INTO settings(setting_key,value) VALUES('official_invitation',?)", "{\"enabled\":true,\"required\":true}")
+			f.exec("UPDATE plugins SET enabled=TRUE WHERE plugin_id='wishingskin.invitations'")
 			f.exec("ALTER TABLE admin_events RENAME COLUMN action TO unavailable_action")
 			webStatus(t, f.call(3, "PATCH", "/api/admin/registration", map[string]string{"mode": "open"}), 503)
 			webStatus(t, f.call(3, "POST", "/api/admin/invitations", map[string]int{"uses": 1, "hours": 24}), 503)

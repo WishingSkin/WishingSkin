@@ -68,6 +68,7 @@ func seed(t *testing.T, dialect string) (*store.Store, string) {
 	exec("INSERT INTO user_profiles(user_id,avatar_mode,character_uuid,avatar_image) VALUES(?,?,?,?)", uid, "character", uuid, "")
 	exec("INSERT INTO settings(setting_key,value) VALUES(?,?)", "service_config", "synthetic-opaque-encrypted-setting")
 	exec("INSERT INTO settings(setting_key,value) VALUES(?,?)", "site_name", "Synthetic backup site")
+	exec("INSERT INTO settings(setting_key,value) VALUES(?,?)", "mail_template", `{"brandName":"Backup mail brand","accentColor":"#8844cc","verify":{"body":"Custom verification copy"}}`)
 	exec("INSERT INTO site_notices(notice_id,content,format,created_at) VALUES(?,?,?,?)", "synthetic-notice", "**Backup notice**", "markdown", 1760000000000)
 	exec("UPDATE settings SET value=? WHERE setting_key='character_limit'", "3")
 	exec("INSERT INTO admin_events(event_id,actor_id,action,target_type,target_id,created_at) VALUES(?,?,?,?,?,?)", strings.Repeat("a", 32), uid, "fixture", "user", "1", 1700000000)
@@ -253,7 +254,8 @@ func TestInvalidBackupsDoNotWrite(t *testing.T) {
 						t.Fatal("preflight wrote target files", err)
 					}
 					assertCount(t, target, "users", 0)
-					assertCount(t, target, "settings", 3)
+					// Fresh schema keeps character limit, registration mode, points and homepage defaults.
+					assertCount(t, target, "settings", 4)
 				})
 			}
 		})
@@ -335,7 +337,7 @@ func TestRestoreFailureRollsBackBothDatabases(t *testing.T) {
 			for _, name := range []string{"users", "textures", "texture_records", "characters"} {
 				assertCount(t, db, name, 0)
 			}
-			assertCount(t, db, "settings", 3)
+			assertCount(t, db, "settings", 4)
 			if _, err := os.Stat(filepath.Join(dir, ".restore-incomplete.json")); err != nil {
 				t.Fatal("failure lost inspection marker", err)
 			}

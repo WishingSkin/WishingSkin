@@ -206,6 +206,13 @@ func TestInvitationPluginEmailGateBothDatabases(t *testing.T) {
 			webStatus(t, f.call(0, "POST", "/api/auth/login", map[string]string{"email": body["email"], "password": body["password"]}), 200)
 			// Disable then enable legacy invitation mode: it must restore the required gate.
 			webStatus(t, f.call(3, "PATCH", "/api/admin/plugins/invitations", map[string]bool{"enabled": false, "required": false}), 200)
+			f.exec("ALTER TABLE admin_events RENAME COLUMN action TO unavailable_action")
+			webStatus(t, f.call(3, "PATCH", "/api/admin/registration", map[string]string{"mode": "invitation"}), 503)
+			f.exec("ALTER TABLE admin_events RENAME COLUMN unavailable_action TO action")
+			var enabled bool
+			if err := f.db.DB.QueryRow("SELECT enabled FROM plugins WHERE plugin_id='wishingskin.invitations'").Scan(&enabled); err != nil || enabled {
+				t.Fatal("unaudited registration enabled invitation plugin", err)
+			}
 			webStatus(t, f.call(3, "PATCH", "/api/admin/registration", map[string]string{"mode": "invitation"}), 204)
 			var options invitationOptions
 			response := f.call(3, "GET", "/api/admin/plugins/invitations", nil)

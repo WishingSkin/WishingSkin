@@ -65,6 +65,9 @@ func (a *Server) setRegistration(w http.ResponseWriter, r *http.Request) {
 	}
 	if err == nil && body.Mode == "invitation" {
 		err = a.putSetting(r.Context(), tx, "official_invitation", invitationOptions{Enabled: true, Required: true})
+		if err == nil {
+			_, err = tx.ExecContext(r.Context(), "UPDATE plugins SET enabled=TRUE WHERE plugin_id='wishingskin.invitations'")
+		}
 	}
 	if err == nil {
 		err = a.s.RecordAdminEvent(r.Context(), tx, u.ID, "registration."+body.Mode, "site", "registration")

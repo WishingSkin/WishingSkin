@@ -109,17 +109,25 @@ func TestLegacyReportsImportBothDatabases(t *testing.T) {
 			s, source := legacyReportsFixture(t, nil)
 			s.Branding = map[string]string{"site_name": "Rollback source", "site_description": "Historical import", "announcement": "Preserved text"}
 			target := filepath.Join(t.TempDir(), "textures")
+			var homepageBefore string
+			if err := db.DB.QueryRow("SELECT value FROM settings WHERE setting_key='homepage_blocks'").Scan(&homepageBefore); err != nil {
+				t.Fatal(err)
+			}
 			if _, err := db.DB.Exec("ALTER TABLE legacy_reports RENAME COLUMN reason TO unavailable_reason"); err != nil {
 				t.Fatal(err)
 			}
 			if r, err := Import(context.Background(), db, s, source, target); err == nil || r.Imported {
 				t.Fatal("history failure accepted")
 			}
-			for _, table := range []string{"users", "characters", "textures", "texture_records", "wardrobe", "legacy_reports", "settings WHERE setting_key NOT IN ('character_limit','registration_mode','points_rules')"} {
+			for _, table := range []string{"users", "characters", "textures", "texture_records", "wardrobe", "legacy_reports", "settings WHERE setting_key NOT IN ('character_limit','registration_mode','points_rules','homepage_blocks')"} {
 				var count int
 				if err := db.DB.QueryRow("SELECT COUNT(*) FROM " + table).Scan(&count); err != nil || count != 0 {
 					t.Fatal("historical import failed to roll back", table, count, err)
 				}
+			}
+			var homepageAfter string
+			if err := db.DB.QueryRow("SELECT value FROM settings WHERE setting_key='homepage_blocks'").Scan(&homepageAfter); err != nil || homepageAfter != homepageBefore {
+				t.Fatal("rollback changed default homepage", err)
 			}
 			if _, err := db.DB.Exec("ALTER TABLE legacy_reports RENAME COLUMN unavailable_reason TO reason"); err != nil {
 				t.Fatal(err)

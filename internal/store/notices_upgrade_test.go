@@ -21,7 +21,7 @@ func TestNoticeHistoryUpgradeBothDatabases(t *testing.T) {
 			}
 			for _, query := range []string{
 				"DROP TABLE site_notices",
-				"DELETE FROM schema_migrations WHERE version=11",
+				"DELETE FROM schema_migrations WHERE version>=11",
 				"UPDATE settings SET value='closed' WHERE setting_key='registration_mode'",
 				"INSERT INTO settings(setting_key,value) VALUES('site_notice','existing notice')",
 			} {

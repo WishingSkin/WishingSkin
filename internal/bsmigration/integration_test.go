@@ -159,6 +159,10 @@ func TestIntegrationImportBothDatabases(t *testing.T) {
 					s := isolatedStore(t, dialect, dsn)
 					target := filepath.Join(t.TempDir(), "textures")
 					if recover {
+						var homepageBefore string
+						if err := s.DB.QueryRow("SELECT value FROM settings WHERE setting_key='homepage_blocks'").Scan(&homepageBefore); err != nil {
+							t.Fatal(err)
+						}
 						undo := installFailure(t, s)
 						if failed, err := Import(context.Background(), s, snapshot, source, target); err == nil || failed.Imported {
 							t.Fatal("injected failure was ignored")
@@ -167,11 +171,15 @@ func TestIntegrationImportBothDatabases(t *testing.T) {
 							var n int
 							query := "SELECT COUNT(*) FROM " + table
 							if table == "settings" {
-								query += ` WHERE NOT ((setting_key='character_limit' AND value='1') OR (setting_key='registration_mode' AND value='closed') OR (setting_key='points_rules' AND value='{"enabled":false,"dailyReward":0,"uploadCost":0,"characterCost":0}'))`
+								query += ` WHERE NOT ((setting_key='character_limit' AND value='1') OR (setting_key='registration_mode' AND value='closed') OR (setting_key='points_rules' AND value='{"enabled":false,"dailyReward":0,"uploadCost":0,"characterCost":0}') OR setting_key='homepage_blocks')`
 							}
 							if err := s.DB.QueryRow(query).Scan(&n); err != nil || n != 0 {
 								t.Fatalf("rollback %s: %d %v", table, n, err)
 							}
+						}
+						var homepageAfter string
+						if err := s.DB.QueryRow("SELECT value FROM settings WHERE setting_key='homepage_blocks'").Scan(&homepageAfter); err != nil || homepageAfter != homepageBefore {
+							t.Fatal("rollback changed default homepage", err)
 						}
 						var state string
 						if err := s.DB.QueryRow("SELECT status FROM migration_state WHERE id=1").Scan(&state); err != nil || state != "pending" {
