@@ -2,10 +2,12 @@
 import { onMounted, ref } from 'vue'
 import { t } from '../i18n'
 import TurnstileChallenge from './TurnstileChallenge.vue'
-interface Services { smtpEnabled: boolean; address: string; from: string; username: string; tlsMode: string; passwordConfigured: boolean; turnstileEnabled: boolean; siteKey: string; secretConfigured: boolean; source: string; testRecipient: string; editable?: boolean }
+import EmailTemplateSettings from './EmailTemplateSettings.vue'
+interface Services { smtpEnabled: boolean; address: string; from: string; username: string; tlsMode: string; passwordConfigured: boolean; turnstileEnabled: boolean; siteKey: string; secretConfigured: boolean; source: string; testRecipient: string; turnstileHostname?: string; editable?: boolean }
 const props = defineProps<{ csrfToken: string }>()
 const emit = defineEmits<{ updated: []; expired: [] }>()
 const draft = ref<Services | null>(null)
+const savedServices = ref<Services | null>(null)
 const password = ref('')
 const secret = ref('')
 const clearPassword = ref(false)
@@ -26,6 +28,7 @@ async function load() {
     const data = await response.json() as Services & { error?: string }
     if (!response.ok) { error.value = data.error || '暂时无法读取服务设置'; return }
     draft.value = { ...data, testRecipient: data.testRecipient || '' }
+    savedServices.value = { ...draft.value }
   } catch { error.value = '暂时无法读取服务设置' }
   finally { loading.value = false }
 }
@@ -37,7 +40,7 @@ async function save() {
     if (response.status === 401) { emit('expired'); return }
     const data = await response.json()
     if (!response.ok) { error.value = data.error || '暂时无法保存服务设置'; return }
-    draft.value = { ...data, editable: true }; password.value = ''; secret.value = ''; clearPassword.value = false; clearSecret.value = false
+    draft.value = { ...data, turnstileHostname: savedServices.value?.turnstileHostname, editable: true }; savedServices.value = { ...draft.value! }; password.value = ''; secret.value = ''; clearPassword.value = false; clearSecret.value = false
     message.value = '服务设置已保存并生效。'; emit('updated')
   } catch { error.value = '无法确认操作结果，请重新检查设置。' }
   finally { busy.value = false }
@@ -85,8 +88,11 @@ onMounted(load)
       <label class="settings-check"><input v-model="clearSecret" type="checkbox" />{{ t('清除已保存的 Turnstile Secret') }}</label>
       <p class="password-rule">{{ t('密码与 Secret 留空会保留现有值；勾选清除后才会移除。启用中的服务必须配置完整。') }}</p>
       <div class="mail-test-settings"><label class="binding-field"><span>{{ t('SMTP 测试收件地址') }}</span><input v-model="draft.testRecipient" type="email" :placeholder="t('默认使用当前管理员邮箱')" /></label><p class="password-rule">{{ t('测试邮件只发送到这里，不会修改站点发件人配置。') }}</p></div>
-      <div v-if="draft.turnstileEnabled" class="turnstile-test-settings"><h5>{{ t('测试 Turnstile') }}</h5><p class="password-rule">{{ t('使用当前已保存配置验证 hostname 和 action，不会计入登录失败次数。') }}</p><TurnstileChallenge ref="turnstileChallenge" :site-key="draft.siteKey" action="admin-test" :dark="false" @token="turnstileTestToken = $event" /><button class="secondary-button" type="button" :disabled="turnstileTestBusy || busy || !turnstileTestToken" @click="testTurnstile">{{ turnstileTestBusy ? t('正在测试 Turnstile…') : t('测试 Turnstile') }}</button></div>
+      <p class="password-rule">{{ t('登录在 15 分钟内失败 5 次后要求人机验证；正常登录不显示。注册始终要求验证。') }}</p>
+      <p v-if="savedServices?.turnstileHostname" class="password-rule">{{ t('Turnstile 允许的主机名：{hostname}', { hostname: savedServices.turnstileHostname }) }}</p>
+      <div v-if="savedServices?.turnstileEnabled" class="turnstile-test-settings"><h5>{{ t('测试 Turnstile') }}</h5><p class="password-rule">{{ t('使用当前已保存配置验证 hostname 和 action，不会计入登录失败次数。') }}</p><TurnstileChallenge ref="turnstileChallenge" :site-key="savedServices.siteKey" action="admin-test" :dark="false" @token="turnstileTestToken = $event" /><button class="secondary-button" type="button" :disabled="turnstileTestBusy || busy || !turnstileTestToken" @click="testTurnstile">{{ turnstileTestBusy ? t('正在测试 Turnstile…') : t('测试 Turnstile') }}</button></div>
       <div class="settings-actions"><button class="primary-button" type="submit">{{ busy ? t('正在保存…') : t('保存邮件与验证设置') }}</button><button class="secondary-button" type="button" :disabled="testBusy || busy || !draft.smtpEnabled" @click="sendTest">{{ testBusy ? t('正在发送测试邮件…') : t('发送测试邮件') }}</button></div>
     </fieldset></form><p v-if="message" class="action-success" role="status">{{ t(message) }}</p>
+    <EmailTemplateSettings v-if="savedServices" :csrf-token="csrfToken" :recipient="savedServices.testRecipient" :smtp-enabled="savedServices.smtpEnabled" @expired="emit('expired')" />
   </section>
 </template>

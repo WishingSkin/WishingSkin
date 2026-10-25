@@ -18,6 +18,9 @@ func (a *Server) registerAdministration() {
 	a.mux.HandleFunc("GET /api/admin/events", a.adminEvents)
 	a.mux.HandleFunc("GET /api/admin/events/export", a.exportAdminEvents)
 	a.mux.HandleFunc("PATCH /api/admin/branding", a.updateSiteBranding)
+	a.mux.HandleFunc("GET /api/admin/email-template", a.adminMailTemplate)
+	a.mux.HandleFunc("PATCH /api/admin/email-template", a.updateMailTemplate)
+	a.mux.HandleFunc("POST /api/admin/email-template/preview", a.previewMailTemplate)
 }
 
 func (a *Server) adminRead(w http.ResponseWriter, r *http.Request) (User, bool) {

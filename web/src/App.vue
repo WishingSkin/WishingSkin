@@ -102,6 +102,9 @@ const captchaRequired = ref(false)
 const loginChallengeToken = ref('')
 const loginChallenge = ref<InstanceType<typeof TurnstileChallenge> | null>(null)
 const emailVerificationRequired = ref(false)
+const verificationBusy = ref(false)
+const verificationMessage = ref('')
+const verificationError = ref('')
 
 function normalizePath(path: string) {
   if (!path || path === '') return '/'
@@ -255,12 +258,18 @@ function acceptSession(session: Session) {
   csrfToken.value = session.csrfToken
   sessionError.value = ''
   const currentPath = normalizePath(window.location.pathname)
-  navigate(pendingNext.value || (currentPath === '/' ? '/' : '/user'), true)
+  const destination = currentPath === '/login' && accessMode.value === 'mail'
+    ? '/login?mode=mail'
+    : pendingNext.value || (currentPath === '/' ? '/' : '/user')
+  navigate(destination, true)
   pendingNext.value = null
 }
 
 function clearSession() {
   sessionVersion++
+  verificationBusy.value = false
+  verificationMessage.value = ''
+  verificationError.value = ''
   loginMessage.value = ''
   user.value = null
   csrfToken.value = ''
@@ -541,6 +550,19 @@ async function restoreSession() {
   }
 }
 
+async function sendVerificationMail() {
+  if (!user.value || verificationBusy.value) return
+  const version = sessionVersion
+  verificationBusy.value = true; verificationMessage.value = ''; verificationError.value = ''
+  try {
+    const response = await api('/api/auth/email', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ email: user.value.email, purpose: 'verify' }) })
+    if (version !== sessionVersion) return
+    if (!response.ok) { const data = await response.json().catch(() => ({})); if (version === sessionVersion) verificationError.value = data.error || '暂时无法发送邮件'; return }
+    verificationMessage.value = '验证邮件已提交，请检查账号邮箱。'
+  } catch { if (version === sessionVersion) verificationError.value = '无法确认操作结果，请检查邮箱或稍后重试。' }
+  finally { if (version === sessionVersion) verificationBusy.value = false }
+}
+
 async function login() {
   if (loginBusy.value) return
   loginBusy.value = true
@@ -802,7 +824,7 @@ onBeforeUnmount(() => {
             <div class="account-dashboard-grid"><article class="panel account-summary-card account-summary-primary"><div class="account-profile"><img class="user-avatar large" :src="'/api/avatars/' + user.id + '.png?v=' + avatarVersion" alt="" width="64" height="64" /><div><p class="eyebrow">{{ t('当前账号') }}</p><h2>{{ user.nickname || t('我的账号') }}</h2><p>{{ user.email }}</p></div></div><span class="account-status" :class="{ verified: user.emailVerified }">{{ user.emailVerified ? t('邮箱已验证') : t('邮箱待验证') }}</span></article><article class="panel account-summary-card"><span class="account-card-index">01</span><h2>{{ t('角色') }}</h2><strong>{{ characters.length }} / {{ characterLimit }}</strong><p>{{ t('已创建角色') }}</p><button class="text-button" type="button" @click="navigate('/user')">{{ t('打开角色管理') }} ↗</button></article><article class="panel account-summary-card"><span class="account-card-index">02</span><h2>{{ t('材质与衣柜') }}</h2><strong>{{ textures.length + wardrobe.length }}</strong><p>{{ t('材质与收藏总数') }}</p><button class="text-button" type="button" @click="navigate('/user/materials')">{{ t('打开我的材质') }} ↗</button></article></div>
             <div class="account-dashboard-columns"><section class="panel account-dashboard-section"><div class="panel-title"><h2>{{ t('快速操作') }}</h2><span>{{ t('常用入口') }}</span></div><div class="account-quick-actions"><button class="secondary-button" type="button" @click="navigate('/user/account/profile')">{{ t('修改个人资料') }}</button><button class="secondary-button" type="button" @click="navigate('/user/materials?tab=upload')">{{ t('上传材质') }}</button><button class="secondary-button" type="button" @click="navigate('/user/wardrobe')">{{ t('打开我的衣柜') }}</button><button class="secondary-button" type="button" @click="navigate('/user/account/reports')">{{ t('查看我的举报') }}</button></div></section><section class="panel account-dashboard-section"><div class="panel-title"><h2>{{ t('账号状态') }}</h2><span>{{ site.name }}</span></div><dl class="account-fields"><div><dt>{{ t('昵称') }}</dt><dd>{{ user.nickname || t('未设置') }}</dd></div><div><dt>{{ t('登录邮箱') }}</dt><dd>{{ user.email }}</dd></div><div><dt>{{ t('账号类型') }}</dt><dd>{{ user.isAdmin ? t('管理员') : t('普通用户') }}</dd></div></dl></section></div>
           </section>
-          <section v-else-if="accountTab === 'profile'" class="account-panel panel" aria-labelledby="account-title"><div class="account-block account-overview"><div class="account-section-heading"><span>01</span><div><h2>{{ t('个人资料') }}</h2><p>{{ t('头像、昵称和站内身份信息。') }}</p></div></div><div class="account-profile"><img class="user-avatar large" :src="'/api/avatars/' + user.id + '.png?v=' + avatarVersion" alt="" width="64" height="64" /><div><h2 id="account-title">{{ user.nickname || t('我的账号') }}</h2><p>{{ t('已登录 {name}', { name: site.name }) }}</p></div></div><dl class="account-fields"><div><dt>{{ t("昵称") }}</dt><dd>{{ user.nickname || t('未设置') }}</dd></div><div><dt>{{ t("邮箱") }}</dt><dd>{{ user.email }}</dd></div><div><dt>{{ t('邮箱状态') }}</dt><dd>{{ user.emailVerified ? t('已验证') : t('未验证') }}</dd></div></dl></div><div class="account-block account-security"><div class="account-section-heading"><span>02</span><div><h2>{{ t('登录与安全') }}</h2><p>{{ t('更新个人资料、邮箱验证和密码。') }}</p></div></div><ProfileSettings :csrf-token="csrfToken" :characters="characters" @updated="profileUpdated" @expired="expireSession" /><section v-if="!user.emailVerified" class="account-password"><h3>{{ t('验证邮箱') }}</h3><p v-if="user.legacyAccount">{{ t('迁移账号可继续使用，邮箱尚未验证。') }}</p><p v-else>{{ t('本机创建的管理员可先配置站点，邮箱尚未验证。') }}</p><button class="secondary-button" type="button" @click="navigate('/login?mode=mail')">{{ t('发送验证邮件') }}</button></section><section class="account-password" aria-labelledby="password-title"><h3 id="password-title">{{ t("修改密码") }}</h3><p>{{ t("修改后会退出所有网页会话并撤销游戏令牌，需要重新登录。") }}</p><form class="password-form" @submit.prevent="changePassword"><fieldset :disabled="passwordBusy"><input type="hidden" name="username" :value="user.email" autocomplete="username" /><label class="binding-field"><span>{{ t("当前密码") }}</span><input v-model="currentPassword" type="password" autocomplete="current-password" required /></label><label class="binding-field"><span>{{ t("新密码") }}</span><input v-model="newPassword" type="password" autocomplete="new-password" required aria-describedby="password-rule" /></label><p id="password-rule" class="password-rule">{{ t("8–128 个字符，须同时包含英文字母、数字和符号；空白不计作符号。") }}</p><label class="binding-field"><span>{{ t("确认新密码") }}</span><input v-model="confirmPassword" type="password" autocomplete="new-password" required /></label><p v-if="passwordError" class="form-error" role="alert">{{ t(passwordError) }}</p><button class="primary-button" type="submit" :disabled="passwordBusy || actionBusy">{{ passwordBusy ? t('正在修改…') : t('修改密码并重新登录') }}</button></fieldset></form></section><div class="account-logout"><div><h3>{{ t("退出当前账号") }}</h3><p>{{ t("下次使用工作台时需要重新登录。") }}</p></div><button class="secondary-button" type="button" :disabled="logoutBusy || passwordBusy || actionBusy || charactersBusy || texturesBusy || wardrobeBusy" @click="logout">{{ logoutBusy ? t('正在退出…') : t('退出登录') }}</button></div><p v-if="logoutError" class="form-error" role="alert">{{ t(logoutError) }}</p></div></section>
+          <section v-else-if="accountTab === 'profile'" class="account-panel panel" aria-labelledby="account-title"><div class="account-block account-overview"><div class="account-section-heading"><span>01</span><div><h2>{{ t('个人资料') }}</h2><p>{{ t('头像、昵称和站内身份信息。') }}</p></div></div><div class="account-profile"><img class="user-avatar large" :src="'/api/avatars/' + user.id + '.png?v=' + avatarVersion" alt="" width="64" height="64" /><div><h2 id="account-title">{{ user.nickname || t('我的账号') }}</h2><p>{{ t('已登录 {name}', { name: site.name }) }}</p></div></div><dl class="account-fields"><div><dt>{{ t("昵称") }}</dt><dd>{{ user.nickname || t('未设置') }}</dd></div><div><dt>{{ t("邮箱") }}</dt><dd>{{ user.email }}</dd></div><div><dt>{{ t('邮箱状态') }}</dt><dd>{{ user.emailVerified ? t('已验证') : t('未验证') }}</dd></div></dl></div><div class="account-block account-security"><div class="account-section-heading"><span>02</span><div><h2>{{ t('登录与安全') }}</h2><p>{{ t('更新个人资料、邮箱验证和密码。') }}</p></div></div><ProfileSettings :csrf-token="csrfToken" :characters="characters" @updated="profileUpdated" @expired="expireSession" /><section v-if="!user.emailVerified" class="account-password"><h3>{{ t('验证邮箱') }}</h3><p v-if="user.legacyAccount">{{ t('迁移账号可继续使用，邮箱尚未验证。') }}</p><p v-else>{{ t('本机创建的管理员可先配置站点，邮箱尚未验证。') }}</p><button class="secondary-button" type="button" :disabled="verificationBusy || !site.mailEnabled" @click="sendVerificationMail">{{ verificationBusy ? t('正在发送验证邮件…') : t('发送验证邮件') }}</button><p v-if="verificationMessage" class="action-success" role="status">{{ t(verificationMessage) }}</p><p v-if="verificationError" class="form-error" role="alert">{{ t(verificationError) }}</p></section><section class="account-password" aria-labelledby="password-title"><h3 id="password-title">{{ t("修改密码") }}</h3><p>{{ t("修改后会退出所有网页会话并撤销游戏令牌，需要重新登录。") }}</p><form class="password-form" @submit.prevent="changePassword"><fieldset :disabled="passwordBusy"><input type="hidden" name="username" :value="user.email" autocomplete="username" /><label class="binding-field"><span>{{ t("当前密码") }}</span><input v-model="currentPassword" type="password" autocomplete="current-password" required /></label><label class="binding-field"><span>{{ t("新密码") }}</span><input v-model="newPassword" type="password" autocomplete="new-password" required aria-describedby="password-rule" /></label><p id="password-rule" class="password-rule">{{ t("8–128 个字符，须同时包含英文字母、数字和符号；空白不计作符号。") }}</p><label class="binding-field"><span>{{ t("确认新密码") }}</span><input v-model="confirmPassword" type="password" autocomplete="new-password" required /></label><p v-if="passwordError" class="form-error" role="alert">{{ t(passwordError) }}</p><button class="primary-button" type="submit" :disabled="passwordBusy || actionBusy">{{ passwordBusy ? t('正在修改…') : t('修改密码并重新登录') }}</button></fieldset></form></section><div class="account-logout"><div><h3>{{ t("退出当前账号") }}</h3><p>{{ t("下次使用工作台时需要重新登录。") }}</p></div><button class="secondary-button" type="button" :disabled="logoutBusy || passwordBusy || actionBusy || charactersBusy || texturesBusy || wardrobeBusy" @click="logout">{{ logoutBusy ? t('正在退出…') : t('退出登录') }}</button></div><p v-if="logoutError" class="form-error" role="alert">{{ t(logoutError) }}</p></div></section>
           <PointsPanel v-else-if="accountTab === 'points'" :csrf-token="csrfToken" @expired="expireSession" />
           <IntegrationPanel v-else-if="accountTab === 'integration'" />
           <ReportsView v-else-if="accountTab === 'reports'" :csrf-token="csrfToken" @expired="expireSession" />

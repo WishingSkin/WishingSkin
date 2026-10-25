@@ -83,11 +83,11 @@ func (a *Server) services(ctx context.Context) (runtimeServices, error) {
 		return runtimeServices{}, err
 	}
 	if !saved {
-		return runtimeServices{a.cfg.MailSender, a.cfg.Challenge, a.cfg.TurnstileSiteKey}, nil
+		return runtimeServices{a.emailSender(a.cfg.MailSender), a.cfg.Challenge, a.cfg.TurnstileSiteKey}, nil
 	}
 	result := runtimeServices{}
 	if value.SMTPEnabled {
-		result.Mail = &mailer.SMTP{Address: value.Address, From: value.From, Username: value.Username, Password: value.Password, TLSMode: value.TLSMode}
+		result.Mail = a.emailSender(&mailer.SMTP{Address: value.Address, From: value.From, Username: value.Username, Password: value.Password, TLSMode: value.TLSMode})
 	}
 	if value.TurnstileEnabled {
 		origin, _ := url.Parse(a.cfg.PublicURL)
@@ -110,6 +110,8 @@ func (a *Server) adminServices(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	view := serviceView(value, saved)
+	origin, _ := url.Parse(a.cfg.PublicURL)
+	view["turnstileHostname"] = origin.Hostname()
 	view["editable"] = len(a.cfg.SettingsKey) == 32
 	if value.TestRecipient == "" {
 		view["testRecipient"] = u.Email
@@ -233,8 +235,16 @@ func (a *Server) testServices(w http.ResponseWriter, r *http.Request) {
 	}
 	var body struct {
 		Recipient string `json:"recipient"`
+		Purpose   string `json:"purpose"`
 	}
 	if !decode(w, r, &body) {
+		return
+	}
+	purpose := "test"
+	if body.Purpose == "verify" || body.Purpose == "reset" {
+		purpose = "preview-" + body.Purpose
+	} else if body.Purpose != "" && body.Purpose != "test" {
+		failure(w, 400, "邮件用途无效")
 		return
 	}
 	recipient := strings.TrimSpace(body.Recipient)
@@ -253,7 +263,7 @@ func (a *Server) testServices(w http.ResponseWriter, r *http.Request) {
 		failure(w, 429, "邮件处理繁忙，请稍后重试")
 		return
 	}
-	if err := services.Mail.Send(r.Context(), recipient, "test", ""); err != nil {
+	if err := services.Mail.Send(r.Context(), recipient, purpose, ""); err != nil {
 		failure(w, 503, "测试邮件发送失败，请检查 SMTP 配置")
 		return
 	}
