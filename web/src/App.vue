@@ -814,7 +814,7 @@ onBeforeUnmount(() => {
                 <p v-if="site.points.enabled" class="point-fee">{{ t('每次上传需 {cost} 积分，包括相同图片的新记录；失败不扣费。', { cost: site.points.uploadCost }) }}</p><button class="primary-button" type="submit" :disabled="actionBusy">{{ actionBusy ? t('正在上传…') : t('上传到我的材质') }}</button>
               </fieldset></form>
             </section>
-            <aside class="upload-guide panel" aria-labelledby="upload-guide-title"><h2 id="upload-guide-title">{{ t("上传要求") }}</h2><dl><div><dt>{{ t("文件") }}</dt><dd>{{ t("PNG 格式，最大 8 MiB。") }}</dd></div><div><dt>{{ t("尺寸") }}</dt><dd>{{ t("宽度为 64–1024 px，且为 64 的倍数。") }}</dd></div><div><dt>{{ t("皮肤") }}</dt><dd>{{ t("高度为宽度的 1 倍或 1/2；按皮肤选择标准或纤细手臂。") }}</dd></div><div><dt>{{ t("披风") }}</dt><dd>{{ t("高度为宽度的 1/2。") }}</dd></div></dl><p>{{ t("上传完成后，前往“角色管理”选择材质并应用。") }}</p></aside>
+            <aside class="upload-guide panel" aria-labelledby="upload-guide-title"><h2 id="upload-guide-title">{{ t("上传要求") }}</h2><dl><div><dt>{{ t("文件") }}</dt><dd>{{ t("PNG 格式，最大 8 MiB。") }}</dd></div><div><dt>{{ t("皮肤") }}</dt><dd>{{ t("标准尺寸 64×64，兼容 64×32、128×128 和 128×64 像素。") }}</dd></div><div><dt>{{ t("披风") }}</dt><dd>{{ t("宽度为 64–1024 像素且为 64 的倍数，高度为宽度的 1/2。") }}</dd></div></dl><p>{{ t("上传完成后，前往“角色管理”选择材质并应用。") }}</p></aside>
           </div>
         </section>
         <template v-if="page === 'account'">

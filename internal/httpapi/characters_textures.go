@@ -416,7 +416,15 @@ func (a *Server) uploadTexture(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	config, err := png.DecodeConfig(bytes.NewReader(data))
-	if err != nil || !validTextureDimensions(kind, config.Width, config.Height) {
+	if err != nil {
+		failure(w, 400, "PNG 图像数据无效")
+		return
+	}
+	if !validTextureDimensions(kind, config.Width, config.Height) {
+		if kind == "skin" {
+			failure(w, 400, "皮肤尺寸仅支持 64×64、64×32、128×128 或 128×64 像素")
+			return
+		}
 		failure(w, 400, "PNG 尺寸不符合 Minecraft 皮肤或披风比例，最长边为 1024 像素")
 		return
 	}
@@ -630,7 +638,7 @@ func validTextureDimensions(kind string, width, height int) bool {
 	if kind == "cape" {
 		return height*2 == width
 	}
-	return height == width || height*2 == width
+	return (width == 64 || width == 128) && (height == width || height*2 == width)
 }
 
 func saveTexture(directory, hash string, data []byte) error {
