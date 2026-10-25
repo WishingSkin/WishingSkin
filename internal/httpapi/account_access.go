@@ -97,7 +97,16 @@ func (a *Server) site(w http.ResponseWriter, r *http.Request) {
 		failure(w, 503, "暂时无法读取站点设置")
 		return
 	}
-	respond(w, 200, map[string]any{"appearance": custom, "homepage": publicHomepage(homepage), "oidc": map[string]any{"enabled": oidcConfig.Enabled, "name": oidcConfig.Name}, "noticeFormat": brand.NoticeFormat, "noticeHtml": renderNotice(brand.Notice, brand.NoticeFormat), "name": brand.Name, "tagline": brand.Tagline, "footer": brand.Footer, "notice": brand.Notice, "registration": mode, "emailDomains": domains, "mailEnabled": services.Mail != nil, "turnstileSiteKey": services.SiteKey, "points": points})
+	loginImage, err := a.loginImage(r.Context())
+	if err != nil {
+		failure(w, 503, "暂时无法读取登录页图片")
+		return
+	}
+	loginImageURL := ""
+	if loginImage != "" {
+		loginImageURL = "/api/login/image?v=" + tokenHash(loginImage)[:16]
+	}
+	respond(w, 200, map[string]any{"appearance": custom, "homepage": publicHomepage(homepage), "loginImageUrl": loginImageURL, "oidc": map[string]any{"enabled": oidcConfig.Enabled, "name": oidcConfig.Name}, "noticeFormat": brand.NoticeFormat, "noticeHtml": renderNotice(brand.Notice, brand.NoticeFormat), "name": brand.Name, "tagline": brand.Tagline, "footer": brand.Footer, "notice": brand.Notice, "registration": mode, "emailDomains": domains, "mailEnabled": services.Mail != nil, "turnstileSiteKey": services.SiteKey, "points": points})
 }
 
 func validEmail(value string) bool {

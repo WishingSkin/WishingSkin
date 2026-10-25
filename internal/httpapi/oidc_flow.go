@@ -29,11 +29,19 @@ func (a *Server) oidcCookie(w http.ResponseWriter, name, value string, age int) 
 }
 
 func (a *Server) saveOIDCFlow(ctx context.Context, token string, value oidcFlow) error {
-	if _, err := a.s.DB.ExecContext(ctx, a.s.Bind("DELETE FROM oidc_flows WHERE expires_at<=?"), time.Now().Unix()); err != nil {
+	tx, err := a.s.DB.BeginTx(ctx, &sql.TxOptions{Isolation: sql.LevelReadCommitted})
+	if err != nil {
+		return err
+	}
+	defer tx.Rollback()
+	if err := a.lockOIDCConfiguration(ctx, tx, value.ConfigHash); err != nil {
+		return err
+	}
+	if _, err := tx.ExecContext(ctx, a.s.Bind("DELETE FROM oidc_flows WHERE expires_at<=?"), time.Now().Unix()); err != nil {
 		return err
 	}
 	var count int
-	if err := a.s.DB.QueryRowContext(ctx, "SELECT COUNT(*) FROM oidc_flows").Scan(&count); err != nil {
+	if err := tx.QueryRowContext(ctx, "SELECT COUNT(*) FROM oidc_flows").Scan(&count); err != nil {
 		return err
 	}
 	if count >= 2000 {
@@ -43,7 +51,23 @@ func (a *Server) saveOIDCFlow(ctx context.Context, token string, value oidcFlow)
 	if err != nil {
 		return err
 	}
-	_, err = a.s.DB.ExecContext(ctx, a.s.Bind("INSERT INTO oidc_flows(flow_hash,value,expires_at) VALUES(?,?,?)"), tokenHash(token), sealed, time.Now().Add(10*time.Minute).Unix())
+	_, err = tx.ExecContext(ctx, a.s.Bind("INSERT INTO oidc_flows(flow_hash,value,expires_at) VALUES(?,?,?)"), tokenHash(token), sealed, time.Now().Add(10*time.Minute).Unix())
+	if err == nil {
+		err = tx.Commit()
+	}
+	return err
+}
+
+// Use the same lock order as plugin/configuration writes before creating auth state.
+func (a *Server) lockOIDCConfiguration(ctx context.Context, tx *sql.Tx, fingerprint string) error {
+	var mode string
+	if err := tx.QueryRowContext(ctx, "SELECT value FROM settings WHERE setting_key='registration_mode' FOR UPDATE").Scan(&mode); err != nil {
+		return err
+	}
+	value, err := a.oidcSettings(ctx)
+	if err == nil && (!value.Enabled || oidcFingerprint(value) != fingerprint) {
+		err = errCredentials
+	}
 	return err
 }
 

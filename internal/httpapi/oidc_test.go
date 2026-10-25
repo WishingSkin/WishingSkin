@@ -23,6 +23,7 @@ type oidcProviderFixture struct {
 	server                                  *httptest.Server
 	nonce, challenge, subject, email, fault string
 	pkceChecked                             bool
+	afterToken                              func()
 }
 
 func newOIDCProviderFixture(t *testing.T) *oidcProviderFixture {
@@ -46,6 +47,9 @@ func newOIDCProviderFixture(t *testing.T) *oidcProviderFixture {
 				w.WriteHeader(400)
 				_, _ = w.Write([]byte(`{"error":"invalid_grant"}`))
 				return
+			}
+			if f.afterToken != nil {
+				f.afterToken()
 			}
 			claims := map[string]any{"iss": f.server.URL, "sub": f.subject, "aud": "test-client", "nonce": f.nonce, "exp": time.Now().Add(time.Minute).Unix(), "iat": time.Now().Unix()}
 			switch f.fault {

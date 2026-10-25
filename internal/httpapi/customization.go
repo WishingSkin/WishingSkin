@@ -23,9 +23,10 @@ import (
 )
 
 type appearance struct {
-	LogoImage    string `json:"logoImage"`
-	Accent       string `json:"accent"`
-	DefaultTheme string `json:"defaultTheme"`
+	LogoImage     string `json:"logoImage"`
+	Accent        string `json:"accent"`
+	DefaultTheme  string `json:"defaultTheme"`
+	SurfaceEffect string `json:"surfaceEffect"`
 }
 
 func (a *Server) readSetting(ctx context.Context, key string, target any) (bool, error) {
@@ -54,7 +55,7 @@ func (a *Server) putSetting(ctx context.Context, tx *sql.Tx, key string, value a
 }
 
 func (a *Server) appearance(ctx context.Context) (appearance, error) {
-	value := appearance{Accent: "blue", DefaultTheme: "system"}
+	value := appearance{Accent: "blue", DefaultTheme: "system", SurfaceEffect: "solid"}
 	_, err := a.readSetting(ctx, "site_appearance", &value)
 	return value, err
 }
@@ -189,6 +190,13 @@ func (a *Server) updateAppearance(w http.ResponseWriter, r *http.Request) {
 	if !decodeLimit(w, r, &body, 710000) {
 		return
 	}
+	if body.SurfaceEffect == "" {
+		body.SurfaceEffect = "solid"
+	}
+	if body.SurfaceEffect != "solid" && body.SurfaceEffect != "translucent" && body.SurfaceEffect != "glass" {
+		failure(w, 400, "面板效果无效")
+		return
+	}
 	if (body.Accent != "blue" && body.Accent != "green" && body.Accent != "violet") || (body.DefaultTheme != "light" && body.DefaultTheme != "dark" && body.DefaultTheme != "system") {
 		failure(w, 400, "个性化设置无效")
 		return
@@ -226,6 +234,9 @@ func (a *Server) registerCustomization() {
 	a.mux.HandleFunc("PATCH /api/admin/homepage", a.updateHomepage)
 	a.mux.HandleFunc("GET /api/admin/homepage", a.adminHomepage)
 	a.mux.HandleFunc("GET /api/homepage/background", a.homepageBackgroundImage)
+	a.mux.HandleFunc("GET /api/admin/login-image", a.adminLoginImage)
+	a.mux.HandleFunc("PATCH /api/admin/login-image", a.updateLoginImage)
+	a.mux.HandleFunc("GET /api/login/image", a.loginImageFile)
 	a.mux.HandleFunc("GET /api/account/profile", a.accountProfile)
 	a.mux.HandleFunc("PATCH /api/account/profile", a.updateAccountProfile)
 	a.mux.HandleFunc("GET /api/avatars/{id}", a.avatar)

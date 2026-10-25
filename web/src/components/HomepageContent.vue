@@ -5,7 +5,7 @@ import { t } from '../i18n'
 const props = defineProps<{ homepage: HomepageSettings; name: string; tagline: string; notice: string; noticeHtml: string; preview?: boolean }>()
 const emit = defineEmits<{ navigate: [event: MouseEvent, href: string] }>()
 const background = computed(() => props.homepage.background?.image || props.homepage.background?.imageUrl || '')
-const style = computed(() => ({ '--homepage-image': background.value ? `url("${background.value}")` : 'none', '--homepage-overlay': `${props.homepage.background?.overlay || 65}%` }))
+const style = computed(() => ({ '--homepage-image': background.value ? `url("${background.value}")` : 'none', '--homepage-overlay': `${props.homepage.background?.overlay ?? 65}%` }))
 function follow(event: MouseEvent, href: string) { if (props.preview) event.preventDefault(); else emit('navigate', event, href) }
 </script>
 <template>

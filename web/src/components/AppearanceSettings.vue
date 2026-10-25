@@ -5,7 +5,7 @@ import { t } from '../i18n'
 import { imageData } from './imageInput'
 const props = defineProps<{ appearance: Appearance; csrfToken: string }>()
 const emit = defineEmits<{ updated: []; expired: [] }>()
-const draft = ref({ ...props.appearance })
+const draft = ref({ ...props.appearance, surfaceEffect: props.appearance.surfaceEffect || 'solid' })
 const busy = ref(false)
 const imageBusy = ref(false)
 const error = ref('')
@@ -36,6 +36,7 @@ async function save() {
       <p class="password-rule">{{ t('PNG 或 JPEG，最大 512 KiB、2048×2048；保存为最长 512 px 的正方形 PNG。') }}</p>
       <label class="binding-field"><span>{{ t('主题配色') }}</span><select v-model="draft.accent"><option value="blue">{{ t('蓝色') }}</option><option value="green">{{ t('绿色') }}</option><option value="violet">{{ t('紫色') }}</option></select></label>
       <label class="binding-field"><span>{{ t('站点默认主题') }}</span><select v-model="draft.defaultTheme"><option value="system">{{ t('跟随系统') }}</option><option value="light">{{ t('浅色') }}</option><option value="dark">{{ t('深色') }}</option></select></label>
+      <label class="binding-field"><span>{{ t('面板效果') }}</span><select v-model="draft.surfaceEffect"><option value="solid">{{ t('实色') }}</option><option value="translucent">{{ t('半透明') }}</option><option value="glass">{{ t('毛玻璃') }}</option></select></label>
       <p v-if="error" class="form-error" role="alert">{{ t(error) }}</p><button class="primary-button" type="submit">{{ busy ? t('正在保存…') : t('保存个性化设置') }}</button>
     </fieldset></form><p v-if="message" class="action-success" role="status">{{ t(message) }}</p>
   </section>

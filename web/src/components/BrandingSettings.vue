@@ -33,7 +33,7 @@ async function loadHomepage() {
     if (!response.ok) throw new Error()
     const data = await response.json()
     homepageBlocks.value = cloneBlocks(data.blocks || [])
-    background.value = { image: data.background?.image || '', overlay: data.background?.overlay || 65 }
+    background.value = { image: data.background?.image || '', overlay: data.background?.overlay ?? 65 }
     homepageLoaded.value = true
   } catch { homepageError.value = '暂时无法读取首页设置' }
 }
@@ -119,7 +119,7 @@ async function saveHomepage() {
     if (response.status === 401) { emit('expired'); return }
     const data = await response.json().catch(() => ({}))
     if (!response.ok) { homepageError.value = data.error || '暂时无法保存首页设置'; return }
-    background.value = { image: data.background?.image || '', overlay: data.background?.overlay || 65 }
+    background.value = { image: data.background?.image || '', overlay: data.background?.overlay ?? 65 }
     homepageMessage.value = '首页区块已保存。'; emit('updated')
   } catch { homepageError.value = '无法确认操作结果，请重新检查首页设置。' }
   finally { homepageBusy.value = false }
@@ -132,7 +132,7 @@ watch([notice, format], () => { preview.value = '' })
 <section class="account-password homepage-settings" aria-labelledby="homepage-title">
   <p v-if="!homepageLoaded" role="status">{{ t('正在加载…') }} <button v-if="homepageError" class="text-button" type="button" @click="loadHomepage">{{ t('重试') }}</button></p>
   <fieldset :disabled="!homepageLoaded || homepageBusy" class="homepage-editor-fields">
-  <div class="homepage-background-settings"><label class="binding-field"><span>{{ t('主页背景') }}</span><input type="file" accept="image/png,image/jpeg" @change="pickBackground" /></label><p class="password-rule">{{ t('PNG 或 JPEG，最大 2 MiB、4096×4096。仅用于公开主页。') }}</p><img v-if="background.image" class="homepage-background-thumbnail" :src="background.image" :alt="t('主页背景预览')" /><div class="settings-actions"><button class="secondary-button" type="button" :disabled="!background.image" @click="background.image = ''">{{ t('移除背景') }}</button><button class="secondary-button" type="button" :aria-expanded="homepagePreview" @click="homepagePreview = !homepagePreview">{{ homepagePreview ? t('收起主页预览') : t('预览主页') }}</button></div><label v-if="background.image" class="binding-field"><span>{{ t('背景遮罩') }} {{ background.overlay }}%</span><input v-model.number="background.overlay" type="range" min="45" max="95" step="5" /></label></div>
+  <div class="homepage-background-settings"><label class="binding-field"><span>{{ t('主页背景') }}</span><input type="file" accept="image/png,image/jpeg" @change="pickBackground" /></label><p class="password-rule">{{ t('PNG 或 JPEG，最大 2 MiB、4096×4096。仅用于公开主页。') }}</p><img v-if="background.image" class="homepage-background-thumbnail" :src="background.image" :alt="t('主页背景预览')" /><div class="settings-actions"><button class="secondary-button" type="button" :disabled="!background.image" @click="background.image = ''">{{ t('移除背景') }}</button><button class="secondary-button" type="button" :aria-expanded="homepagePreview" @click="homepagePreview = !homepagePreview">{{ homepagePreview ? t('收起主页预览') : t('预览主页') }}</button></div><label v-if="background.image" class="binding-field"><span>{{ t('背景遮罩') }} {{ background.overlay }}%</span><input v-model.number="background.overlay" type="range" min="0" max="100" step="1" /></label></div>
   <div v-if="homepagePreview" class="homepage-draft-preview"><p class="password-rule">{{ t('草稿预览，保存后才会公开。') }}</p><HomepageContent :homepage="previewSettings" :name="name" :tagline="tagline" :notice="site.notice" :notice-html="site.noticeHtml" preview /></div>
   <div class="settings-section-heading"><div><h3 id="homepage-title">{{ t('首页区块') }}</h3><p class="password-rule">{{ t('用安全区块编辑主页内容，可启停并调整顺序。按钮只允许站内路径或 HTTPS。') }}</p></div><button class="secondary-button" type="button" :disabled="homepageBusy || homepageBlocks.length >= 8" @click="addHomepageBlock">{{ t('添加区块') }}</button></div>
   <div v-if="homepageBlocks.length" class="homepage-block-list">

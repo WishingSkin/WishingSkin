@@ -77,11 +77,8 @@ func (a *Server) updateHomepage(w http.ResponseWriter, r *http.Request) {
 		failure(w, 400, err.Error())
 		return
 	}
-	if body.Background.Overlay == 0 {
-		body.Background.Overlay = 65
-	}
-	if body.Background.Overlay < 45 || body.Background.Overlay > 95 {
-		failure(w, 400, "背景遮罩须为 45–95%")
+	if body.Background.Overlay < 0 || body.Background.Overlay > 100 {
+		failure(w, 400, "背景遮罩须为 0–100%")
 		return
 	}
 	select {

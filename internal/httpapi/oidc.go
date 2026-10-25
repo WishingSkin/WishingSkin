@@ -248,7 +248,10 @@ func (a *Server) callbackOIDC(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	defer tx.Rollback()
-	err = a.lockAuthenticatedUser(ctx, tx, u)
+	err = a.lockOIDCConfiguration(ctx, tx, flow.ConfigHash)
+	if err == nil {
+		err = a.lockAuthenticatedUser(ctx, tx, u)
+	}
 	if err == nil {
 		var linked int
 		err = tx.QueryRowContext(ctx, a.s.Bind("SELECT COUNT(*) FROM oidc_identities WHERE identity_key=? AND user_id=?"), oidcIdentityKey(flow.Issuer, flow.Subject), u.ID).Scan(&linked)
@@ -295,7 +298,10 @@ func (a *Server) finishOIDCLink(w http.ResponseWriter, r *http.Request, flow oid
 		return
 	}
 	defer tx.Rollback()
-	err = a.lockAuthenticatedUser(r.Context(), tx, u)
+	err = a.lockOIDCConfiguration(r.Context(), tx, flow.ConfigHash)
+	if err == nil {
+		err = a.lockAuthenticatedUser(r.Context(), tx, u)
+	}
 	if err == nil {
 		var active int
 		err = tx.QueryRowContext(r.Context(), a.s.Bind("SELECT COUNT(*) FROM web_sessions WHERE token_hash=? AND user_id=? AND expires_at>?"), flow.SessionHash, u.ID, time.Now().Unix()).Scan(&active)

@@ -70,7 +70,7 @@ func validOIDCIssuer(raw string) bool {
 	return err == nil && len(raw) <= 2048 && u.Host != "" && u.User == nil && u.RawQuery == "" && u.Fragment == "" && (u.Scheme == "https" || u.Scheme == "http" && loopbackOriginHost(u.Hostname()))
 }
 
-func (a *Server) oidcSettings(ctx context.Context) (OIDCSettings, error) {
+func (a *Server) oidcConfiguration(ctx context.Context) (OIDCSettings, error) {
 	value := a.cfg.OIDC
 	if value.Name == "" {
 		value.Name = "OIDC"
@@ -82,6 +82,14 @@ func (a *Server) oidcSettings(ctx context.Context) (OIDCSettings, error) {
 	}
 	if err == nil {
 		err = a.openOIDC(sealed, &value, "config")
+	}
+	return value, err
+}
+
+func (a *Server) oidcSettings(ctx context.Context) (OIDCSettings, error) {
+	value, err := a.oidcConfiguration(ctx)
+	if err == nil {
+		value.Enabled, err = a.storedPluginEnabled(ctx, "wishingskin.oidc")
 	}
 	return value, err
 }
@@ -123,7 +131,7 @@ func (a *Server) updateOIDC(w http.ResponseWriter, r *http.Request) {
 	if !decode(w, r, &body) {
 		return
 	}
-	value, err := a.oidcSettings(r.Context())
+	value, err := a.oidcConfiguration(r.Context())
 	if err != nil {
 		failure(w, 503, "无法读取 OIDC 设置，请检查设置密钥")
 		return
@@ -156,6 +164,12 @@ func (a *Server) updateOIDC(w http.ResponseWriter, r *http.Request) {
 	}
 	defer tx.Rollback()
 	err = a.putSetting(r.Context(), tx, "oidc_config", sealed)
+	if err == nil {
+		err = a.putPluginEnabled(r.Context(), tx, "wishingskin.oidc", "1.0.0", value.Enabled)
+	}
+	if err == nil {
+		_, err = tx.ExecContext(r.Context(), "DELETE FROM oidc_flows")
+	}
 	if err == nil {
 		err = a.s.RecordAdminEvent(r.Context(), tx, u.ID, "settings.oidc", "site", "oidc")
 	}

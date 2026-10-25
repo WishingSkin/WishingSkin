@@ -29,12 +29,12 @@ async function save() {
 onMounted(load)
 </script>
 <template>
-  <section class="settings-section oidc-settings"><h3>{{ t('OIDC 登录') }}</h3><p class="password-rule">{{ t('连接 Logto 等身份提供商。新账号仍遵守本站注册和邮箱验证规则。') }}</p>
+  <section class="settings-section oidc-settings"><h3>{{ t('OIDC 登录') }}</h3><p class="password-rule">{{ t('连接身份提供商。新账号仍遵守本站注册和邮箱验证规则。') }}</p>
     <p v-if="!loaded && !error" role="status">{{ t('正在加载…') }}</p><p v-if="error" class="form-error" role="alert">{{ t(error) }} <button v-if="!loaded" class="text-button" type="button" @click="load">{{ t('重试') }}</button></p>
     <form v-if="loaded" class="settings-form" @submit.prevent="save"><fieldset :disabled="busy">
       <label class="checkbox-label"><input v-model="draft.enabled" type="checkbox" /> {{ t('启用 OIDC 登录') }}</label>
       <label class="binding-field"><span>{{ t('登录按钮名称') }}</span><input v-model="draft.name" maxlength="64" required /></label>
-      <label class="binding-field"><span>Issuer</span><input v-model="draft.issuer" type="url" :required="draft.enabled" placeholder="http://localhost:3001/oidc" /></label>
+      <label class="binding-field"><span>Issuer</span><input v-model="draft.issuer" type="url" :required="draft.enabled" placeholder="https://identity.example.com/oidc" /></label>
       <label class="binding-field"><span>Client ID</span><input v-model="draft.clientId" maxlength="256" :required="draft.enabled" autocomplete="off" /></label>
       <label class="binding-field"><span>Client Secret</span><input v-model="draft.clientSecret" type="password" maxlength="4096" autocomplete="new-password" :placeholder="draft.secretConfigured ? t('已配置，留空保留') : t('尚未配置')" /></label>
       <label v-if="draft.secretConfigured" class="checkbox-label"><input v-model="draft.clearSecret" type="checkbox" /> {{ t('清除已保存的密钥') }}</label>

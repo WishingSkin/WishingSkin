@@ -23,7 +23,7 @@ func TestBuiltinsUseJSONArraysForOptionalManifestCollections(t *testing.T) {
 }
 
 func containsJSONArray(encoded []byte, field string) bool {
-	return bytes.Contains(encoded, []byte(field+"[]"))
+	return bytes.Contains(encoded, []byte(field+"["))
 }
 
 func TestRegistryRejectsDuplicateAndKeepsMissingDependencyDisabled(t *testing.T) {

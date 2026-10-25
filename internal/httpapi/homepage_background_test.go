@@ -57,7 +57,17 @@ func TestHomepageBackgroundBothDatabases(t *testing.T) {
 			if err := json.Unmarshal(w.Body.Bytes(), &saved); err != nil || !strings.HasPrefix(saved.Background.Image, "data:image/jpeg;base64,") || saved.Blocks[1].Features[0].Icon != "◇" {
 				t.Fatal("background roundtrip", err)
 			}
-			body.Background.Overlay = 1
+			for _, overlay := range []int{0, 1, 100} {
+				body.Background.Overlay = overlay
+				webStatus(t, f.call(3, "PATCH", "/api/admin/homepage", body), 200)
+				w = f.call(3, "GET", "/api/admin/homepage", nil)
+				if err := json.Unmarshal(w.Body.Bytes(), &saved); err != nil || saved.Background.Overlay != overlay {
+					t.Fatal("overlay did not roundtrip", overlay, saved.Background.Overlay, err)
+				}
+			}
+			body.Background.Overlay = -1
+			webStatus(t, f.call(3, "PATCH", "/api/admin/homepage", body), 400)
+			body.Background.Overlay = 101
 			webStatus(t, f.call(3, "PATCH", "/api/admin/homepage", body), 400)
 			body.Background = homepageBackground{Overlay: 65}
 			webStatus(t, f.call(3, "PATCH", "/api/admin/homepage", body), 200)

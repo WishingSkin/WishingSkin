@@ -15,9 +15,22 @@ func (a *Server) storedPluginEnabled(ctx context.Context, id string) (bool, erro
 	var enabled bool
 	err := a.s.DB.QueryRowContext(ctx, a.s.Bind("SELECT enabled FROM plugins WHERE plugin_id=?"), id).Scan(&enabled)
 	if err == sql.ErrNoRows {
+		if id == "wishingskin.oidc" {
+			value, err := a.oidcConfiguration(ctx)
+			return value.Enabled, err
+		}
 		return true, nil
 	}
 	return enabled, err
+}
+
+func (a *Server) putPluginEnabled(ctx context.Context, tx *sql.Tx, id, version string, enabled bool) error {
+	query := "INSERT INTO plugins(plugin_id,version,enabled,settings_json) VALUES(?,?,?,'{}') ON CONFLICT(plugin_id) DO UPDATE SET enabled=EXCLUDED.enabled"
+	if a.s.Dialect == "mysql" {
+		query = "INSERT INTO plugins(plugin_id,version,enabled,settings_json) VALUES(?,?,?,'{}') ON DUPLICATE KEY UPDATE enabled=VALUES(enabled)"
+	}
+	_, err := tx.ExecContext(ctx, a.s.Bind(query), id, version, enabled)
+	return err
 }
 
 func (a *Server) adminPlugins(w http.ResponseWriter, r *http.Request) {
@@ -60,7 +73,7 @@ func (a *Server) updatePlugin(w http.ResponseWriter, r *http.Request) {
 		failure(w, 400, "插件状态无效")
 		return
 	}
-	if err := a.plugins.SetEnabled(state.Manifest.ID, *body.Enabled); err != nil {
+	if state.Error != "" && *body.Enabled {
 		failure(w, 409, "插件依赖尚未满足")
 		return
 	}
@@ -69,7 +82,17 @@ func (a *Server) updatePlugin(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	defer tx.Rollback()
-	_, err := tx.ExecContext(r.Context(), a.s.Bind("UPDATE plugins SET enabled=? WHERE plugin_id=?"), *body.Enabled, state.Manifest.ID)
+	if state.Manifest.ID == "wishingskin.oidc" && *body.Enabled {
+		value, err := a.oidcConfiguration(r.Context())
+		if err != nil || !validOIDCIssuer(value.Issuer) || value.ClientID == "" || value.ClientSecret == "" {
+			failure(w, 409, "请先保存有效的 OIDC 配置")
+			return
+		}
+	}
+	err := a.putPluginEnabled(r.Context(), tx, state.Manifest.ID, state.Manifest.Version, *body.Enabled)
+	if err == nil && state.Manifest.ID == "wishingskin.oidc" && !*body.Enabled {
+		_, err = tx.ExecContext(r.Context(), "DELETE FROM oidc_flows")
+	}
 	if err == nil {
 		action := "plugin.disable"
 		if *body.Enabled {
@@ -81,7 +104,6 @@ func (a *Server) updatePlugin(w http.ResponseWriter, r *http.Request) {
 		err = tx.Commit()
 	}
 	if err != nil {
-		_ = a.plugins.SetEnabled(state.Manifest.ID, !*body.Enabled)
 		failure(w, 503, "插件状态保存失败")
 		return
 	}

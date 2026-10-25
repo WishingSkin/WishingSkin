@@ -43,17 +43,21 @@ func (a *Server) homepageBackgroundImage(w http.ResponseWriter, r *http.Request)
 		failure(w, 503, "暂时无法读取首页设置")
 		return
 	}
-	if value.Background.Image == "" {
+	serveSettingsJPEG(w, r, value.Background.Image)
+}
+
+func serveSettingsJPEG(w http.ResponseWriter, r *http.Request, value string) {
+	if value == "" {
 		http.NotFound(w, r)
 		return
 	}
-	_, raw, _ := strings.Cut(value.Background.Image, ",")
+	_, raw, _ := strings.Cut(value, ",")
 	data, err := base64.StdEncoding.DecodeString(raw)
 	if err != nil {
 		http.NotFound(w, r)
 		return
 	}
-	etag := `"` + tokenHash(value.Background.Image) + `"`
+	etag := `"` + tokenHash(value) + `"`
 	w.Header().Set("ETag", etag)
 	w.Header().Set("Cache-Control", "public, max-age=0, must-revalidate")
 	w.Header().Set("Content-Type", "image/jpeg")

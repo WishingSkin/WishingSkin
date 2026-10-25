@@ -100,6 +100,8 @@ const selected = computed(() => characters.value.find(character => character.id 
 const viewerKey = computed(() => selected.value ? `${selected.value.id}:${selected.value.model}:${selected.value.skinHash}:${selected.value.capeHash}` : '')
 const fallbackViewer = ref('')
 const site = ref<SiteAccess>({ appearance: { logoImage: '', accent: 'blue', defaultTheme: 'system' }, homepage: { blocks: [] }, noticeFormat: '', noticeHtml: '', name: 'WishingSkin', tagline: '', footer: '', notice: '', registration: 'closed', emailDomains: [], mailEnabled: false, turnstileSiteKey: '', points: { enabled: false, dailyReward: 0, uploadCost: 0, characterCost: 0 } })
+const loginImageFailed = ref(false)
+watch(() => site.value.loginImageUrl, () => { loginImageFailed.value = false })
 watch([() => site.value.name, locale], () => { document.title = `${site.value.name} · ${t('角色与材质')}` }, { immediate: true, flush: 'sync' })
 const siteError = ref(false)
 const accessMode = ref<AccessMode | null>(null)
@@ -210,6 +212,7 @@ const avatarVersion = ref(0)
 let themePreference = ''
 function siteTheme() {
   document.documentElement.dataset.accent = site.value.appearance.accent
+  document.documentElement.dataset.surface = site.value.appearance.surfaceEffect || 'solid'
   const favicon = document.querySelector<HTMLLinkElement>('link[rel="icon"]')
   if (favicon) {
     favicon.href = site.value.appearance.logoImage || '/favicon.svg'
@@ -695,8 +698,8 @@ onBeforeUnmount(() => {
     <main v-else-if="publicHome" class="public-home-page"><HomepageContent :homepage="site.homepage" :name="site.name" :tagline="site.tagline" :notice="site.notice" :notice-html="site.noticeHtml" @navigate="homepageLink" /></main>
     <main v-else-if="!user" class="login-layout">
       <section class="welcome-panel" aria-labelledby="welcome-title">
-        <div class="welcome-copy"><span class="small-square" aria-hidden="true"></span><h1 id="welcome-title">{{ t("每个角色，") }}<br>{{ t("都有自己的模样。") }}</h1><p>{{ t("在这里查看你的 Minecraft 角色，") }}<br class="desktop-break">{{ t("找到属于它的皮肤和披风。") }}</p></div>
-        <div class="login-preview checkerboard"><ModelThumbnail class="login-model-thumbnail" name="Steve" model="default" skin-hash="" cape-hash="" /><ModelThumbnail class="login-model-thumbnail" name="Alex" model="slim" skin-hash="" cape-hash="" /></div>
+        <div class="welcome-copy"><span class="small-square" aria-hidden="true"></span><h1 id="welcome-title">{{ t("每个角色，") + ' ' }}<br>{{ t("都有自己的模样。") }}</h1><p>{{ t("在这里查看你的 Minecraft 角色，") }}<br class="desktop-break">{{ t("找到属于它的皮肤和披风。") }}</p></div>
+        <img v-if="site.loginImageUrl && !loginImageFailed" class="login-custom-image" :src="site.loginImageUrl" alt="" @error="loginImageFailed = true" />
       </section>
       <section class="login-panel" aria-labelledby="login-title">
         <div class="login-heading"><span class="section-symbol" aria-hidden="true">↳</span><h2 id="login-title">{{ t("登录工作台") }}</h2><p>{{ t("使用你的已有账号继续。") }}</p><button class="text-button" type="button" @click="navigate('/')">{{ t('返回主页') }}</button></div>

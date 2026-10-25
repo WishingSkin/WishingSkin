@@ -39,6 +39,7 @@ const actionNames: Record<string, string> = {
   'settings.branding': '修改品牌与公告',
   'settings.points': '修改积分规则',
   'settings.appearance': '修改个性化设置', 'settings.services': '修改邮件与验证设置', 'plugin.invitations': '修改邀请码插件',
+  'settings.login_image': '修改登录页图片', 'settings.oidc': '修改 OIDC 登录设置', 'plugin.enable': '启用插件', 'plugin.disable': '停用插件',
   'character.rename': '修改角色名', 'character.clear_skin': '解除皮肤绑定', 'character.clear_cape': '解除披风绑定',
   'character.delete': '删除角色',
   'wardrobe.rename': '修改收藏名称', 'wardrobe.remove': '移出用户衣柜',
@@ -46,7 +47,7 @@ const actionNames: Record<string, string> = {
 }
 const targetNames: Record<string, string> = { user: '用户', site: '站点', invitation: '邀请码', texture: '图片', character: '角色', wardrobe: '衣柜', report: '举报' }
 const tabNames = { users: '用户管理', characters: '角色管理', wardrobe: '衣柜管理', textures: '材质管理', reports: '举报管理', events: '管理记录', settings: '站点设置', plugins: '官方插件' }
-const settingNames: Record<string, string> = { registration: '注册模式', character_limit: '角色数量上限', branding: '品牌与公告', points: '积分与签到', appearance: '个性化', services: '邮件与验证', invitations: '邀请码插件' }
+const settingNames: Record<string, string> = { registration: '注册模式', character_limit: '角色数量上限', branding: '品牌与公告', points: '积分与签到', appearance: '个性化', services: '邮件与验证', invitations: '邀请码插件', login_image: '登录页图片', oidc: 'OIDC 登录', 'wishingskin.oidc': 'OIDC 登录' }
 function actionLabel(field: 'banned' | 'isAdmin', value: boolean) { return field === 'banned' ? (value ? '封禁用户' : '解封用户') : (value ? '设为管理员' : '设为普通用户') }
 function timeLabel(value: number) { return new Date(value * 1000).toLocaleString(locale.value === 'en' ? 'en-US' : 'zh-CN') }
 async function loadUsers() {
