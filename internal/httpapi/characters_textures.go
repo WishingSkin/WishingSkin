@@ -10,6 +10,7 @@ import (
 	"database/sql"
 	"encoding/binary"
 	"encoding/hex"
+	"encoding/json"
 	"errors"
 	"fmt"
 	"image/png"
@@ -17,6 +18,7 @@ import (
 	"net/http"
 	"os"
 	"regexp"
+	"slices"
 	"strconv"
 	"strings"
 	"unicode/utf8"
@@ -37,14 +39,18 @@ var (
 )
 
 type textureRecord struct {
-	ID          string `json:"id"`
-	FileHash    string `json:"fileHash"`
-	Name        string `json:"name"`
-	Description string `json:"description"`
-	Kind        string `json:"kind"`
-	Model       string `json:"model"`
-	Public      bool   `json:"public"`
-	Owned       bool   `json:"owned"`
+	Category     string   `json:"category"`
+	Tags         []string `json:"tags"`
+	ReviewState  string   `json:"reviewState"`
+	ReviewReason string   `json:"reviewReason"`
+	ID           string   `json:"id"`
+	FileHash     string   `json:"fileHash"`
+	Name         string   `json:"name"`
+	Description  string   `json:"description"`
+	Kind         string   `json:"kind"`
+	Model        string   `json:"model"`
+	Public       bool     `json:"public"`
+	Owned        bool     `json:"owned"`
 }
 
 func (a *Server) createCharacter(w http.ResponseWriter, r *http.Request) {
@@ -115,6 +121,7 @@ func (a *Server) createCharacter(w http.ResponseWriter, r *http.Request) {
 		failure(w, 503, "暂时无法创建角色")
 		return
 	}
+	a.publishPluginEvent(r.Context(), "character.create", u.ID, uuid)
 	respond(w, 201, Character{ID: id, UUID: uuid, Name: name, Model: "default"})
 }
 
@@ -239,7 +246,7 @@ func (a *Server) bindTexture(w http.ResponseWriter, r *http.Request) {
 		var recordKind string
 		var owner sql.NullInt64
 		var public bool
-		err = tx.QueryRowContext(r.Context(), a.s.Bind("SELECT r.file_hash,r.model,r.kind,r.owner_id,r.is_public FROM texture_records r JOIN textures f ON f.hash=r.file_hash WHERE r.record_id=? AND r.deleted=? AND f.deleted=? FOR UPDATE"), body.RecordID, false, false).Scan(&fileHash, &model, &recordKind, &owner, &public)
+		err = tx.QueryRowContext(r.Context(), a.s.Bind("SELECT r.file_hash,r.model,r.kind,r.owner_id,r.is_public FROM texture_records r JOIN textures f ON f.hash=r.file_hash WHERE r.record_id=? AND r.deleted=? AND f.deleted=? AND "+approvedRecordSQL+" FOR UPDATE"), body.RecordID, false, false).Scan(&fileHash, &model, &recordKind, &owner, &public)
 		if errors.Is(err, sql.ErrNoRows) {
 			failure(w, 404, "找不到可应用的材质")
 			return
@@ -309,7 +316,7 @@ func (a *Server) listTextures(w http.ResponseWriter, r *http.Request) {
 		where += " AND (POSITION(? IN r.name)>0 OR POSITION(? IN r.description)>0 OR POSITION(? IN r.file_hash)>0)"
 		args = append(args, query, query, strings.ToLower(query))
 	}
-	rows, err := a.s.DB.QueryContext(r.Context(), a.s.Bind("SELECT r.record_id,r.file_hash,r.name,r.description,r.kind,r.model,r.is_public,r.owner_id FROM texture_records r JOIN textures f ON f.hash=r.file_hash"+where+" ORDER BY r.name,r.record_id"), args...)
+	rows, err := a.s.DB.QueryContext(r.Context(), a.s.Bind("SELECT r.record_id,r.file_hash,r.name,r.description,r.kind,r.model,r.is_public,r.owner_id,COALESCE(m.category,''),COALESCE(m.tags,'[]'),COALESCE(m.review_state,'approved'),COALESCE(m.review_reason,'') FROM texture_records r JOIN textures f ON f.hash=r.file_hash LEFT JOIN texture_metadata m ON m.record_id=r.record_id"+where+" ORDER BY r.name,r.record_id"), args...)
 	if err != nil {
 		failure(w, 503, "暂时无法读取材质")
 		return
@@ -319,7 +326,12 @@ func (a *Server) listTextures(w http.ResponseWriter, r *http.Request) {
 	for rows.Next() {
 		var item textureRecord
 		var owner sql.NullInt64
-		if err := rows.Scan(&item.ID, &item.FileHash, &item.Name, &item.Description, &item.Kind, &item.Model, &item.Public, &owner); err != nil {
+		var tags string
+		if err := rows.Scan(&item.ID, &item.FileHash, &item.Name, &item.Description, &item.Kind, &item.Model, &item.Public, &owner, &item.Category, &tags, &item.ReviewState, &item.ReviewReason); err != nil {
+			failure(w, 503, "暂时无法读取材质")
+			return
+		}
+		if err := json.Unmarshal([]byte(tags), &item.Tags); err != nil {
 			failure(w, 503, "暂时无法读取材质")
 			return
 		}
@@ -389,6 +401,12 @@ func (a *Server) uploadTexture(w http.ResponseWriter, r *http.Request) {
 		failure(w, 400, "材质描述不能超过 200 个字符")
 		return
 	}
+	category := strings.TrimSpace(r.FormValue("category"))
+	tags, err := normalizeTextureTags(strings.Split(r.FormValue("tags"), ","))
+	if err != nil {
+		failure(w, 400, "最多 10 个标签，每个 24 个字，仅使用文字、数字、空格、下划线或短横线")
+		return
+	}
 	model := r.FormValue("model")
 	if kind == "cape" {
 		model = "default"
@@ -434,7 +452,13 @@ func (a *Server) uploadTexture(w http.ResponseWriter, r *http.Request) {
 	}
 	sum := sha256.Sum256(data)
 	hash := hex.EncodeToString(sum[:])
-	if err := saveTexture(a.cfg.TextureDir, hash, data); err != nil {
+	releaseStorage, err := a.s.LeaseStorage(r.Context())
+	if err != nil {
+		failure(w, 503, "存储正在维护，请稍后重试")
+		return
+	}
+	defer releaseStorage()
+	if err := a.saveTextureFile(r.Context(), hash, data); err != nil {
 		failure(w, 503, "无法保存材质文件")
 		return
 	}
@@ -449,6 +473,24 @@ func (a *Server) uploadTexture(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	defer tx.Rollback()
+	var mode string
+	if err := tx.QueryRowContext(r.Context(), "SELECT value FROM settings WHERE setting_key='registration_mode' FOR UPDATE").Scan(&mode); err != nil {
+		failure(w, 503, "暂时无法读取内容设置")
+		return
+	}
+	policy, err := readContentPolicy(r.Context(), tx)
+	if err != nil {
+		failure(w, 503, "暂时无法读取内容设置")
+		return
+	}
+	if category != "" && !slices.Contains(policy.Categories, category) {
+		failure(w, 400, "请选择有效分类")
+		return
+	}
+	reviewState := "approved"
+	if policy.ReviewUploads {
+		reviewState = "pending"
+	}
 	baseInsert := "INSERT INTO textures(hash,name,kind,model,is_public,deleted) VALUES(?,?,?,?,?,?) ON CONFLICT(hash) DO NOTHING"
 	if err := a.lockWebAccount(r.Context(), tx, u.ID, token); err != nil {
 		sessionError(w, err)
@@ -478,11 +520,16 @@ func (a *Server) uploadTexture(w http.ResponseWriter, r *http.Request) {
 		failure(w, 503, "暂时无法保存材质记录")
 		return
 	}
+	if err := a.putTextureMetadata(r.Context(), tx, recordID, category, tags, reviewState, ""); err != nil {
+		failure(w, 503, "暂时无法保存材质信息")
+		return
+	}
 	if err := tx.Commit(); err != nil {
 		failure(w, 503, "暂时无法保存材质记录")
 		return
 	}
-	respond(w, 201, textureRecord{ID: recordID, FileHash: hash, Name: name, Description: description, Kind: kind, Model: model, Public: isPublic, Owned: true})
+	a.publishPluginEvent(r.Context(), "texture.upload", u.ID, recordID)
+	respond(w, 201, textureRecord{ID: recordID, FileHash: hash, Name: name, Description: description, Kind: kind, Model: model, Public: isPublic, Owned: true, Category: category, Tags: tags, ReviewState: reviewState})
 }
 
 func (a *Server) updateAdminSettings(w http.ResponseWriter, r *http.Request) {

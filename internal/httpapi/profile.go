@@ -9,8 +9,6 @@ import (
 	"image/color"
 	"image/png"
 	"net/http"
-	"os"
-	"path/filepath"
 	"strconv"
 	"strings"
 	"unicode"
@@ -154,7 +152,7 @@ func (a *Server) avatar(w http.ResponseWriter, r *http.Request) {
 			return
 		}
 		if err == nil && validHash.MatchString(hash) {
-			blob, e := os.ReadFile(filepath.Join(a.cfg.TextureDir, hash))
+			blob, e := a.textureFileBytes(r.Context(), hash)
 			if e == nil && len(blob) <= 8<<20 {
 				skin, _, e := image.Decode(bytes.NewReader(blob))
 				if e == nil && skin.Bounds().Dx() >= 64 {

@@ -17,7 +17,6 @@ import (
 	"net"
 	"net/http"
 	"net/url"
-	"os"
 	"regexp"
 	"strings"
 	"time"
@@ -657,7 +656,7 @@ func (a *Server) profileResponse(ctx context.Context, q yggQuerier, uuid string,
 			continue
 		}
 		var deleted bool
-		err := q.QueryRowContext(ctx, a.s.Bind("SELECT f.deleted FROM textures f WHERE f.hash=? AND (EXISTS (SELECT 1 FROM texture_records r WHERE r.file_hash=f.hash AND r.deleted=?) OR EXISTS (SELECT 1 FROM characters c WHERE c.skin_hash=f.hash OR c.cape_hash=f.hash))"), item.hash, false).Scan(&deleted)
+		err := q.QueryRowContext(ctx, a.s.Bind("SELECT f.deleted FROM textures f WHERE f.hash=? AND "+availableTextureSQL), item.hash).Scan(&deleted)
 		if errors.Is(err, sql.ErrNoRows) || deleted {
 			continue
 		}
@@ -727,7 +726,7 @@ func (a *Server) serveTextureHash(w http.ResponseWriter, r *http.Request, hash s
 		return
 	}
 	var deleted bool
-	err := a.s.DB.QueryRowContext(r.Context(), a.s.Bind("SELECT f.deleted FROM textures f WHERE f.hash=? AND (EXISTS (SELECT 1 FROM texture_records r WHERE r.file_hash=f.hash AND r.deleted=?) OR EXISTS (SELECT 1 FROM characters c WHERE c.skin_hash=f.hash OR c.cape_hash=f.hash))"), hash, false).Scan(&deleted)
+	err := a.s.DB.QueryRowContext(r.Context(), a.s.Bind("SELECT f.deleted FROM textures f WHERE f.hash=? AND "+availableTextureSQL), hash).Scan(&deleted)
 	if errors.Is(err, sql.ErrNoRows) || deleted {
 		http.NotFound(w, r)
 		return
@@ -736,27 +735,17 @@ func (a *Server) serveTextureHash(w http.ResponseWriter, r *http.Request, hash s
 		failure(w, 503, "材质暂不可用")
 		return
 	}
-	root, err := os.OpenRoot(a.cfg.TextureDir)
-	if err != nil {
-		failure(w, 503, "材质暂不可用")
-		return
-	}
-	defer root.Close()
-	f, err := root.Open(hash)
+	if a.redirectCDN(w,r,hash){return}
+	f, err := a.openTextureFile(r.Context(), hash)
 	if err != nil {
 		http.NotFound(w, r)
 		return
 	}
 	defer f.Close()
-	info, err := f.Stat()
-	if err != nil || !info.Mode().IsRegular() {
-		http.NotFound(w, r)
-		return
-	}
 	w.Header().Set("Content-Type", "image/png")
 	w.Header().Set("Cache-Control", "public, max-age=0, must-revalidate")
 	w.Header().Set("ETag", `"`+hash+`"`)
-	http.ServeContent(w, r, hash, info.ModTime(), f)
+	http.ServeContent(w, r, hash, time.Unix(0, 0), f)
 }
 
 func (a *Server) legacyRoot(w http.ResponseWriter, r *http.Request) {

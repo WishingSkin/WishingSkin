@@ -202,6 +202,40 @@ func TestCopyRecoveryAndTargetProtection(t *testing.T) {
 	}
 }
 
+func TestMigrationTargetAcceptsOnlySettingsKeyBeforeJournal(t *testing.T) {
+	s, source := fixture(t)
+	fp := fingerprint(s)
+	target := filepath.Join(t.TempDir(), "target")
+	if err := os.Mkdir(target, 0700); err != nil {
+		t.Fatal(err)
+	}
+	key := strings.Repeat("k", 32)
+	keyPath := filepath.Join(target, ".settings.key")
+	if err := os.WriteFile(keyPath, []byte(key), 0600); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := prepareDirectory(s, source, target, fp); err != nil {
+		t.Fatalf("valid initial settings key rejected: %v", err)
+	}
+	if _, err := prepareDirectory(s, source, target, fp); err != nil {
+		t.Fatalf("settings key blocked journal recovery: %v", err)
+	}
+	if got, err := os.ReadFile(keyPath); err != nil || string(got) != key {
+		t.Fatalf("settings key changed: %v", err)
+	}
+
+	invalid := filepath.Join(t.TempDir(), "invalid")
+	if err := os.Mkdir(invalid, 0700); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(invalid, ".settings.key"), []byte("short"), 0600); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := prepareDirectory(s, source, invalid, fp); err == nil {
+		t.Fatal("invalid initial settings key accepted")
+	}
+}
+
 func TestCustomHashPreservationAndInterruptedCopy(t *testing.T) {
 	s, source := fixture(t)
 	b, err := os.ReadFile(filepath.Join(source, s.Textures[0].Hash))

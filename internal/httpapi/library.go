@@ -2,6 +2,7 @@ package httpapi
 
 import (
 	"database/sql"
+	"encoding/json"
 	"errors"
 	"net/http"
 	"strconv"
@@ -18,16 +19,20 @@ type libraryRecord struct {
 	CollectionCount int64  `json:"collectionCount"`
 }
 
-const libraryColumns = "r.record_id,r.file_hash,r.name,r.description,r.kind,r.model,r.is_public,r.owner_id,COALESCE(u.nickname,''),(SELECT COUNT(*) FROM wardrobe c WHERE c.record_id=r.record_id)"
-const libraryTables = " FROM texture_records r JOIN textures f ON f.hash=r.file_hash LEFT JOIN users u ON u.id=r.owner_id"
+const libraryColumns = "r.record_id,r.file_hash,r.name,r.description,r.kind,r.model,r.is_public,r.owner_id,COALESCE(u.nickname,''),(SELECT COUNT(*) FROM wardrobe c WHERE c.record_id=r.record_id),COALESCE(m.category,''),COALESCE(m.tags,'[]'),COALESCE(m.review_state,'approved'),COALESCE(m.review_reason,'')"
+const libraryTables = " FROM texture_records r JOIN textures f ON f.hash=r.file_hash LEFT JOIN users u ON u.id=r.owner_id LEFT JOIN texture_metadata m ON m.record_id=r.record_id"
 
 func scanLibraryRecord(row interface{ Scan(...any) error }, item *libraryRecord, wardrobe bool) error {
 	var owner sql.NullInt64
-	fields := []any{&item.ID, &item.FileHash, &item.Name, &item.Description, &item.Kind, &item.Model, &item.Public, &owner, &item.OwnerName, &item.CollectionCount}
+	var tags string
+	fields := []any{&item.ID, &item.FileHash, &item.Name, &item.Description, &item.Kind, &item.Model, &item.Public, &owner, &item.OwnerName, &item.CollectionCount, &item.Category, &tags, &item.ReviewState, &item.ReviewReason}
 	if wardrobe {
 		fields = append(fields, &item.DisplayName)
 	}
 	if err := row.Scan(fields...); err != nil {
+		return err
+	}
+	if err := json.Unmarshal([]byte(tags), &item.Tags); err != nil {
 		return err
 	}
 	if owner.Valid {
@@ -37,7 +42,7 @@ func scanLibraryRecord(row interface{ Scan(...any) error }, item *libraryRecord,
 }
 
 func (a *Server) publicLibrary(w http.ResponseWriter, r *http.Request) {
-	where := " WHERE r.deleted=? AND f.deleted=? AND r.is_public=?"
+	where := " WHERE r.deleted=? AND f.deleted=? AND r.is_public=? AND " + approvedRecordSQL
 	args := []any{false, false, true}
 	if id := r.PathValue("id"); id != "" {
 		if !recordIDPattern.MatchString(id) {
@@ -97,6 +102,20 @@ func (a *Server) publicLibrary(w http.ResponseWriter, r *http.Request) {
 		where += " AND POSITION(? IN r.name)>0"
 		args = append(args, name)
 	}
+	if category := q.Get("category"); category != "" {
+		where += " AND m.category=?"
+		args = append(args, category)
+	}
+	if tag := q.Get("tag"); tag != "" {
+		normalized, e := normalizeTextureTags([]string{tag})
+		if e != nil || len(normalized) != 1 {
+			failure(w, 400, "标签无效")
+			return
+		}
+		raw, _ := json.Marshal(normalized[0])
+		where += " AND POSITION(? IN m.tags)>0"
+		args = append(args, string(raw))
+	}
 	order := "r.name,r.record_id"
 	switch q.Get("sort") {
 	case "", "name":
@@ -141,7 +160,7 @@ func (a *Server) wardrobe(w http.ResponseWriter, r *http.Request) {
 		sessionError(w, err)
 		return
 	}
-	where := " WHERE c.user_id=? AND r.deleted=? AND f.deleted=?"
+	where := " WHERE c.user_id=? AND r.deleted=? AND f.deleted=? AND " + approvedRecordSQL
 	args := []any{u.ID, false, false}
 	if kind := r.URL.Query().Get("kind"); kind != "" {
 		if kind != "skin" && kind != "cape" {
@@ -218,7 +237,7 @@ func (a *Server) manageWardrobe(w http.ResponseWriter, r *http.Request) {
 	var owner sql.NullInt64
 	var name string
 	var public, removed, disabled bool
-	err = tx.QueryRowContext(r.Context(), a.s.Bind("SELECT r.owner_id,r.name,r.is_public,r.deleted,f.deleted FROM texture_records r JOIN textures f ON f.hash=r.file_hash WHERE r.record_id=? FOR UPDATE"), id).Scan(&owner, &name, &public, &removed, &disabled)
+	err = tx.QueryRowContext(r.Context(), a.s.Bind("SELECT r.owner_id,r.name,r.is_public,(r.deleted OR NOT "+approvedRecordSQL+"),f.deleted FROM texture_records r JOIN textures f ON f.hash=r.file_hash WHERE r.record_id=? FOR UPDATE"), id).Scan(&owner, &name, &public, &removed, &disabled)
 	if errors.Is(err, sql.ErrNoRows) && r.Method == http.MethodDelete {
 		w.WriteHeader(http.StatusNoContent)
 		return

@@ -54,9 +54,20 @@ type Report struct {
 	CredentialsRevoked bool             `json:"credentialsRevoked"`
 }
 
-// Export requires all application writes stopped, including other CLI writers.
+// Export takes a database snapshot and excludes upload/cleanup file writes.
+// Other CLI writers (imports/restores) must remain stopped.
 // A missing manifest identifies an unfinished backup; existing paths are never reused.
 func Export(ctx context.Context, db *store.Store, textureDir, destination string) (Report, error) {
+	release, err := db.LeaseStorage(ctx)
+	if err != nil {
+		return Report{}, err
+	}
+	defer release()
+	return ExportWithStorageLease(ctx, db, textureDir, destination)
+}
+
+// ExportWithStorageLease requires the caller to hold db.LeaseStorage.
+func ExportWithStorageLease(ctx context.Context, db *store.Store, textureDir, destination string) (Report, error) {
 	var report Report
 	if err := independent(textureDir, destination); err != nil {
 		return report, err

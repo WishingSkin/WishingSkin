@@ -324,7 +324,18 @@ func prepareDirectory(s *Snapshot, source, target, fp string) (*fileJournal, err
 	if err != nil {
 		return nil, err
 	}
-	if len(entries) == 0 {
+	settingsKeyPresent := false
+	for _, entry := range entries {
+		if entry.Name() != ".settings.key" {
+			continue
+		}
+		info, err := os.Lstat(filepath.Join(target, entry.Name()))
+		if err != nil || !info.Mode().IsRegular() || info.Size() != 32 {
+			return nil, fmt.Errorf("target settings key is invalid")
+		}
+		settingsKeyPresent = true
+	}
+	if len(entries) == 0 || len(entries) == 1 && settingsKeyPresent {
 		f, err := os.OpenFile(path, os.O_CREATE|os.O_EXCL|os.O_WRONLY, 0600)
 		if err != nil {
 			return nil, err
@@ -361,7 +372,7 @@ func prepareDirectory(s *Snapshot, source, target, fp string) (*fileJournal, err
 			return nil, fmt.Errorf("target file journal does not match this source snapshot")
 		}
 		for _, e := range entries {
-			if e.Name() == ".wishingskin-migration.json" {
+			if e.Name() == ".wishingskin-migration.json" || settingsKeyPresent && e.Name() == ".settings.key" {
 				continue
 			}
 			name := strings.TrimPrefix(e.Name(), ".copy-")

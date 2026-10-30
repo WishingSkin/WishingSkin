@@ -17,7 +17,7 @@ func (a *Server) legacyRawTexture(w http.ResponseWriter, r *http.Request) {
 	}
 	sum := md5.Sum([]byte("bs-texture-record:" + strconv.FormatInt(id, 10)))
 	var hash string
-	err = a.s.DB.QueryRowContext(r.Context(), a.s.Bind("SELECT file_hash FROM texture_records WHERE record_id=? AND deleted=?"), hex.EncodeToString(sum[:]), false).Scan(&hash)
+	err = a.s.DB.QueryRowContext(r.Context(), a.s.Bind("SELECT file_hash FROM texture_records r WHERE record_id=? AND deleted=? AND "+approvedRecordSQL+""), hex.EncodeToString(sum[:]), false).Scan(&hash)
 	if errors.Is(err, sql.ErrNoRows) {
 		http.NotFound(w, r)
 		return

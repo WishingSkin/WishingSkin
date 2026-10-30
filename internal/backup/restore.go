@@ -58,6 +58,9 @@ func Restore(ctx context.Context, db *store.Store, sourceDir, textureDir string)
 	if _, err := tx.ExecContext(ctx, "DELETE FROM settings"); err != nil {
 		return report, err
 	}
+	if _, err := tx.ExecContext(ctx, "DELETE FROM plugins"); err != nil {
+		return report, err
+	}
 	for i, t := range tables {
 		err := walkTable(ctx, root, t, m.Tables[i], func(row []*string) error {
 			args, err := rowArgs(t, row)
@@ -148,6 +151,9 @@ func verify(ctx context.Context, root *os.Root) (Manifest, error) {
 func emptyTarget(ctx context.Context, tx *sql.Tx) error {
 	for _, name := range append(append([]string{}, credentialTables...), tableNames()...) {
 		query := "SELECT COUNT(*) FROM " + name
+		if name == "plugins" {
+			query += ` WHERE NOT ((plugin_id='wishingskin.points' AND version='1.0.0' AND enabled=TRUE AND settings_json='{}') OR (plugin_id='wishingskin.invitations' AND version='1.0.0' AND enabled=FALSE AND settings_json='{}'))`
+		}
 		if name == "settings" {
 			query += ` WHERE NOT ((setting_key='character_limit' AND value='1') OR (setting_key='registration_mode' AND value IN ('closed','open')) OR (setting_key='points_rules' AND value='{"enabled":false,"dailyReward":0,"uploadCost":0,"characterCost":0}') OR (setting_key='homepage_blocks' AND value='[{"id":"intro","kind":"intro","enabled":true,"title":"Minecraft 外观工作台","body":"管理角色、皮肤和披风，在公开库中发现新的外观，并通过 Yggdrasil 接入游戏。","buttonLabel":"登录工作台","buttonHref":"/login"},{"id":"features","kind":"features","enabled":true,"title":"从角色到游戏","features":[{"title":"角色与外观","body":"用模型预览管理标准和纤细模型，皮肤与披风分别绑定。","href":"/login"},{"title":"公开库","body":"浏览公开材质并收藏到自己的衣柜。","href":"/library"},{"title":"游戏接入","body":"使用本站提供的 Yggdrasil 或兼容地址加载外观。","href":"/login"}]},{"id":"notice","kind":"notice","enabled":true,"title":"最新公告"}]'))`
 		}
