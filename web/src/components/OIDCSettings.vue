@@ -3,26 +3,32 @@ import { onMounted, ref } from 'vue'
 import { t } from '../i18n'
 const props = defineProps<{ csrfToken: string }>()
 const emit = defineEmits<{ updated: []; expired: [] }>()
-const draft = ref({ enabled: false, name: 'OIDC', issuer: '', clientId: '', clientSecret: '', secretConfigured: false, clearSecret: false, redirectUri: '' })
+function blank() { return { enabled: false, name: 'OIDC', issuer: '', clientId: '', clientSecret: '', secretConfigured: false, clearSecret: false, redirectUri: '', id: '' } }
+const providers = ref<ReturnType<typeof blank>[]>([])
+const draft = ref(blank())
+const selected = ref('')
+function select(id: string) { selected.value=id; draft.value=providers.value.find(p=>p.id===id)! }
+function add() { const id='provider-'+crypto.randomUUID().slice(0,8); providers.value.push({ ...blank(), id }); select(id) }
+function remove() { providers.value=providers.value.filter(p=>p.id!==selected.value); select('') }
 const loaded = ref(false), busy = ref(false), error = ref(''), message = ref('')
 async function load() {
   error.value = ''
   try {
-    const response = await fetch('/api/admin/oidc', { credentials: 'same-origin' })
+    const response = await fetch('/api/admin/oidc/providers', { credentials: 'same-origin' })
     if (response.status === 401) { emit('expired'); return }
     const data = await response.json()
     if (!response.ok) { error.value = data.error || '暂时无法读取 OIDC 设置'; return }
-    draft.value = { ...draft.value, ...data, clientSecret: '', clearSecret: false }; loaded.value = true
+    providers.value = data.providers.map((p: ReturnType<typeof blank>) => ({ ...blank(), ...p, clientSecret:'', clearSecret:false })); select(''); loaded.value=true
   } catch { error.value = '暂时无法读取 OIDC 设置' }
 }
 async function save() {
   busy.value = true; error.value = ''; message.value = ''
   try {
-    const response = await fetch('/api/admin/oidc', { method: 'PATCH', credentials: 'same-origin', headers: { 'Content-Type': 'application/json', 'X-CSRF-Token': props.csrfToken }, body: JSON.stringify(draft.value) })
+    const response = await fetch('/api/admin/oidc/providers', { method: 'PATCH', credentials: 'same-origin', headers: { 'Content-Type': 'application/json', 'X-CSRF-Token': props.csrfToken }, body: JSON.stringify({ providers: providers.value }) })
     if (response.status === 401) { emit('expired'); return }
     const data = await response.json()
     if (!response.ok) { error.value = data.error || '暂时无法保存 OIDC 设置'; return }
-    draft.value = { ...draft.value, ...data, clientSecret: '', clearSecret: false }; message.value = 'OIDC 设置已保存。'; emit('updated')
+    providers.value=data.providers.map((p: ReturnType<typeof blank>)=>({ ...blank(), ...p, clientSecret:'',clearSecret:false })); select(selected.value); message.value = 'OIDC 设置已保存。'; emit('updated')
   } catch { error.value = '无法确认操作结果，请重新检查设置。' }
   finally { busy.value = false }
 }
@@ -31,7 +37,7 @@ onMounted(load)
 <template>
   <section class="settings-section oidc-settings"><h3>{{ t('OIDC 登录') }}</h3><p class="password-rule">{{ t('连接身份提供商。新账号仍遵守本站注册和邮箱验证规则。') }}</p>
     <p v-if="!loaded && !error" role="status">{{ t('正在加载…') }}</p><p v-if="error" class="form-error" role="alert">{{ t(error) }} <button v-if="!loaded" class="text-button" type="button" @click="load">{{ t('重试') }}</button></p>
-    <form v-if="loaded" class="settings-form" @submit.prevent="save"><fieldset :disabled="busy">
+    <div v-if="loaded" class="settings-actions"><label class="binding-field"><span>{{ t('身份提供商') }}</span><select :value="selected" @change="select(($event.target as HTMLSelectElement).value)"><option v-for="p in providers" :key="p.id" :value="p.id">{{ p.name }}{{ p.id ? '' : ' (' + t('默认') + ')' }}</option></select></label><button class="secondary-button" type="button" :disabled="busy || providers.length >= 12" @click="add">{{ t('添加提供商') }}</button><button v-if="selected" class="text-button" type="button" :disabled="busy" @click="remove">{{ t('移除提供商') }}</button></div><form v-if="loaded" class="settings-form" @submit.prevent="save"><fieldset :disabled="busy">
       <label class="checkbox-label"><input v-model="draft.enabled" type="checkbox" /> {{ t('启用 OIDC 登录') }}</label>
       <label class="binding-field"><span>{{ t('登录按钮名称') }}</span><input v-model="draft.name" maxlength="64" required /></label>
       <label class="binding-field"><span>Issuer</span><input v-model="draft.issuer" type="url" :required="draft.enabled" placeholder="https://identity.example.com/oidc" /></label>

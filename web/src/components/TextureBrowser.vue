@@ -16,6 +16,7 @@ const message = ref('')
 const busy = ref(false)
 const query = ref('')
 const kind = ref('')
+const category=ref(''), tag=ref('')
 const sort = ref('name')
 const owner = ref('')
 const ownerName = ref('')
@@ -51,7 +52,7 @@ async function load() {
   loading.value = true
   loadError.value = ''
   try {
-    const params = new URLSearchParams({ q: query.value.trim(), kind: kind.value, sort: sort.value, owner: owner.value, page: String(page.value), pageSize: '24' })
+    const params = new URLSearchParams({ q: query.value.trim(), kind: kind.value, sort: sort.value, owner: owner.value, page: String(page.value), pageSize: '24',category:category.value,tag:tag.value })
     const response = await fetch(`/api/library?${params}`, { signal: controller.signal })
     if (!response.ok) throw new Error('library')
     const data: { textures: LibraryRecord[]; total: number } = await response.json()
@@ -106,7 +107,7 @@ onBeforeUnmount(() => { active = false; request?.abort(); lifetime.abort() })
 <template>
   <section class="texture-browser">
     <div class="page-heading"><div><h1>{{ mode === 'library' ? t('公开库') : t('我的衣柜') }}<span class="heading-pixel" aria-hidden="true"></span></h1></div><button type="button" class="secondary-button" :disabled="pending || busy" @click="load">{{ pending ? t('正在刷新…') : t('刷新列表') }}</button></div>
-    <form v-if="mode === 'library'" class="library-filters panel" role="search" @submit.prevent="search">
+    <form v-if="mode === 'library'" class="library-filters panel" role="search" @submit.prevent="search"><label class="binding-field"><span>{{ t('分类') }}</span><input v-model="category" maxlength="32" /></label><label class="binding-field"><span>{{ t('标签') }}</span><input v-model="tag" maxlength="24" /></label>
       <label class="binding-field library-search"><span>{{ t("材质名称") }}</span><input v-model="query" maxlength="255" :placeholder="t('搜索材质名称')" /></label>
       <label class="binding-field"><span>{{ t("类型") }}</span><select v-model="kind" @change="search"><option value="">{{ t("全部材质") }}</option><option value="skin">{{ t("皮肤") }}</option><option value="cape">{{ t("披风") }}</option></select></label>
       <label class="binding-field"><span>{{ t("排序") }}</span><select v-model="sort" @change="search"><option value="name">{{ t("名称升序") }}</option><option value="name-desc">{{ t("名称降序") }}</option><option value="collections">{{ t("收藏最多") }}</option></select></label>

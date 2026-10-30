@@ -1,7 +1,13 @@
 <script setup lang="ts">
 import { computed, nextTick, onBeforeUnmount, onMounted, ref, watch } from 'vue'
+import InterfaceIcon from './components/InterfaceIcon.vue'
+import { setInterfaceAppearance, applyInterfaceColors } from './interfaceAppearance'
 import HomepageContent from './components/HomepageContent.vue'
 import OIDCSignIn from './components/OIDCSignIn.vue'
+import OIDCConfirmation from './components/OIDCConfirmation.vue'
+import TOTPSettings from './components/TOTPSettings.vue'
+import ConnectorAccount from './components/ConnectorAccount.vue'
+import OAuthAccount from './components/OAuthAccount.vue'
 import OIDCAccount from './components/OIDCAccount.vue'
 import CharacterViewer from './components/CharacterViewer.vue'
 import ModelThumbnail from './components/ModelThumbnail.vue'
@@ -11,7 +17,6 @@ import TextureBrowser from './components/TextureBrowser.vue'
 import AccountAccess from './components/AccountAccess.vue'
 import RegistrationSettings from './components/RegistrationSettings.vue'
 import Administration from './components/Administration.vue'
-import BrandingSettings from './components/BrandingSettings.vue'
 import SettingsWorkspace from './components/SettingsWorkspace.vue'
 import ProfileSettings from './components/ProfileSettings.vue'
 import ReportsView from './components/ReportsView.vue'
@@ -34,6 +39,10 @@ const initializing = ref(true)
 const sessionError = ref('')
 const email = ref('')
 const password = ref('')
+const totpCode = ref('')
+const totpRequired = ref(false)
+const oidcTOTP = ref(window.location.pathname === '/login' && new URLSearchParams(window.location.search).get('totp') === '1')
+const oidcConfirmation = ref(false)
 const loginBusy = ref(false)
 const loginError = ref('')
 const loginMessage = ref('')
@@ -87,6 +96,7 @@ const renameCharacterName = ref('')
 const uploadKind = ref<'skin' | 'cape'>('skin')
 const uploadModel = ref('default')
 const uploadName = ref('')
+const uploadCategory=ref(''), uploadTags=ref(''), editTextureCategory=ref(''),editTextureTags=ref('')
 const uploadDescription = ref('')
 const uploadFile = ref<File | null>(null)
 const uploadPublic = ref(false)
@@ -156,6 +166,14 @@ function setRouteView(path: string, search = '') {
     materialTab.value = tab === 'cape' || tab === 'upload' ? tab : 'skin'
   }
   if (normalized === '/login') {
+    oidcTOTP.value = params.get('totp') === '1'
+    oidcConfirmation.value = params.get('oidcConfirm') === '1'
+    if (!oidcTOTP.value) {
+      totpCode.value = ''
+      totpRequired.value = false
+      captchaRequired.value = false
+      loginChallengeToken.value = ''
+    }
     const mode = params.get('mode')
     accessMode.value = mode === 'register' || mode === 'mail' ? mode : null
   } else if (!linkToken.value) accessMode.value = null
@@ -169,6 +187,7 @@ function navigate(path: string, replace = false) {
   }
   setRouteView(normalized, url.search)
 }
+function finishOIDCConfirmation(path: string) { window.location.assign(path) }
 function homepageLink(event: MouseEvent, href: string) {
   if (href.startsWith('/') && !href.startsWith('//')) {
     event.preventDefault()
@@ -211,6 +230,8 @@ const dark = ref(false)
 const avatarVersion = ref(0)
 let themePreference = ''
 function siteTheme() {
+  setInterfaceAppearance(site.value.appearance.advanced)
+  applyInterfaceColors(dark.value)
   document.documentElement.dataset.accent = site.value.appearance.accent
   document.documentElement.dataset.surface = site.value.appearance.surfaceEffect || 'solid'
   const favicon = document.querySelector<HTMLLinkElement>('link[rel="icon"]')
@@ -246,6 +267,7 @@ watch(selectedTextureId, () => { editingTextureId.value = '' })
 
 function applyTheme(value: boolean) {
   dark.value = value
+  applyInterfaceColors(value)
   document.documentElement.dataset.theme = value ? 'dark' : 'light'
   document.querySelector('meta[name="theme-color"]')?.setAttribute('content', value ? '#111824' : '#f4f6fa')
 }
@@ -270,6 +292,7 @@ function acceptSession(session: Session) {
   const destination = currentPath === '/login' && accessMode.value === 'mail'
     ? '/login?mode=mail'
     : pendingNext.value || (currentPath === '/' ? '/' : '/user')
+  if (destination.startsWith('/user/oauth/authorize?')) { window.location.assign(destination); return }
   navigate(destination, true)
   pendingNext.value = null
 }
@@ -280,6 +303,11 @@ function clearSession() {
   verificationMessage.value = ''
   verificationError.value = ''
   loginMessage.value = ''
+  totpCode.value = ''
+  totpRequired.value = false
+  oidcTOTP.value = false
+  captchaRequired.value = false
+  loginChallengeToken.value = ''
   user.value = null
   csrfToken.value = ''
   characters.value = []
@@ -487,6 +515,7 @@ async function uploadTexture() {
   form.set('model', uploadKind.value === 'skin' ? uploadModel.value : 'default')
   form.set('name', uploadName.value.trim() || uploadFile.value.name.replace(/\.png$/i, ''))
   form.set('description', uploadDescription.value)
+ form.set('category',uploadCategory.value); form.set('tags',uploadTags.value)
   form.set('isPublic', String(uploadPublic.value))
   form.set('expectedCost', String(site.value.points.enabled ? site.value.points.uploadCost : 0))
   const ok = await mutate('/api/textures', 'POST', form, '')
@@ -515,6 +544,7 @@ function editTexture() {
   if (!selectedTexture.value?.owned) return
   editingTextureId.value = selectedTexture.value.id
   editTextureName.value = selectedTexture.value.name
+  editTextureCategory.value=selectedTexture.value.category||'';editTextureTags.value=selectedTexture.value.tags?.join(', ')||''
   editTextureDescription.value = selectedTexture.value.description
   editTexturePublic.value = selectedTexture.value.public
 }
@@ -525,7 +555,7 @@ async function saveTexture() {
   actionError.value = ''
   actionMessage.value = ''
   if (editDescriptionLength.value > 200) { actionError.value = '材质描述不能超过 200 个字符。'; return }
-  const ok = await mutate(`/api/textures/${editingTextureId.value}`, 'PATCH', JSON.stringify({ name: editTextureName.value.trim(), description: editTextureDescription.value, isPublic: editTexturePublic.value }))
+  const ok = await mutate(`/api/textures/${editingTextureId.value}`, 'PATCH', JSON.stringify({ name: editTextureName.value.trim(), description: editTextureDescription.value, isPublic: editTexturePublic.value, category: editTextureCategory.value, tags: editTextureTags.value.split(',') }))
   if (!ok) return
   editingTextureId.value = ''
   actionMessage.value = '材质资料已保存。'
@@ -578,19 +608,24 @@ async function login() {
   loginError.value = ''
   loginMessage.value = ''
   try {
-    const response = await api('/api/auth/login', {
+    const response = await api(oidcTOTP.value ? '/api/auth/totp' : '/api/auth/login', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ email: email.value.trim(), password: password.value, turnstileToken: loginChallengeToken.value }),
+      body: JSON.stringify(oidcTOTP.value ? { code: totpCode.value } : { email: email.value.trim(), password: password.value, turnstileToken: loginChallengeToken.value, totpCode: totpCode.value }),
     })
     if (!response.ok) {
       const data = await response.json().catch(() => ({}))
-      captchaRequired.value = captchaRequired.value || !!data.captchaRequired
+      if (Object.hasOwn(data, 'totpRequired')) totpRequired.value = !!data.totpRequired || oidcTOTP.value
+      if (Object.hasOwn(data, 'captchaRequired')) captchaRequired.value = !!data.captchaRequired
+      if (!captchaRequired.value) loginChallengeToken.value = ''
       emailVerificationRequired.value = !!data.emailVerificationRequired
       loginError.value = data.error || (response.status === 429 ? '尝试次数过多，请稍后再试。' : '暂时无法登录，请稍后重试。')
       return
     }
-    acceptSession(await response.json() as Session)
+    const result = await response.json() as Session & { next?: string }
+    acceptSession(result)
+    if (result.next && safeNext(result.next)) navigate(result.next)
+    totpCode.value = ''; totpRequired.value = false; oidcTOTP.value = false
     captchaRequired.value = false
     emailVerificationRequired.value = false
     password.value = ''
@@ -678,7 +713,7 @@ onBeforeUnmount(() => {
     <header class="topbar">
       <a class="brand" href="/" :aria-label="t('{name} 首页', { name: site.name })" :title="site.name"><img v-if="site.appearance.logoImage" class="brand-logo" :src="site.appearance.logoImage" alt="" width="32" height="32" /><span v-else class="brand-mark" aria-hidden="true"><i></i><i></i><i></i></span><span class="brand-name"><template v-if="site.name === 'WishingSkin'">Wishing<span class="brand-light">Skin</span></template><template v-else>{{ site.name }}</template></span></a>
       <div class="topbar-actions">
-        <button class="topbar-link" :class="{ active: routePath === '/library' }" type="button" :aria-current="routePath === '/library' ? 'page' : undefined" @click="navigate('/library')">{{ t('公开库') }}</button>
+        <button class="topbar-link" :class="{ active: routePath === '/library' }" type="button" :aria-current="routePath === '/library' ? 'page' : undefined" @click="navigate('/library')"><InterfaceIcon name="library" />{{ t('公开库') }}</button>
         <NoticeCenter :notice="site.notice" :format="site.noticeFormat" />
         <select class="language-select" :value="locale" :aria-label="t('界面语言')" @change="setLocale(($event.target as HTMLSelectElement).value)"><option value="zh-CN" lang="zh-CN">简体中文</option><option value="en" lang="en">English</option></select>
         <button class="icon-button theme-toggle" type="button" :aria-label="dark ? t('切换浅色主题') : t('切换深色主题')" @click="toggleTheme">
@@ -702,34 +737,38 @@ onBeforeUnmount(() => {
         <img v-if="site.loginImageUrl && !loginImageFailed" class="login-custom-image" :src="site.loginImageUrl" alt="" @error="loginImageFailed = true" />
       </section>
       <section class="login-panel" aria-labelledby="login-title">
-        <div class="login-heading"><span class="section-symbol" aria-hidden="true">↳</span><h2 id="login-title">{{ t("登录工作台") }}</h2><p>{{ t("使用你的已有账号继续。") }}</p><button class="text-button" type="button" @click="navigate('/')">{{ t('返回主页') }}</button></div>
+        <div class="login-heading"><span class="section-symbol" aria-hidden="true"><InterfaceIcon name="login">↳</InterfaceIcon></span><h2 id="login-title">{{ t("登录工作台") }}</h2><p>{{ t("使用你的已有账号继续。") }}</p><button class="text-button" type="button" @click="navigate('/')">{{ t('返回主页') }}</button></div>
         <div v-if="sessionError" class="notice error" role="alert"><p>{{ t(sessionError) }}</p><button class="text-button" type="button" @click="restoreSession">{{ t("重新连接") }}</button></div>
         <form @submit.prevent="login">
+          <template v-if="!oidcTOTP">
           <label for="email">{{ t("邮箱") }}</label><input id="email" v-model="email" name="email" type="email" autocomplete="username" placeholder="you@example.com" required :disabled="loginBusy" />
           <label for="password">{{ t("密码") }}</label><input id="password" v-model="password" name="password" type="password" autocomplete="current-password" :placeholder="t('输入你的密码')" required :disabled="loginBusy" />
+          </template>
+          <label v-if="totpRequired || oidcTOTP" for="totp-code">{{ t("验证码或恢复码") }}</label><input v-if="totpRequired || oidcTOTP" id="totp-code" v-model="totpCode" autocomplete="one-time-code" maxlength="32" required :disabled="loginBusy" />
           <TurnstileChallenge v-if="captchaRequired" ref="loginChallenge" :site-key="site.turnstileSiteKey" action="login" :dark="dark" @token="loginChallengeToken = $event" />
           <p v-if="loginError" class="form-error" role="alert">{{ t(loginError) }}</p>
           <p v-if="loginMessage" class="action-success" role="status">{{ t(loginMessage) }}</p>
           <button v-if="emailVerificationRequired" class="text-button" type="button" @click="navigate('/login?mode=mail')">{{ t('重新发送验证邮件') }}</button>
-          <button class="primary-button login-button" type="submit" :disabled="loginBusy || (captchaRequired && !loginChallengeToken)">{{ loginBusy ? t('正在登录…') : t('登录') }}<span aria-hidden="true">↗</span></button>
+          <button class="primary-button login-button" type="submit" :disabled="loginBusy || (captchaRequired && !loginChallengeToken)">{{ loginBusy ? t('正在登录…') : t('登录') }}<span aria-hidden="true"><InterfaceIcon name="arrow">↗</InterfaceIcon></span></button>
         </form>
-        <OIDCSignIn v-if="site.oidc?.enabled" :name="site.oidc.name" />
+        <template v-if="!oidcTOTP"><OIDCSignIn v-for="provider in (site.oidcProviders || (site.oidc?.enabled ? [{ id: '', name: site.oidc.name }] : []))" :key="provider.id" :name="provider.name" :provider="provider.id" /></template>
         <button class="secondary-button browse-library" type="button" @click="navigate('/library')">{{ t("浏览公开库") }}</button>
         <div class="access-links"><button v-if="site.registration !== 'closed'" class="text-button" type="button" @click="navigate('/login?mode=register')">{{ t('创建账号') }}</button><button class="text-button" type="button" @click="navigate('/login?mode=mail')">{{ t('验证邮箱 / 找回密码') }}</button></div>
         <div v-if="siteError" class="notice" role="alert">{{ t('暂时无法读取站点设置') }} <button class="text-button" type="button" @click="loadSite">{{ t('重试') }}</button></div>
         <div v-else-if="site.registration === 'closed'" class="registration-note"><span class="status-dot" aria-hidden="true"></span><p>{{ t('目前暂未开放注册。') }}<br><span>{{ t("账号由站点管理员提供。") }}</span></p></div>
       </section>
+      <OIDCConfirmation v-if="oidcConfirmation" :csrf-token="csrfToken" login-layout @completed="finishOIDCConfirmation" />
     </main>
 
     <div v-else class="workspace-layout">
       <aside class="sidebar">
         <div class="sidebar-title">{{ t("我的工作台") }}</div>
         <nav :aria-label="t('工作台导航')" :class="{ 'has-admin': user.isAdmin }">
-          <button type="button" class="nav-button" :class="{ active: page === 'characters' }" :aria-current="page === 'characters' ? 'page' : undefined" @click="navigate('/user')"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" aria-hidden="true"><rect x="8" y="3" width="8" height="7" rx="1"/><path d="M7 13h10v8H7zM3 13h4v6H3zm14 0h4v6h-4zM12 13v8"/></svg>{{ t("角色管理") }}<span class="nav-count">{{ characters.length }}</span></button>
-          <button type="button" class="nav-button" :class="{ active: page === 'materials' }" :aria-current="page === 'materials' ? 'page' : undefined" @click="navigate('/user/materials')"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" aria-hidden="true"><path d="M3 7h18v14H3zM2 3h20v4H2zM9 11h6"/></svg>{{ t("我的材质") }}<span class="nav-count">{{ textures.length }}</span></button>
-          <button type="button" class="nav-button" :class="{ active: page === 'wardrobe' }" :aria-current="page === 'wardrobe' ? 'page' : undefined" @click="navigate('/user/wardrobe')"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" aria-hidden="true"><path d="M4 3h16v18H4zM12 3v18M9 11v3m6-3v3"/></svg>{{ t("我的衣柜") }}<span class="nav-count">{{ wardrobe.length }}</span></button>
-          <button type="button" class="nav-button" :class="{ active: page === 'account' }" :aria-current="page === 'account' ? 'page' : undefined" @click="navigate('/user/account')"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" aria-hidden="true"><circle cx="12" cy="8" r="4"/><path d="M4 21v-2a8 8 0 0 1 16 0v2"/></svg>{{ t("账号") }}</button>
-          <button v-if="user.isAdmin" type="button" class="nav-button" :class="{ active: page === 'administration' }" :aria-current="page === 'administration' ? 'page' : undefined" @click="navigate('/admin')"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" aria-hidden="true"><path d="m12 3 8 3v6c0 5-8 9-8 9s-8-4-8-9V6z"/><path d="m8 12 3 3 5-6"/></svg>{{ t('管理后台') }}</button>
+          <button type="button" class="nav-button" :class="{ active: page === 'characters' }" :aria-current="page === 'characters' ? 'page' : undefined" @click="navigate('/user')"><InterfaceIcon name="characters"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" aria-hidden="true"><rect x="8" y="3" width="8" height="7" rx="1"/><path d="M7 13h10v8H7zM3 13h4v6H3zm14 0h4v6h-4zM12 13v8"/></svg></InterfaceIcon>{{ t("角色管理") }}<span class="nav-count">{{ characters.length }}</span></button>
+          <button type="button" class="nav-button" :class="{ active: page === 'materials' }" :aria-current="page === 'materials' ? 'page' : undefined" @click="navigate('/user/materials')"><InterfaceIcon name="materials"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" aria-hidden="true"><path d="M3 7h18v14H3zM2 3h20v4H2zM9 11h6"/></svg></InterfaceIcon>{{ t("我的材质") }}<span class="nav-count">{{ textures.length }}</span></button>
+          <button type="button" class="nav-button" :class="{ active: page === 'wardrobe' }" :aria-current="page === 'wardrobe' ? 'page' : undefined" @click="navigate('/user/wardrobe')"><InterfaceIcon name="wardrobe"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" aria-hidden="true"><path d="M4 3h16v18H4zM12 3v18M9 11v3m6-3v3"/></svg></InterfaceIcon>{{ t("我的衣柜") }}<span class="nav-count">{{ wardrobe.length }}</span></button>
+          <button type="button" class="nav-button" :class="{ active: page === 'account' }" :aria-current="page === 'account' ? 'page' : undefined" @click="navigate('/user/account')"><InterfaceIcon name="account"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" aria-hidden="true"><circle cx="12" cy="8" r="4"/><path d="M4 21v-2a8 8 0 0 1 16 0v2"/></svg></InterfaceIcon>{{ t("账号") }}</button>
+          <button v-if="user.isAdmin" type="button" class="nav-button" :class="{ active: page === 'administration' }" :aria-current="page === 'administration' ? 'page' : undefined" @click="navigate('/admin')"><InterfaceIcon name="administration"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" aria-hidden="true"><path d="m12 3 8 3v6c0 5-8 9-8 9s-8-4-8-9V6z"/><path d="m8 12 3 3 5-6"/></svg></InterfaceIcon>{{ t('管理后台') }}</button>
         </nav>
       </aside>
 
@@ -739,7 +778,6 @@ onBeforeUnmount(() => {
           <section class="character-setting" :aria-label="t('角色数量设置')"><form class="inline-form" @submit.prevent="saveCharacterLimit"><label for="character-limit">{{ t("站点每账号角色上限") }}</label><div class="inline-controls"><input id="character-limit" v-model.number="adminCharacterLimit" type="number" min="1" step="1" required :disabled="actionBusy" /><button class="secondary-button" type="submit" :disabled="actionBusy">{{ t("保存设置") }}</button></div><small>{{ t("已有角色会保留；上限降低后，用户暂时不能继续新增角色。") }}</small></form></section>
           <template v-if="actionPage === 'administration'"><p v-if="actionError" class="form-error" role="alert">{{ t(actionError) }}</p><p v-if="actionMessage" class="action-success" role="status">{{ t(actionMessage) }}</p></template>
           <RegistrationSettings :site="site" :csrf-token="csrfToken" @updated="loadSite" @expired="expireSession" />
-          <BrandingSettings :site="site" :csrf-token="csrfToken" @updated="loadSite" @expired="expireSession" />
           </SettingsWorkspace></template></Administration>
         <TextureBrowser v-if="page === 'wardrobe' || page === 'library'" :key="`${user.id}:${page}`" :mode="page" :csrf-token="csrfToken" :wardrobe="wardrobe" :wardrobe-busy="wardrobeBusy" :wardrobe-error="wardrobeError" @refresh="loadWardrobe" @changed="loadWardrobe" @wear="wearCollected" @expired="expireSession" />
         <template v-if="page === 'characters'">
@@ -773,7 +811,7 @@ onBeforeUnmount(() => {
                 </div>
               </details>
             </section>
-            <section v-else class="empty-state panel"><span class="empty-character" aria-hidden="true">♙</span><h2>{{ t("先创建你的角色") }}</h2><p>{{ t("创建后，就可以为它选择皮肤和披风。也可以先上传材质。") }}</p><button class="secondary-button" type="button" @click="navigate('/user/materials?tab=upload')">{{ t("前往上传材质") }}</button></section>
+            <section v-else class="empty-state panel"><span class="empty-character" aria-hidden="true"><InterfaceIcon name="empty-character">♙</InterfaceIcon></span><h2>{{ t("先创建你的角色") }}</h2><p>{{ t("创建后，就可以为它选择皮肤和披风。也可以先上传材质。") }}</p><button class="secondary-button" type="button" @click="navigate('/user/materials?tab=upload')">{{ t("前往上传材质") }}</button></section>
             </div>
           </div>
         </template>
@@ -791,18 +829,18 @@ onBeforeUnmount(() => {
               <div v-if="texturesBusy" class="empty-state" role="status"><span class="loading-dot"></span><h2>{{ t("正在加载材质…") }}</h2></div>
               <div v-else-if="textureError" class="empty-state" role="alert"><span class="empty-symbol" aria-hidden="true">!</span><h2>{{ t("暂时没有加载出来") }}</h2><p>{{ t(textureError) }}</p><button class="secondary-button" type="button" @click="loadTextures">{{ t("重新加载") }}</button></div>
               <div v-else-if="!visibleTextures.length" class="empty-state"><span class="empty-symbol" aria-hidden="true">＋</span><h2>{{ t(materialTab === 'skin' ? '还没有皮肤' : '还没有披风') }}</h2><p>{{ t("上传一份 PNG 材质，在这里预览和查看。") }}</p><button class="secondary-button" type="button" @click="uploadKind = materialTab as 'skin' | 'cape'; openMaterialTab('upload')">{{ t(materialTab === 'skin' ? '上传皮肤' : '上传披风') }}</button></div>
-              <div v-else class="material-cards"><button v-for="texture in visibleTextures" :key="texture.id" class="material-card" :class="{ selected: texture.id === selectedTextureId }" type="button" :aria-pressed="texture.id === selectedTextureId" @click="selectedTextureId = texture.id"><ModelThumbnail class="material-thumbnail" :name="texture.name" :model="texture.kind === 'skin' ? texture.model : 'default'" :skin-hash="texture.kind === 'skin' ? texture.fileHash : ''" :cape-hash="texture.kind === 'cape' ? texture.fileHash : ''" /><span class="material-card-copy"><strong>{{ texture.name }}</strong><span>{{ texture.kind === 'skin' ? modelLabel(texture.model) : t('披风') }}<small>{{ texture.public ? t('公开') : t('未公开') }}</small></span></span></button></div>
+              <div v-else class="material-cards"><button v-for="texture in visibleTextures" :key="texture.id" class="material-card" :class="{ selected: texture.id === selectedTextureId }" type="button" :aria-pressed="texture.id === selectedTextureId" @click="selectedTextureId = texture.id"><ModelThumbnail v-if="!texture.reviewState || texture.reviewState === 'approved'" class="material-thumbnail" :name="texture.name" :model="texture.kind === 'skin' ? texture.model : 'default'" :skin-hash="texture.kind === 'skin' ? texture.fileHash : ''" :cape-hash="texture.kind === 'cape' ? texture.fileHash : ''" /><span class="material-card-copy"><strong>{{ texture.name }}</strong><span>{{ texture.kind === 'skin' ? modelLabel(texture.model) : t('披风') }}<small>{{ texture.reviewState && texture.reviewState!=='approved' ? t(texture.reviewState==='pending'?'待审核':'已拒绝') : texture.public ? t('公开') : t('未公开') }}</small></span></span></button></div>
             </section>
             <aside v-if="selectedTexture && !texturesBusy && !textureError" class="material-preview panel" aria-labelledby="material-preview-title">
               <div class="material-preview-heading"><h2 id="material-preview-title">{{ t("材质预览") }}</h2><span>{{ selectedTexture.public ? t('公开') : t('未公开') }}</span></div>
-              <CharacterViewer v-if="page === 'materials'" :key="selectedTexture.id" :name="selectedTexture.name" :model="selectedTexture.kind === 'skin' ? selectedTexture.model : 'default'" :skin-hash="selectedTexture.kind === 'skin' ? selectedTexture.fileHash : ''" :cape-hash="selectedTexture.kind === 'cape' ? selectedTexture.fileHash : ''" @fallback="materialFallback = selectedTexture.id" />
-              <div class="material-description"><h3>{{ selectedTexture.name }}</h3><p>{{ selectedTexture.description || t('暂无描述。') }}</p></div>
+              <CharacterViewer v-if="page === 'materials' && (!selectedTexture.reviewState || selectedTexture.reviewState === 'approved')" :key="selectedTexture.id" :name="selectedTexture.name" :model="selectedTexture.kind === 'skin' ? selectedTexture.model : 'default'" :skin-hash="selectedTexture.kind === 'skin' ? selectedTexture.fileHash : ''" :cape-hash="selectedTexture.kind === 'cape' ? selectedTexture.fileHash : ''" @fallback="materialFallback = selectedTexture.id" />
+              <div class="material-description"><h3>{{ selectedTexture.name }}</h3><p v-if="selectedTexture.reviewState && selectedTexture.reviewState!=='approved'" class="password-rule">{{ t(selectedTexture.reviewState==='pending'?'待审核':'已拒绝') }} {{ selectedTexture.reviewReason }}</p><small>{{ selectedTexture.category }} {{ selectedTexture.tags?.join(', ') }}</small><p>{{ selectedTexture.description || t('暂无描述。') }}</p></div>
               <div v-if="selectedTexture.owned" class="material-editing">
-                <form v-if="editingTextureId === selectedTexture.id" class="texture-edit-form" @submit.prevent="saveTexture"><fieldset :disabled="actionBusy"><label class="binding-field"><span>{{ t("材质名称") }}</span><input v-model="editTextureName" maxlength="255" required /></label><label class="binding-field description-field"><span>{{ t("材质描述") }} <small>{{ editDescriptionLength }}/200</small></span><textarea v-model="editTextureDescription" rows="3"></textarea></label><label class="visibility-choice"><input v-model="editTexturePublic" type="checkbox" /><span><strong>{{ t("公开这份材质") }}</strong><small>{{ t("未公开后保留原收藏和穿戴权限，禁止其他用户新增收藏；已知图片 URL 仍可下载。") }}</small></span></label><div class="texture-edit-actions"><button class="primary-button" type="submit">{{ t("保存资料") }}</button><button class="secondary-button" type="button" @click="editingTextureId = ''">{{ t("取消") }}</button></div></fieldset></form>
+                <form v-if="editingTextureId === selectedTexture.id" class="texture-edit-form" @submit.prevent="saveTexture"><fieldset :disabled="actionBusy"><label class="binding-field"><span>{{ t("材质名称") }}</span><input v-model="editTextureName" maxlength="255" required /></label><label class="binding-field"><span>{{ t('分类') }}</span><select v-model="editTextureCategory"><option value="">{{ t('未分类') }}</option><option v-for="category in site.contentPolicy?.categories || []" :key="category">{{ category }}</option></select></label><label class="binding-field"><span>{{ t('标签，用逗号分隔') }}</span><input v-model="editTextureTags" maxlength="260" /></label><label class="binding-field description-field"><span>{{ t("材质描述") }} <small>{{ editDescriptionLength }}/200</small></span><textarea v-model="editTextureDescription" rows="3"></textarea></label><label class="visibility-choice"><input v-model="editTexturePublic" type="checkbox" /><span><strong>{{ t("公开这份材质") }}</strong><small>{{ t("未公开后保留原收藏和穿戴权限，禁止其他用户新增收藏；已知图片 URL 仍可下载。") }}</small></span></label><div class="texture-edit-actions"><button class="primary-button" type="submit">{{ t("保存资料") }}</button><button class="secondary-button" type="button" @click="editingTextureId = ''">{{ t("取消") }}</button></div></fieldset></form>
                 <div v-else class="texture-edit-actions"><button class="secondary-button" type="button" :disabled="actionBusy" @click="editTexture">{{ t("编辑资料") }}</button><button class="danger-button" type="button" :disabled="actionBusy" @click="deleteTexture">{{ t("删除材质") }}</button></div>
               </div>
-              <button v-if="selectedTexture.owned || selectedTexture.public" class="secondary-button material-wear" type="button" :disabled="actionBusy || wardrobeBusy || !!wardrobeError || wardrobe.some(item => item.id === selectedTexture?.id)" @click="collectOwnTexture">{{ wardrobe.some(item => item.id === selectedTexture?.id) ? t('已在衣柜') : t('收藏到衣柜') }}</button>
-              <details :key="selectedTexture.id" class="texture-sources" :open="materialFallback === selectedTexture.id"><summary>{{ t("PNG 材质与下载") }}</summary><div class="texture-preview checkerboard"><img v-if="!failedImages.includes(selectedTexture.fileHash)" :src="textureUrl(selectedTexture.fileHash)" :alt="t('“{name}”的 PNG 材质平面图', { name: selectedTexture.name })" @error="imageFailed(selectedTexture.fileHash)" /><p v-else class="texture-placeholder">{{ t("材质预览加载失败，可尝试下载或刷新列表。") }}</p></div><a class="download-link material-download" :href="textureUrl(selectedTexture.fileHash)" :download="`${selectedTexture.name}.png`">{{ t("下载 PNG") }}</a></details>
+              <button v-if="(!selectedTexture.reviewState || selectedTexture.reviewState==='approved') && (selectedTexture.owned || selectedTexture.public)" class="secondary-button material-wear" type="button" :disabled="actionBusy || wardrobeBusy || !!wardrobeError || wardrobe.some(item => item.id === selectedTexture?.id)" @click="collectOwnTexture">{{ wardrobe.some(item => item.id === selectedTexture?.id) ? t('已在衣柜') : t('收藏到衣柜') }}</button>
+              <p v-if="selectedTexture.reviewState && selectedTexture.reviewState !== 'approved'" class="password-rule">{{ t('材质通过审核后可预览和下载。') }}</p><details v-else :key="selectedTexture.id" class="texture-sources" :open="materialFallback === selectedTexture.id"><summary>{{ t("PNG 材质与下载") }}</summary><div class="texture-preview checkerboard"><img v-if="!failedImages.includes(selectedTexture.fileHash)" :src="textureUrl(selectedTexture.fileHash)" :alt="t('“{name}”的 PNG 材质平面图', { name: selectedTexture.name })" @error="imageFailed(selectedTexture.fileHash)" /><p v-else class="texture-placeholder">{{ t("材质预览加载失败，可尝试下载或刷新列表。") }}</p></div><a class="download-link material-download" :href="textureUrl(selectedTexture.fileHash)" :download="`${selectedTexture.name}.png`">{{ t("下载 PNG") }}</a></details>
               <button class="secondary-button material-wear" type="button" @click="navigate('/user')">{{ t("前往角色管理穿戴") }}</button>
             </aside>
           </div>
@@ -811,9 +849,9 @@ onBeforeUnmount(() => {
               <form class="upload-form" @submit.prevent="uploadTexture"><fieldset :disabled="actionBusy">
                 <div class="management-heading"><div><h2 id="upload-title">{{ t("上传材质") }}</h2><p>{{ t("上传后可在皮肤或披风列表中查看。") }}</p></div></div>
                 <div class="upload-controls"><label class="binding-field"><span>{{ t("类型") }}</span><select v-model="uploadKind" :aria-label="t('类型')" @change="uploadModel = 'default'"><option value="skin">{{ t("皮肤") }}</option><option value="cape">{{ t("披风") }}</option></select></label><label v-if="uploadKind === 'skin'" class="binding-field"><span>{{ t("手臂模型") }}</span><select v-model="uploadModel" :aria-label="t('手臂模型')"><option value="default">{{ t("标准手臂") }}</option><option value="slim">{{ t("纤细手臂") }}</option></select></label><label class="binding-field"><span>{{ t("名称") }}</span><input v-model="uploadName" maxlength="255" :placeholder="t('给材质起个名字')" /></label><label class="binding-field"><span>{{ t("PNG 文件") }}</span><input ref="uploadInput" type="file" accept="image/png,.png" @change="uploadFile = ($event.target as HTMLInputElement).files?.[0] || null" /></label></div>
-                <label class="binding-field description-field"><span>{{ t("描述") }} <small>{{ descriptionLength }}/200</small></span><textarea v-model="uploadDescription" rows="3" :placeholder="t('简单介绍这份材质（可选）')"></textarea></label>
+                <label class="binding-field"><span>{{ t('分类') }}</span><select v-model="uploadCategory"><option value="">{{ t('未分类') }}</option><option v-for="category in site.contentPolicy?.categories || []" :key="category">{{ category }}</option></select></label><label class="binding-field"><span>{{ t('标签，用逗号分隔') }}</span><input v-model="uploadTags" maxlength="260" /></label><label class="binding-field description-field"><span>{{ t("描述") }} <small>{{ descriptionLength }}/200</small></span><textarea v-model="uploadDescription" rows="3" :placeholder="t('简单介绍这份材质（可选）')"></textarea></label>
                 <label class="visibility-choice"><input v-model="uploadPublic" type="checkbox" /><span><strong>{{ t("公开这份材质") }}</strong><small>{{ t("默认未公开；知道图片 URL 的游戏客户端仍可下载。") }}</small></span></label>
-                <p v-if="site.points.enabled" class="point-fee">{{ t('每次上传需 {cost} 积分，包括相同图片的新记录；失败不扣费。', { cost: site.points.uploadCost }) }}</p><button class="primary-button" type="submit" :disabled="actionBusy">{{ actionBusy ? t('正在上传…') : t('上传到我的材质') }}</button>
+                <p v-if="site.contentPolicy?.reviewUploads" class="password-rule">{{ t('上传后需要管理员审核，通过后才可下载和穿戴。') }}</p><p v-if="site.points.enabled" class="point-fee">{{ t('每次上传需 {cost} 积分，包括相同图片的新记录；失败不扣费。', { cost: site.points.uploadCost }) }}</p><button class="primary-button" type="submit" :disabled="actionBusy">{{ actionBusy ? t('正在上传…') : t('上传到我的材质') }}</button>
               </fieldset></form>
             </section>
             <aside class="upload-guide panel" aria-labelledby="upload-guide-title"><h2 id="upload-guide-title">{{ t("上传要求") }}</h2><dl><div><dt>{{ t("文件") }}</dt><dd>{{ t("PNG 格式，最大 8 MiB。") }}</dd></div><div><dt>{{ t("皮肤") }}</dt><dd>{{ t("标准尺寸 64×64，兼容 64×32、128×128 和 128×64 像素。") }}</dd></div><div><dt>{{ t("披风") }}</dt><dd>{{ t("宽度为 64–1024 像素且为 64 的倍数，高度为宽度的 1/2。") }}</dd></div></dl><p>{{ t("上传完成后，前往“角色管理”选择材质并应用。") }}</p></aside>
@@ -826,7 +864,7 @@ onBeforeUnmount(() => {
             <div class="account-dashboard-grid"><article class="panel account-summary-card account-summary-primary"><div class="account-profile"><img class="user-avatar large" :src="'/api/avatars/' + user.id + '.png?v=' + avatarVersion" alt="" width="64" height="64" /><div><p class="eyebrow">{{ t('当前账号') }}</p><h2>{{ user.nickname || t('我的账号') }}</h2><p>{{ user.email }}</p></div></div><span class="account-status" :class="{ verified: user.emailVerified }">{{ user.emailVerified ? t('邮箱已验证') : t('邮箱待验证') }}</span></article><article class="panel account-summary-card"><span class="account-card-index">01</span><h2>{{ t('角色') }}</h2><strong>{{ characters.length }} / {{ characterLimit }}</strong><p>{{ t('已创建角色') }}</p><button class="text-button" type="button" @click="navigate('/user')">{{ t('打开角色管理') }} ↗</button></article><article class="panel account-summary-card"><span class="account-card-index">02</span><h2>{{ t('材质与衣柜') }}</h2><strong>{{ textures.length + wardrobe.length }}</strong><p>{{ t('材质与收藏总数') }}</p><button class="text-button" type="button" @click="navigate('/user/materials')">{{ t('打开我的材质') }} ↗</button></article></div>
             <div class="account-dashboard-columns"><section class="panel account-dashboard-section"><div class="panel-title"><h2>{{ t('快速操作') }}</h2><span>{{ t('常用入口') }}</span></div><div class="account-quick-actions"><button class="secondary-button" type="button" @click="navigate('/user/account/profile')">{{ t('修改个人资料') }}</button><button class="secondary-button" type="button" @click="navigate('/user/materials?tab=upload')">{{ t('上传材质') }}</button><button class="secondary-button" type="button" @click="navigate('/user/wardrobe')">{{ t('打开我的衣柜') }}</button><button class="secondary-button" type="button" @click="navigate('/user/account/reports')">{{ t('查看我的举报') }}</button></div></section><section class="panel account-dashboard-section"><div class="panel-title"><h2>{{ t('账号状态') }}</h2><span>{{ site.name }}</span></div><dl class="account-fields"><div><dt>{{ t('昵称') }}</dt><dd>{{ user.nickname || t('未设置') }}</dd></div><div><dt>{{ t('登录邮箱') }}</dt><dd>{{ user.email }}</dd></div><div><dt>{{ t('账号类型') }}</dt><dd>{{ user.isAdmin ? t('管理员') : t('普通用户') }}</dd></div></dl></section></div>
           </section>
-          <section v-else-if="accountTab === 'profile'" class="account-panel panel" aria-labelledby="account-title"><div class="account-block account-overview"><div class="account-section-heading"><span>01</span><div><h2>{{ t('个人资料') }}</h2><p>{{ t('头像、昵称和站内身份信息。') }}</p></div></div><div class="account-profile"><img class="user-avatar large" :src="'/api/avatars/' + user.id + '.png?v=' + avatarVersion" alt="" width="64" height="64" /><div><h2 id="account-title">{{ user.nickname || t('我的账号') }}</h2><p>{{ t('已登录 {name}', { name: site.name }) }}</p></div></div><dl class="account-fields"><div><dt>{{ t("昵称") }}</dt><dd>{{ user.nickname || t('未设置') }}</dd></div><div><dt>{{ t("邮箱") }}</dt><dd>{{ user.email }}</dd></div><div><dt>{{ t('邮箱状态') }}</dt><dd>{{ user.emailVerified ? t('已验证') : t('未验证') }}</dd></div></dl></div><div class="account-block account-security"><div class="account-section-heading"><span>02</span><div><h2>{{ t('登录与安全') }}</h2><p>{{ t('更新个人资料、邮箱验证和密码。') }}</p></div></div><ProfileSettings :csrf-token="csrfToken" :characters="characters" @updated="profileUpdated" @expired="expireSession" /><OIDCAccount :csrf-token="csrfToken" @expired="expireSession" /><section v-if="!user.emailVerified" class="account-password"><h3>{{ t('验证邮箱') }}</h3><p v-if="user.legacyAccount">{{ t('迁移账号可继续使用，邮箱尚未验证。') }}</p><p v-else>{{ t('本机创建的管理员可先配置站点，邮箱尚未验证。') }}</p><button class="secondary-button" type="button" :disabled="verificationBusy || !site.mailEnabled" @click="sendVerificationMail">{{ verificationBusy ? t('正在发送验证邮件…') : t('发送验证邮件') }}</button><p v-if="verificationMessage" class="action-success" role="status">{{ t(verificationMessage) }}</p><p v-if="verificationError" class="form-error" role="alert">{{ t(verificationError) }}</p></section><section class="account-password" aria-labelledby="password-title"><h3 id="password-title">{{ t("修改密码") }}</h3><p>{{ t("修改后会退出所有网页会话并撤销游戏令牌，需要重新登录。") }}</p><form class="password-form" @submit.prevent="changePassword"><fieldset :disabled="passwordBusy"><input type="hidden" name="username" :value="user.email" autocomplete="username" /><label class="binding-field"><span>{{ t("当前密码") }}</span><input v-model="currentPassword" type="password" autocomplete="current-password" required /></label><label class="binding-field"><span>{{ t("新密码") }}</span><input v-model="newPassword" type="password" autocomplete="new-password" required aria-describedby="password-rule" /></label><p id="password-rule" class="password-rule">{{ t("8–128 个字符，须同时包含英文字母、数字和符号；空白不计作符号。") }}</p><label class="binding-field"><span>{{ t("确认新密码") }}</span><input v-model="confirmPassword" type="password" autocomplete="new-password" required /></label><p v-if="passwordError" class="form-error" role="alert">{{ t(passwordError) }}</p><button class="primary-button" type="submit" :disabled="passwordBusy || actionBusy">{{ passwordBusy ? t('正在修改…') : t('修改密码并重新登录') }}</button></fieldset></form></section><div class="account-logout"><div><h3>{{ t("退出当前账号") }}</h3><p>{{ t("下次使用工作台时需要重新登录。") }}</p></div><button class="secondary-button" type="button" :disabled="logoutBusy || passwordBusy || actionBusy || charactersBusy || texturesBusy || wardrobeBusy" @click="logout">{{ logoutBusy ? t('正在退出…') : t('退出登录') }}</button></div><p v-if="logoutError" class="form-error" role="alert">{{ t(logoutError) }}</p></div></section>
+          <section v-else-if="accountTab === 'profile'" class="account-panel panel" aria-labelledby="account-title"><div class="account-block account-overview"><div class="account-section-heading"><span>01</span><div><h2>{{ t('个人资料') }}</h2><p>{{ t('头像、昵称和站内身份信息。') }}</p></div></div><div class="account-profile"><img class="user-avatar large" :src="'/api/avatars/' + user.id + '.png?v=' + avatarVersion" alt="" width="64" height="64" /><div><h2 id="account-title">{{ user.nickname || t('我的账号') }}</h2><p>{{ t('已登录 {name}', { name: site.name }) }}</p></div></div><dl class="account-fields"><div><dt>{{ t("昵称") }}</dt><dd>{{ user.nickname || t('未设置') }}</dd></div><div><dt>{{ t("邮箱") }}</dt><dd>{{ user.email }}</dd></div><div><dt>{{ t('邮箱状态') }}</dt><dd>{{ user.emailVerified ? t('已验证') : t('未验证') }}</dd></div></dl></div><div class="account-block account-security"><div class="account-section-heading"><span>02</span><div><h2>{{ t('登录与安全') }}</h2><p>{{ t('更新个人资料、邮箱验证和密码。') }}</p></div></div><ProfileSettings :csrf-token="csrfToken" :characters="characters" @updated="profileUpdated" @expired="expireSession" /><ConnectorAccount :csrf-token="csrfToken" @expired="clearSession" /><OAuthAccount :csrf-token="csrfToken" @expired="clearSession" /><OIDCAccount :csrf-token="csrfToken" @expired="expireSession" /><TOTPSettings :csrf-token="csrfToken" @expired="expireSession" /><section v-if="!user.emailVerified" class="account-password"><h3>{{ t('验证邮箱') }}</h3><p v-if="user.legacyAccount">{{ t('迁移账号可继续使用，邮箱尚未验证。') }}</p><p v-else>{{ t('本机创建的管理员可先配置站点，邮箱尚未验证。') }}</p><button class="secondary-button" type="button" :disabled="verificationBusy || !site.mailEnabled" @click="sendVerificationMail">{{ verificationBusy ? t('正在发送验证邮件…') : t('发送验证邮件') }}</button><p v-if="verificationMessage" class="action-success" role="status">{{ t(verificationMessage) }}</p><p v-if="verificationError" class="form-error" role="alert">{{ t(verificationError) }}</p></section><section class="account-password" aria-labelledby="password-title"><h3 id="password-title">{{ t("修改密码") }}</h3><p>{{ t("修改后会退出所有网页会话并撤销游戏令牌，需要重新登录。") }}</p><form class="password-form" @submit.prevent="changePassword"><fieldset :disabled="passwordBusy"><input type="hidden" name="username" :value="user.email" autocomplete="username" /><label class="binding-field"><span>{{ t("当前密码") }}</span><input v-model="currentPassword" type="password" autocomplete="current-password" required /></label><label class="binding-field"><span>{{ t("新密码") }}</span><input v-model="newPassword" type="password" autocomplete="new-password" required aria-describedby="password-rule" /></label><p id="password-rule" class="password-rule">{{ t("8–128 个字符，须同时包含英文字母、数字和符号；空白不计作符号。") }}</p><label class="binding-field"><span>{{ t("确认新密码") }}</span><input v-model="confirmPassword" type="password" autocomplete="new-password" required /></label><p v-if="passwordError" class="form-error" role="alert">{{ t(passwordError) }}</p><button class="primary-button" type="submit" :disabled="passwordBusy || actionBusy">{{ passwordBusy ? t('正在修改…') : t('修改密码并重新登录') }}</button></fieldset></form></section><div class="account-logout"><div><h3>{{ t("退出当前账号") }}</h3><p>{{ t("下次使用工作台时需要重新登录。") }}</p></div><button class="secondary-button" type="button" :disabled="logoutBusy || passwordBusy || actionBusy || charactersBusy || texturesBusy || wardrobeBusy" @click="logout">{{ logoutBusy ? t('正在退出…') : t('退出登录') }}</button></div><p v-if="logoutError" class="form-error" role="alert">{{ t(logoutError) }}</p></div></section>
           <PointsPanel v-else-if="accountTab === 'points'" :csrf-token="csrfToken" @expired="expireSession" />
           <IntegrationPanel v-else-if="accountTab === 'integration'" />
           <ReportsView v-else-if="accountTab === 'reports'" :csrf-token="csrfToken" @expired="expireSession" />

@@ -1,13 +1,13 @@
 <script setup lang="ts">
 import { ref } from 'vue'
 import { t } from '../i18n'
-defineProps<{ name: string }>()
+const props = defineProps<{ name: string; provider?: string }>()
 const busy = ref(false), error = ref('')
 async function start() {
   busy.value = true; error.value = ''
   try {
     const next = new URLSearchParams(window.location.search).get('next') || '/user'
-    const response = await fetch('/api/auth/oidc/start', { method: 'POST', credentials: 'same-origin', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ next }) })
+    const response = await fetch('/api/auth/oidc/start', { method: 'POST', credentials: 'same-origin', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ next, provider: props.provider || '' }) })
     const data = await response.json()
     if (!response.ok) { error.value = data.error || '无法开始 OIDC 登录'; return }
     window.location.assign(data.url)
