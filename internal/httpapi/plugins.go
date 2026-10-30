@@ -4,10 +4,18 @@ import (
 	"context"
 	"database/sql"
 	"net/http"
+	localstorage "wishingskin/internal/storage"
 )
 
 func (a *Server) registerPlugins() {
+	a.mux.HandleFunc("GET /api/admin/plugin-runtime/{id}", a.adminPluginRuntime)
+	a.mux.HandleFunc("GET /api/admin/plugin-runtime/{id}/pages/{page}", a.adminPluginPage)
+	a.mux.HandleFunc("POST /api/admin/plugin-runtime/{id}/tasks/{task}", a.adminStartPluginTask)
 	a.mux.HandleFunc("GET /api/admin/plugins", a.adminPlugins)
+	a.mux.HandleFunc("GET /api/admin/object-storage", a.adminObjectStorage)
+	a.mux.HandleFunc("PATCH /api/admin/object-storage", a.updateObjectStorage)
+	a.mux.HandleFunc("GET /api/admin/plugin-settings/{id}", a.communitySettings)
+	a.mux.HandleFunc("PATCH /api/admin/plugin-settings/{id}", a.updateCommunitySettings)
 	a.mux.HandleFunc("PATCH /api/admin/plugins/{id}", a.updatePlugin)
 }
 
@@ -19,7 +27,7 @@ func (a *Server) storedPluginEnabled(ctx context.Context, id string) (bool, erro
 			value, err := a.oidcConfiguration(ctx)
 			return value.Enabled, err
 		}
-		return true, nil
+		return false, nil
 	}
 	return enabled, err
 }
@@ -46,7 +54,7 @@ func (a *Server) adminPlugins(w http.ResponseWriter, r *http.Request) {
 			return
 		}
 		items = append(items, map[string]any{
-			"id": state.Manifest.ID, "version": state.Manifest.Version, "dependencies": state.Manifest.Dependencies,
+			"name": state.Manifest.Name, "description": state.Manifest.Description, "settings": state.Manifest.Settings, "origin": pluginOrigin(state.Manifest.ID), "id": state.Manifest.ID, "version": state.Manifest.Version, "dependencies": state.Manifest.Dependencies,
 			"settingsNamespace": state.Manifest.SettingsNamespace, "migrationVersion": state.Manifest.MigrationVersion,
 			"routes": state.Manifest.Routes, "capabilities": state.Manifest.Capabilities, "events": state.Manifest.Events,
 			"pages": state.Manifest.Pages, "tasks": state.Manifest.Tasks, "permissions": state.Manifest.Permissions,
@@ -82,16 +90,46 @@ func (a *Server) updatePlugin(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	defer tx.Rollback()
+	if *body.Enabled {
+		for _, id := range state.Manifest.Dependencies {
+			enabled, err := a.storedPluginEnabled(r.Context(), id)
+			if err != nil {
+				failure(w, 503, "暂时无法读取插件状态")
+				return
+			}
+			if !enabled {
+				failure(w, 409, "插件依赖尚未满足")
+				return
+			}
+		}
+	}
 	if state.Manifest.ID == "wishingskin.oidc" && *body.Enabled {
-		value, err := a.oidcConfiguration(r.Context())
-		if err != nil || !validOIDCIssuer(value.Issuer) || value.ClientID == "" || value.ClientSecret == "" {
+		values, err := a.oidcConfigurations(r.Context())
+		valid := false
+		for _, value := range values {
+			valid = valid || value.Enabled && validOIDCIssuer(value.Issuer) && value.ClientID != "" && value.ClientSecret != ""
+		}
+		if err != nil || !valid {
 			failure(w, 409, "请先保存有效的 OIDC 配置")
+			return
+		}
+	}
+	if state.Manifest.ID == "wishingskin.object-storage" && *body.Enabled {
+		v, _, err := a.objectStorageSettings(r.Context())
+		if err != nil || localstorage.ValidateS3(v) != nil {
+			failure(w, 409, "请先保存有效的对象存储配置")
 			return
 		}
 	}
 	err := a.putPluginEnabled(r.Context(), tx, state.Manifest.ID, state.Manifest.Version, *body.Enabled)
 	if err == nil && state.Manifest.ID == "wishingskin.oidc" && !*body.Enabled {
 		_, err = tx.ExecContext(r.Context(), "DELETE FROM oidc_flows")
+	}
+	if err == nil && state.Manifest.ID == "wishingskin.oauth2" && !*body.Enabled {
+		_, err = tx.ExecContext(r.Context(), "DELETE FROM oauth_codes")
+		if err == nil {
+			_, err = tx.ExecContext(r.Context(), "DELETE FROM oauth_tokens")
+		}
 	}
 	if err == nil {
 		action := "plugin.disable"
@@ -107,5 +145,8 @@ func (a *Server) updatePlugin(w http.ResponseWriter, r *http.Request) {
 		failure(w, 503, "插件状态保存失败")
 		return
 	}
-	respond(w, 200, map[string]any{"id": state.Manifest.ID, "enabled": *body.Enabled})
+	if !*body.Enabled {
+		a.cancelCommunityTasks(state.Manifest.ID)
+	}
+	respond(w, 200, map[string]any{"name": state.Manifest.Name, "description": state.Manifest.Description, "settings": state.Manifest.Settings, "origin": pluginOrigin(state.Manifest.ID), "id": state.Manifest.ID, "enabled": *body.Enabled})
 }

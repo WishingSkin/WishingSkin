@@ -28,6 +28,17 @@ func NewRegistry(manifests ...Manifest) (*Registry, error) {
 }
 
 func (r *Registry) Register(manifest Manifest) error {
+	for _, p := range []*[]string{&manifest.Dependencies, &manifest.Routes, &manifest.Capabilities, &manifest.Events, &manifest.Permissions} {
+		if *p == nil {
+			*p = []string{}
+		}
+	}
+	if manifest.Pages == nil {
+		manifest.Pages = []PageContribution{}
+	}
+	if manifest.Tasks == nil {
+		manifest.Tasks = []TaskDeclaration{}
+	}
 	if err := manifest.Validate(); err != nil {
 		return err
 	}
