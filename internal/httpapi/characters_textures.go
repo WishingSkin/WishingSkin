@@ -316,7 +316,24 @@ func (a *Server) listTextures(w http.ResponseWriter, r *http.Request) {
 		where += " AND (POSITION(? IN r.name)>0 OR POSITION(? IN r.description)>0 OR POSITION(? IN r.file_hash)>0)"
 		args = append(args, query, query, strings.ToLower(query))
 	}
-	rows, err := a.s.DB.QueryContext(r.Context(), a.s.Bind("SELECT r.record_id,r.file_hash,r.name,r.description,r.kind,r.model,r.is_public,r.owner_id,COALESCE(m.category,''),COALESCE(m.tags,'[]'),COALESCE(m.review_state,'approved'),COALESCE(m.review_reason,'') FROM texture_records r JOIN textures f ON f.hash=r.file_hash LEFT JOIN texture_metadata m ON m.record_id=r.record_id"+where+" ORDER BY r.name,r.record_id"), args...)
+	page, size, paginated, ok := texturePagination(w, r)
+	if !ok {
+		return
+	}
+	var total int64
+	tables := " FROM texture_records r JOIN textures f ON f.hash=r.file_hash LEFT JOIN texture_metadata m ON m.record_id=r.record_id"
+	if paginated {
+		if err := a.s.DB.QueryRowContext(r.Context(), a.s.Bind("SELECT COUNT(*)"+tables+where), args...).Scan(&total); err != nil {
+			failure(w, 503, "暂时无法读取材质")
+			return
+		}
+	}
+	limit := ""
+	if paginated {
+		limit = " LIMIT ? OFFSET ?"
+		args = append(args, size, (page-1)*size)
+	}
+	rows, err := a.s.DB.QueryContext(r.Context(), a.s.Bind("SELECT r.record_id,r.file_hash,r.name,r.description,r.kind,r.model,r.is_public,r.owner_id,COALESCE(m.category,''),COALESCE(m.tags,'[]'),COALESCE(m.review_state,'approved'),COALESCE(m.review_reason,'') FROM texture_records r JOIN textures f ON f.hash=r.file_hash LEFT JOIN texture_metadata m ON m.record_id=r.record_id"+where+" ORDER BY r.name,r.record_id"+limit), args...)
 	if err != nil {
 		failure(w, 503, "暂时无法读取材质")
 		return
@@ -342,7 +359,10 @@ func (a *Server) listTextures(w http.ResponseWriter, r *http.Request) {
 		failure(w, 503, "暂时无法读取材质")
 		return
 	}
-	respond(w, 200, map[string]any{"textures": items})
+	if !paginated {
+		total = int64(len(items))
+	}
+	respond(w, 200, map[string]any{"textures": items, "total": total, "page": page, "pageSize": size})
 }
 
 func (a *Server) uploadTexture(w http.ResponseWriter, r *http.Request) {

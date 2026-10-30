@@ -17,6 +17,7 @@ type libraryRecord struct {
 	OwnerName       string `json:"ownerName"`
 	DisplayName     string `json:"displayName"`
 	CollectionCount int64  `json:"collectionCount"`
+	Collected       bool   `json:"collected"`
 }
 
 const libraryColumns = "r.record_id,r.file_hash,r.name,r.description,r.kind,r.model,r.is_public,r.owner_id,COALESCE(u.nickname,''),(SELECT COUNT(*) FROM wardrobe c WHERE c.record_id=r.record_id),COALESCE(m.category,''),COALESCE(m.tags,'[]'),COALESCE(m.review_state,'approved'),COALESCE(m.review_reason,'')"
@@ -56,6 +57,9 @@ func (a *Server) publicLibrary(w http.ResponseWriter, r *http.Request) {
 		} else if err != nil {
 			failure(w, 503, "暂时无法读取公开材质")
 		} else {
+			if !a.libraryMembership(w, r, []*libraryRecord{&item}) {
+				return
+			}
 			respond(w, 200, item)
 		}
 		return
@@ -151,6 +155,14 @@ func (a *Server) publicLibrary(w http.ResponseWriter, r *http.Request) {
 		failure(w, 503, "暂时无法读取公开库")
 		return
 	}
+	rows.Close()
+	pointers := make([]*libraryRecord, len(items))
+	for i := range items {
+		pointers[i] = &items[i]
+	}
+	if !a.libraryMembership(w, r, pointers) {
+		return
+	}
 	respond(w, 200, map[string]any{"textures": items, "total": total, "page": page, "pageSize": size})
 }
 
@@ -178,7 +190,24 @@ func (a *Server) wardrobe(w http.ResponseWriter, r *http.Request) {
 		where += " AND (POSITION(? IN c.display_name)>0 OR POSITION(? IN r.name)>0 OR POSITION(? IN r.file_hash)>0)"
 		args = append(args, query, query, strings.ToLower(query))
 	}
-	rows, err := a.s.DB.QueryContext(r.Context(), a.s.Bind("SELECT "+libraryColumns+",c.display_name"+libraryTables+" JOIN wardrobe c ON c.record_id=r.record_id"+where+" ORDER BY c.display_name,r.record_id"), args...)
+	page, size, paginated, ok := texturePagination(w, r)
+	if !ok {
+		return
+	}
+	var total int64
+	tables := libraryTables + " JOIN wardrobe c ON c.record_id=r.record_id"
+	if paginated {
+		if err := a.s.DB.QueryRowContext(r.Context(), a.s.Bind("SELECT COUNT(*)"+tables+where), args...).Scan(&total); err != nil {
+			failure(w, 503, "暂时无法读取衣柜")
+			return
+		}
+	}
+	limit := ""
+	if paginated {
+		limit = " LIMIT ? OFFSET ?"
+		args = append(args, size, (page-1)*size)
+	}
+	rows, err := a.s.DB.QueryContext(r.Context(), a.s.Bind("SELECT "+libraryColumns+",c.display_name"+libraryTables+" JOIN wardrobe c ON c.record_id=r.record_id"+where+" ORDER BY c.display_name,r.record_id"+limit), args...)
 	if err != nil {
 		failure(w, 503, "暂时无法读取衣柜")
 		return
@@ -198,7 +227,10 @@ func (a *Server) wardrobe(w http.ResponseWriter, r *http.Request) {
 		failure(w, 503, "暂时无法读取衣柜")
 		return
 	}
-	respond(w, 200, map[string]any{"textures": items})
+	if !paginated {
+		total = int64(len(items))
+	}
+	respond(w, 200, map[string]any{"textures": items, "total": total, "page": page, "pageSize": size})
 }
 
 func (a *Server) manageWardrobe(w http.ResponseWriter, r *http.Request) {
@@ -282,4 +314,62 @@ func (a *Server) manageWardrobe(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	w.WriteHeader(http.StatusNoContent)
+}
+
+// Unpaginated responses remain available for existing API clients.
+func texturePagination(w http.ResponseWriter, r *http.Request) (int, int, bool, bool) {
+	_, hasPage := r.URL.Query()["page"]
+	_, hasSize := r.URL.Query()["pageSize"]
+	if !hasPage && !hasSize {
+		return 1, 0, false, true
+	}
+	page, size, ok := adminPagination(w, r)
+	return page, size, true, ok
+}
+
+func (a *Server) libraryMembership(w http.ResponseWriter, r *http.Request, items []*libraryRecord) bool {
+	if len(items) == 0 {
+		return true
+	}
+	if _, err := r.Cookie("ws_session"); err != nil {
+		return true
+	}
+	u, _, err := a.current(r)
+	if errors.Is(err, errCredentials) || errors.Is(err, sql.ErrNoRows) {
+		return true
+	}
+	if err != nil {
+		sessionError(w, err)
+		return false
+	}
+	args := []any{u.ID}
+	marks := make([]string, len(items))
+	for i, item := range items {
+		marks[i] = "?"
+		args = append(args, item.ID)
+		item.Owned = item.OwnerID == strconv.FormatInt(u.ID, 10)
+	}
+	rows, err := a.s.DB.QueryContext(r.Context(), a.s.Bind("SELECT record_id FROM wardrobe WHERE user_id=? AND record_id IN ("+strings.Join(marks, ",")+")"), args...)
+	if err != nil {
+		failure(w, 503, "暂时无法读取衣柜")
+		return false
+	}
+	defer rows.Close()
+	collected := map[string]bool{}
+	for rows.Next() {
+		var id string
+		if err := rows.Scan(&id); err != nil {
+			failure(w, 503, "暂时无法读取衣柜")
+			return false
+		}
+		collected[id] = true
+	}
+	if rows.Err() != nil {
+		failure(w, 503, "暂时无法读取衣柜")
+		return false
+	}
+	for _, item := range items {
+		item.Collected = collected[item.ID]
+	}
+	return true
 }
