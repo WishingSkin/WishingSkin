@@ -62,6 +62,11 @@ func (a *Server) site(w http.ResponseWriter, r *http.Request) {
 		failure(w, 503, "暂时无法读取站点设置")
 		return
 	}
+	manualVerification, err := manualEmailVerification(r.Context(), a.s.DB)
+	if err != nil {
+		failure(w, 503, "暂时无法读取注册设置")
+		return
+	}
 	brand, err := a.siteBranding(r.Context())
 	if err != nil {
 		failure(w, 503, "暂时无法读取站点设置")
@@ -126,7 +131,7 @@ func (a *Server) site(w http.ResponseWriter, r *http.Request) {
 	if loginImage != "" {
 		loginImageURL = "/api/login/image?v=" + tokenHash(loginImage)[:16]
 	}
-	respond(w, 200, map[string]any{"contentPolicy": content, "appearance": custom, "homepage": publicHomepage(homepage), "loginImageUrl": loginImageURL, "oidcProviders": providers, "oidc": map[string]any{"enabled": oidcConfig.Enabled, "name": oidcConfig.Name}, "noticeFormat": brand.NoticeFormat, "noticeHtml": renderNotice(brand.Notice, brand.NoticeFormat), "name": brand.Name, "tagline": brand.Tagline, "footer": brand.Footer, "notice": brand.Notice, "registration": mode, "randomUserIds": randomIDs, "emailDomains": domains, "blockedEmailDomains": blockedDomains, "mailEnabled": services.Mail != nil, "turnstileSiteKey": services.SiteKey, "points": points})
+	respond(w, 200, map[string]any{"contentPolicy": content, "appearance": custom, "homepage": publicHomepage(homepage), "loginImageUrl": loginImageURL, "oidcProviders": providers, "oidc": map[string]any{"enabled": oidcConfig.Enabled, "name": oidcConfig.Name}, "noticeFormat": brand.NoticeFormat, "noticeHtml": renderNotice(brand.Notice, brand.NoticeFormat), "name": brand.Name, "tagline": brand.Tagline, "footer": brand.Footer, "notice": brand.Notice, "registration": mode, "randomUserIds": randomIDs, "emailDomains": domains, "blockedEmailDomains": blockedDomains, "manualEmailVerification": manualVerification, "mailEnabled": services.Mail != nil, "turnstileSiteKey": services.SiteKey, "points": points})
 }
 
 func validEmail(value string) bool {
@@ -346,10 +351,20 @@ func (a *Server) register(w http.ResponseWriter, r *http.Request) {
 		failure(w, 400, "新密码须为 8–128 个字符，且同时包含英文字母、数字和符号")
 		return
 	}
-	if !a.challenge(w, r, body.TurnstileToken, "register") || !a.mailAllowance(w, r, body.Email) || !a.acquireMail(w, r) {
+	manualVerification, err := manualEmailVerification(r.Context(), a.s.DB)
+	if err != nil {
+		failure(w, 503, "暂时无法读取注册设置")
 		return
 	}
-	defer func() { <-a.mailSlots }()
+	if !a.challenge(w, r, body.TurnstileToken, "register") {
+		return
+	}
+	if !manualVerification {
+		if !a.mailAllowance(w, r, body.Email) || !a.acquireMail(w, r) {
+			return
+		}
+		defer func() { <-a.mailSlots }()
+	}
 	select {
 	case a.hashes <- struct{}{}:
 	default:
@@ -374,6 +389,15 @@ func (a *Server) register(w http.ResponseWriter, r *http.Request) {
 	}
 	if mode != "open" && mode != "invitation" {
 		failure(w, 403, "注册当前已关闭")
+		return
+	}
+	currentManual, err := manualEmailVerification(r.Context(), tx)
+	if err != nil {
+		failure(w, 503, "暂时无法读取注册设置")
+		return
+	}
+	if currentManual != manualVerification {
+		failure(w, 409, "注册设置已更新，请刷新后重试")
 		return
 	}
 	allowed, err = a.registrationEmailAllowed(r.Context(), tx, body.Email)
@@ -439,7 +463,7 @@ func (a *Server) register(w http.ResponseWriter, r *http.Request) {
 			_, err = tx.ExecContext(r.Context(), a.s.Bind("DELETE FROM oidc_flows WHERE flow_hash=?"), tokenHash(signupCookie.Value))
 		}
 	}
-	if err == nil {
+	if err == nil && !manualVerification {
 		err = a.issueAccountMail(r.Context(), tx, id, body.Email, "verify")
 	}
 	if err == nil {
@@ -452,7 +476,11 @@ func (a *Server) register(w http.ResponseWriter, r *http.Request) {
 	if body.OIDC {
 		a.oidcCookie(w, "ws_oidc_signup", "", -1)
 	}
-	respond(w, 201, map[string]string{"message": "账号已创建，验证邮件已提交发送。请验证邮箱后登录。"})
+	message := "账号已创建，验证邮件已提交发送。请验证邮箱后登录。"
+	if manualVerification {
+		message = "账号已创建，请等待管理员完成邮箱验证。"
+	}
+	respond(w, 201, map[string]string{"message": message})
 }
 
 func (a *Server) requestAccountMail(w http.ResponseWriter, r *http.Request) {

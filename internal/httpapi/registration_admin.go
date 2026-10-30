@@ -1,6 +1,11 @@
 package httpapi
 
-import "net/http"
+import (
+	"context"
+	"database/sql"
+	"errors"
+	"net/http"
+)
 
 func (a *Server) adminRequest(w http.ResponseWriter, r *http.Request) (User, bool) {
 	u, token, err := a.current(r)
@@ -24,10 +29,11 @@ func (a *Server) setRegistration(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	var body struct {
-		RandomUserIDs       *bool     `json:"randomUserIds"`
-		Mode                string    `json:"mode"`
-		EmailDomains        *[]string `json:"emailDomains"`
-		BlockedEmailDomains *[]string `json:"blockedEmailDomains"`
+		ManualEmailVerification *bool     `json:"manualEmailVerification"`
+		RandomUserIDs           *bool     `json:"randomUserIds"`
+		Mode                    string    `json:"mode"`
+		EmailDomains            *[]string `json:"emailDomains"`
+		BlockedEmailDomains     *[]string `json:"blockedEmailDomains"`
 	}
 	if !decode(w, r, &body) {
 		return
@@ -51,21 +57,32 @@ func (a *Server) setRegistration(w http.ResponseWriter, r *http.Request) {
 		failure(w, 503, "暂时无法读取服务设置")
 		return
 	}
-	if body.Mode != "closed" && (services.Mail == nil || services.Challenge == nil || services.SiteKey == "") {
-		failure(w, 400, "开放注册前须配置邮件和 Turnstile")
-		return
-	}
 	tx, ok := a.beginAdminWrite(w, r, u)
 	if !ok {
 		return
 	}
 	defer tx.Rollback()
-	_, err := tx.ExecContext(r.Context(), a.s.Bind("UPDATE settings SET value=? WHERE setting_key='registration_mode'"), body.Mode)
+	manual, err := manualEmailVerification(r.Context(), tx)
+	if err != nil {
+		failure(w, 503, "暂时无法读取注册设置")
+		return
+	}
+	if body.ManualEmailVerification != nil {
+		manual = *body.ManualEmailVerification
+	}
+	if body.Mode != "closed" && (services.Challenge == nil || services.SiteKey == "" || !manual && services.Mail == nil) {
+		failure(w, 400, "开放注册前须配置验证服务")
+		return
+	}
+	_, err = tx.ExecContext(r.Context(), a.s.Bind("UPDATE settings SET value=? WHERE setting_key='registration_mode'"), body.Mode)
 	if err == nil && body.EmailDomains != nil {
 		err = a.putSetting(r.Context(), tx, "registration_email_domains", *body.EmailDomains)
 	}
 	if err == nil && body.BlockedEmailDomains != nil {
 		err = a.putSetting(r.Context(), tx, "registration_blocked_domains", *body.BlockedEmailDomains)
+	}
+	if err == nil && body.ManualEmailVerification != nil {
+		err = a.putSetting(r.Context(), tx, "manual_email_verification", manual)
 	}
 	if err == nil && body.RandomUserIDs != nil {
 		err = a.putSetting(r.Context(), tx, "random_user_ids", *body.RandomUserIDs)
@@ -91,4 +108,13 @@ func (a *Server) setRegistration(w http.ResponseWriter, r *http.Request) {
 
 func (a *Server) createInvitation(w http.ResponseWriter, r *http.Request) {
 	a.generateInvitations(w, r, false)
+}
+
+func manualEmailVerification(ctx context.Context, reader settingReader) (bool, error) {
+	var raw string
+	err := reader.QueryRowContext(ctx, "SELECT value FROM settings WHERE setting_key='manual_email_verification'").Scan(&raw)
+	if errors.Is(err, sql.ErrNoRows) {
+		return false, nil
+	}
+	return raw == "true", err
 }

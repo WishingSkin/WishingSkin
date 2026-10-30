@@ -152,12 +152,16 @@ func (a *Server) updateAdminUser(w http.ResponseWriter, r *http.Request) {
 		failure(w, 400, "用户编号无效")
 		return
 	}
-	var body struct{ Banned, IsAdmin *bool }
+	var body struct{ Banned, IsAdmin, EmailVerified *bool }
 	if !decode(w, r, &body) {
 		return
 	}
-	if body.Banned == nil && body.IsAdmin == nil {
-		failure(w, 400, "请选择账号状态或权限变更")
+	if body.Banned == nil && body.IsAdmin == nil && body.EmailVerified == nil {
+		failure(w, 400, "请选择用户变更")
+		return
+	}
+	if body.EmailVerified != nil && !*body.EmailVerified {
+		failure(w, 400, "请选择完成邮箱验证")
 		return
 	}
 	tx, ok := a.beginAdminWrite(w, r, u)
@@ -175,6 +179,14 @@ func (a *Server) updateAdminUser(w http.ResponseWriter, r *http.Request) {
 	if err != nil {
 		failure(w, 503, "管理操作暂不可用")
 		return
+	}
+	var verified bool
+	if body.EmailVerified != nil {
+		err = tx.QueryRowContext(r.Context(), a.s.Bind("SELECT COALESCE((SELECT email_verified FROM account_states WHERE user_id=?),FALSE)"), id).Scan(&verified)
+		if err != nil {
+			failure(w, 503, "管理操作暂不可用")
+			return
+		}
 	}
 	nextBanned, nextPermission := banned, permission
 	if body.Banned != nil {
@@ -197,13 +209,26 @@ func (a *Server) updateAdminUser(w http.ResponseWriter, r *http.Request) {
 			return
 		}
 	}
-	if nextBanned == banned && nextPermission == permission {
+	if nextBanned == banned && nextPermission == permission && (body.EmailVerified == nil || verified) {
 		w.WriteHeader(204)
 		return
 	}
 	_, err = tx.ExecContext(r.Context(), a.s.Bind("UPDATE users SET banned=?,permission=? WHERE id=?"), nextBanned, nextPermission, id)
-	if err == nil {
+	if err == nil && (nextBanned != banned || nextPermission != permission) {
 		err = a.revokeAccountCredentials(r.Context(), tx, id)
+	}
+	if err == nil && body.EmailVerified != nil && !verified {
+		query := "INSERT INTO account_states(user_id,email_verified,verification_required) VALUES(?,TRUE,FALSE) ON CONFLICT(user_id) DO UPDATE SET email_verified=TRUE,verification_required=FALSE"
+		if a.s.Dialect == "mysql" {
+			query = "INSERT INTO account_states(user_id,email_verified,verification_required) VALUES(?,TRUE,FALSE) ON DUPLICATE KEY UPDATE email_verified=TRUE,verification_required=FALSE"
+		}
+		_, err = tx.ExecContext(r.Context(), a.s.Bind(query), id)
+		if err == nil {
+			_, err = tx.ExecContext(r.Context(), a.s.Bind("DELETE FROM account_tokens WHERE user_id=? AND purpose='verify'"), id)
+		}
+		if err == nil {
+			err = a.s.RecordAdminEvent(r.Context(), tx, u.ID, "user.verify_email", "user", strconv.FormatInt(id, 10))
+		}
 	}
 	if err == nil && nextBanned != banned {
 		action := "user.unban"
