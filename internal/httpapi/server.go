@@ -14,6 +14,7 @@ import (
 	"net/http"
 	"net/netip"
 	"net/url"
+	"strconv"
 	"strings"
 	"sync"
 	"time"
@@ -23,6 +24,8 @@ import (
 	"wishingskin/internal/mailer"
 	pluginregistry "wishingskin/internal/plugins"
 	"wishingskin/internal/store"
+	sdk "wishingskin/pkg/plugin"
+	blob "wishingskin/pkg/storage"
 )
 
 type Config struct {
@@ -36,8 +39,11 @@ type Config struct {
 	SMTP                  *mailer.SMTP
 	TurnstileSecret       string
 	OIDC                  OIDCSettings
+	CommunityPlugins      []sdk.Plugin
 }
 type Server struct {
+	communityRuntime   communityRuntime
+	ops                operationsRuntime
 	s                  *store.Store
 	cfg                Config
 	mux                *http.ServeMux
@@ -54,7 +60,13 @@ type Server struct {
 	mailSlots          chan struct{}
 	dummy              string
 	pointsNow          func() time.Time
+	totpNow            func() time.Time
+	totpLimit          limiter
 	plugins            *pluginregistry.Registry
+	pluginEvents       *pluginregistry.EventBus
+	storageMu          sync.Mutex
+	storageConfigHash  string
+	remoteStorage      blob.BlobStore
 	oidcMu             sync.Mutex
 	oidcProvider       *oidc.Provider
 	oidcConfigHash     string
@@ -92,6 +104,23 @@ func New(s *store.Store, cfg Config) (*Server, error) {
 		return nil, err
 	}
 	a := &Server{s: s, cfg: cfg, mux: http.NewServeMux(), hashes: make(chan struct{}, 2), uploads: make(chan struct{}, 2), dummy: dummy, plugins: registry, loginLimit: limiter{entries: map[string]bucket{}, now: time.Now}, passwordLimit: limiter{entries: map[string]bucket{}, now: time.Now}}
+	a.pluginEvents = pluginregistry.NewEventBus()
+	a.communityRuntime.pages = map[string]sdk.Page{}
+	a.communityRuntime.tasks = map[string]registeredTask{}
+	a.communityRuntime.running = map[string]context.CancelFunc{}
+	a.communityRuntime.ctx = context.Background()
+	for _, p := range cfg.CommunityPlugins {
+		m := p.Manifest()
+		if strings.HasPrefix(m.ID, "wishingskin.") {
+			return nil, errors.New("reserved official plugin namespace")
+		}
+		if err := a.plugins.Register(m); err != nil {
+			return nil, err
+		}
+		if err := p.Register(&communityHost{a: a, manifest: m, routes: map[string]bool{}}); err != nil {
+			return nil, err
+		}
+	}
 	a.mux.HandleFunc("GET /healthz", func(w http.ResponseWriter, r *http.Request) { respond(w, 200, map[string]string{"status": "alive"}) })
 	a.mux.HandleFunc("GET /readyz", a.ready)
 	a.registrationLimit = limiter{entries: map[string]bucket{}, now: time.Now, max: 5, window: time.Hour}
@@ -104,10 +133,18 @@ func New(s *store.Store, cfg Config) (*Server, error) {
 	a.mux.HandleFunc("GET /api/site", a.site)
 	a.mux.HandleFunc("GET /api/notices", a.notices)
 	a.registerAccountAccess()
+	a.totpNow = time.Now
+	a.totpLimit = limiter{entries: map[string]bucket{}, now: time.Now, max: 20, window: 5 * time.Minute}
+	a.registerTOTP()
 	a.registerOIDC()
+	a.registerOAuth()
+	a.registerConnectors()
 	a.registerCustomization()
 	a.registerAdministration()
 	a.registerModeration()
+	a.registerContentReview()
+	a.registerOperations()
+	a.mux.HandleFunc("GET /cdn/textures/{hash}", a.cdnTexture)
 	a.registerResourceAdministration()
 	a.registerReports()
 	a.registerPlugins()
@@ -191,7 +228,7 @@ func (a *Server) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	if strings.HasPrefix(r.URL.Path, "/api/") {
 		w.Header().Set("Cache-Control", "no-store")
 	}
-	if strings.HasPrefix(r.URL.Path, "/api/") || strings.HasPrefix(r.URL.Path, "/textures/") || strings.HasPrefix(r.URL.Path, "/csl/") || strings.HasPrefix(r.URL.Path, "/skin/") || strings.HasPrefix(r.URL.Path, "/cape/") || strings.HasPrefix(r.URL.Path, "/raw/") || strings.HasSuffix(r.URL.Path, ".json") {
+	if strings.HasPrefix(r.URL.Path, "/api/") || strings.HasPrefix(r.URL.Path, "/oauth/") || strings.HasPrefix(r.URL.Path, "/cdn/") || strings.HasPrefix(r.URL.Path, "/textures/") || strings.HasPrefix(r.URL.Path, "/csl/") || strings.HasPrefix(r.URL.Path, "/skin/") || strings.HasPrefix(r.URL.Path, "/cape/") || strings.HasPrefix(r.URL.Path, "/raw/") || strings.HasSuffix(r.URL.Path, ".json") {
 		var status string
 		err := a.s.DB.QueryRowContext(r.Context(), "SELECT status FROM migration_state WHERE id=1").Scan(&status)
 		if (err != nil && !errors.Is(err, sql.ErrNoRows)) || status == "pending" {
@@ -329,7 +366,12 @@ func (a *Server) login(w http.ResponseWriter, r *http.Request) {
 		failure(w, 429, "登录尝试过于频繁，请稍后重试")
 		return
 	}
-	var body struct{ Email, Password, TurnstileToken string }
+	var body struct {
+		Email          string `json:"email"`
+		Password       string `json:"password"`
+		TurnstileToken string `json:"turnstileToken"`
+		TOTPCode       string `json:"totpCode"`
+	}
 	if !decode(w, r, &body) {
 		return
 	}
@@ -354,6 +396,12 @@ func (a *Server) login(w http.ResponseWriter, r *http.Request) {
 		a.authError(w, err)
 		return
 	}
+	// A valid password and any required challenge clear password guessing state.
+	// Second-factor failures are governed by the separate TOTP limiter below.
+	a.loginFailures.reset(accountKey)
+	if challenged {
+		a.loginFailures.reset(ipKey)
+	}
 	token, err := secret()
 	if err != nil {
 		failure(w, 500, "无法创建会话")
@@ -367,6 +415,30 @@ func (a *Server) login(w http.ResponseWriter, r *http.Request) {
 	defer tx.Rollback()
 	err = a.lockAuthenticatedUser(r.Context(), tx, u)
 	if err == nil {
+		var totpEnabled bool
+		err = tx.QueryRowContext(r.Context(), a.s.Bind("SELECT enabled FROM user_totp WHERE user_id=?"), u.ID).Scan(&totpEnabled)
+		if errors.Is(err, sql.ErrNoRows) {
+			err = nil
+		} else if err == nil && totpEnabled {
+			if !a.totpLimit.allow(r) || !a.totpLimit.allowKey("account:"+strconv.FormatInt(u.ID, 10)) {
+				w.Header().Set("Retry-After", "300")
+				respond(w, 429, map[string]any{"error": "验证尝试过于频繁，请五分钟后重试", "totpRequired": true, "captchaRequired": false})
+				return
+			}
+		}
+	}
+	if err == nil {
+		err = a.consumeTOTP(r.Context(), tx, u.ID, body.TOTPCode)
+	}
+	if errors.Is(err, errTOTPRequired) {
+		respond(w, 401, map[string]any{"error": "此账号已开启双重验证，请输入验证码或恢复码", "totpRequired": true, "captchaRequired": false})
+		return
+	}
+	if errors.Is(err, errTOTP) {
+		respond(w, 401, map[string]any{"error": "验证码或恢复码无效，请重试", "totpRequired": true, "captchaRequired": false})
+		return
+	}
+	if err == nil {
 		_, err = tx.ExecContext(r.Context(), a.s.Bind("INSERT INTO web_sessions(token_hash,user_id,expires_at) VALUES(?,?,?)"), tokenHash(token), u.ID, time.Now().Add(24*time.Hour).Unix())
 	}
 	if err == nil {
@@ -375,10 +447,6 @@ func (a *Server) login(w http.ResponseWriter, r *http.Request) {
 	if err != nil {
 		a.authError(w, err)
 		return
-	}
-	a.loginFailures.reset(accountKey)
-	if challenged {
-		a.loginFailures.reset(ipKey)
 	}
 	http.SetCookie(w, &http.Cookie{Name: "ws_session", Value: token, Path: "/", HttpOnly: true, Secure: strings.HasPrefix(a.cfg.PublicURL, "https://"), SameSite: http.SameSiteLaxMode, MaxAge: 86400})
 	respond(w, 200, map[string]any{"user": u, "csrfToken": csrf(token)})
@@ -466,7 +534,7 @@ func (a *Server) logout(w http.ResponseWriter, r *http.Request) {
 	w.WriteHeader(204)
 }
 func (a *Server) userCharacters(ctx context.Context, id int64) ([]Character, error) {
-	rows, err := a.s.DB.QueryContext(ctx, a.s.Bind("SELECT c.id,c.uuid,c.name,CASE WHEN EXISTS (SELECT 1 FROM textures f WHERE f.hash=c.skin_hash AND f.deleted=TRUE) THEN '' ELSE c.skin_hash END,CASE WHEN EXISTS (SELECT 1 FROM textures f WHERE f.hash=c.cape_hash AND f.deleted=TRUE) THEN '' ELSE c.cape_hash END,c.model FROM characters c WHERE c.user_id=? ORDER BY c.id"), id)
+	rows, err := a.s.DB.QueryContext(ctx, a.s.Bind("SELECT c.id,c.uuid,c.name,CASE WHEN EXISTS (SELECT 1 FROM textures f WHERE f.hash=c.skin_hash AND (f.deleted=TRUE OR NOT "+availableTextureSQL+")) THEN '' ELSE c.skin_hash END,CASE WHEN EXISTS (SELECT 1 FROM textures f WHERE f.hash=c.cape_hash AND (f.deleted=TRUE OR NOT "+availableTextureSQL+")) THEN '' ELSE c.cape_hash END,c.model FROM characters c WHERE c.user_id=? ORDER BY c.id"), id)
 	if err != nil {
 		return nil, err
 	}

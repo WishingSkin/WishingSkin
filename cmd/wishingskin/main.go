@@ -130,14 +130,14 @@ func run() error {
 	if err != nil {
 		return err
 	}
-	apiConfig := httpapi.Config{PublicURL: cfg.PublicURL, TextureDir: cfg.TextureDir, Assets: assets, TurnstileSiteKey: cfg.TurnstileSiteKey, TrustedProxies: cfg.TrustedProxies}
+	apiConfig := httpapi.Config{CommunityPlugins: communityPlugins(), PublicURL: cfg.PublicURL, TextureDir: cfg.TextureDir, Assets: assets, TurnstileSiteKey: cfg.TurnstileSiteKey, TrustedProxies: cfg.TrustedProxies}
 	keyPath := os.Getenv("WS_SETTINGS_KEY_FILE")
 	if keyPath == "" {
 		keyPath = filepath.Join(cfg.TextureDir, ".settings.key")
 	}
 	// A restored encrypted configuration must never silently generate a replacement key.
 	var encryptedCount int
-	if err := db.DB.QueryRowContext(ctx, "SELECT COUNT(*) FROM settings WHERE setting_key IN ('service_config','oidc_config')").Scan(&encryptedCount); err != nil {
+	if err := db.DB.QueryRowContext(ctx, "SELECT COUNT(*) FROM settings WHERE setting_key IN ('service_config','oidc_config','oidc_providers','object_storage_config','external_connectors')").Scan(&encryptedCount); err != nil {
 		return fmt.Errorf("cannot inspect service settings")
 	}
 	if encryptedCount > 0 {
@@ -165,6 +165,10 @@ func run() error {
 	if err != nil {
 		return err
 	}
+	workerCtx, stopWorker := context.WithCancel(ctx)
+	workerDone := make(chan struct{})
+	go func() { defer close(workerDone); app.RunBackground(workerCtx) }()
+	defer func() { stopWorker(); <-workerDone; app.WaitBackground() }()
 	server := &http.Server{Addr: cfg.Listen, Handler: app, ReadHeaderTimeout: 5 * time.Second, ReadTimeout: 15 * time.Second, WriteTimeout: 30 * time.Second, IdleTimeout: 60 * time.Second}
 	stopped := make(chan error, 1)
 	go func() { stopped <- server.ListenAndServe() }()

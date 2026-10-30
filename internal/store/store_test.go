@@ -76,6 +76,18 @@ func assertEmbeddedSchemasAgree(t *testing.T, migration string) {
 		t.Fatal("MySQL and PostgreSQL schema definitions differ")
 	}
 	tables := []string{"ygg_join_sessions"}
+	if migration == "017_account_integrations" {
+		tables = []string{"oauth_clients", "oauth_codes", "oauth_tokens", "external_identities"}
+	}
+	if migration == "018_content_review" {
+		tables = []string{"texture_metadata"}
+		if !strings.Contains(string(mysql), "DEFAULT CHARACTER SET utf8mb4 COLLATE utf8mb4_0900_bin") {
+			t.Error("content metadata table must match the referenced record ID collation")
+		}
+	}
+	if migration == "016_totp" {
+		tables = []string{"user_totp", "user_totp_recovery"}
+	}
 	if migration == "015_oidc" {
 		tables = []string{"oidc_identities", "oidc_flows"}
 		if !strings.Contains(string(mysql), "INDEX oidc_flow_expiry(expires_at)") || !strings.Contains(string(postgres), "INDEX IF NOT EXISTS oidc_flow_expiry ON oidc_flows(expires_at)") {
