@@ -22,7 +22,7 @@
 
 ## 已核对的字段与行为
 
-| 官方来源 | 本轮读取 | 目标行为 |
+| 官方来源 | 固定版本源码 | 目标行为 |
 | --- | --- | --- |
 | `users` | `uid,email,nickname,password,score,permission,verified` | 保留 ID、展示邮箱、昵称、哈希、积分和原权限值；仅 `permission=2` 获得新站管理员权限，`1` 为普通用户、待服主重新授权，`-1` 为封禁；邮箱唯一键为去除首尾空白后转小写，冲突时阻止导入；只保留明确的 `verified=0/1`，不根据邮箱存在或旧登录推断 |
 | `players` | `pid,uid,name,tid_skin,tid_cape` | 保留角色 ID 和归属；角色名使用小写比较键，名字必须符合目标 `[A-Za-z0-9_]{1,16}` 规则，冲突或超范围时阻止导入 |
@@ -37,9 +37,9 @@
 
 核心字段依据：[User](https://github.com/bs-community/blessing-skin-server/blob/b737a65f5f5fce1f897f8603db74fd970437b351/app/Models/User.php)、[Player](https://github.com/bs-community/blessing-skin-server/blob/b737a65f5f5fce1f897f8603db74fd970437b351/app/Models/Player.php)、[Texture](https://github.com/bs-community/blessing-skin-server/blob/b737a65f5f5fce1f897f8603db74fd970437b351/app/Models/Texture.php)、[初始迁移](https://github.com/bs-community/blessing-skin-server/blob/b737a65f5f5fce1f897f8603db74fd970437b351/database/migrations/2016_11_18_133939_create_all_tables.php)、[players 重命名迁移](https://github.com/bs-community/blessing-skin-server/blob/b737a65f5f5fce1f897f8603db74fd970437b351/database/migrations/2019_03_13_130311_rename_players_table_columns.php)。
 
-插件的 [callbacks.php](https://github.com/bs-community/blessing-skin-plugins/blob/de016f4cbb43df7bd6d46193d5625693f8c79b3f/plugins/yggdrasil-api/callbacks.php) 创建 `uuid(id,name,uuid)` 表及相关选项；[Profile.php](https://github.com/bs-community/blessing-skin-plugins/blob/de016f4cbb43df7bd6d46193d5625693f8c79b3f/plugins/yggdrasil-api/src/Models/Profile.php) 优先使用已存映射，且用 `ygg_private_key` 签名属性。插件 [ConfigController.php](https://github.com/bs-community/blessing-skin-plugins/blob/de016f4cbb43df7bd6d46193d5625693f8c79b3f/plugins/yggdrasil-api/src/Controllers/ConfigController.php) 拒绝小于 4096 位的 RSA 密钥，本轮预检查遵守该限制，只接收未加密 PKCS#1 或 PKCS#8 RSA 私钥。
+插件的 [callbacks.php](https://github.com/bs-community/blessing-skin-plugins/blob/de016f4cbb43df7bd6d46193d5625693f8c79b3f/plugins/yggdrasil-api/callbacks.php) 创建 `uuid(id,name,uuid)` 表及相关选项；[Profile.php](https://github.com/bs-community/blessing-skin-plugins/blob/de016f4cbb43df7bd6d46193d5625693f8c79b3f/plugins/yggdrasil-api/src/Models/Profile.php) 优先使用已存映射，且用 `ygg_private_key` 签名属性。插件 [ConfigController.php](https://github.com/bs-community/blessing-skin-plugins/blob/de016f4cbb43df7bd6d46193d5625693f8c79b3f/plugins/yggdrasil-api/src/Controllers/ConfigController.php) 拒绝小于 4096 位的 RSA 密钥，预检查遵守该限制，只接收未加密 PKCS#1 或 PKCS#8 RSA 私钥。
 
-密码配置依据 [secure.php](https://github.com/bs-community/blessing-skin-server/blob/b737a65f5f5fce1f897f8603db74fd970437b351/config/secure.php) 与 [HasPassword.php](https://github.com/bs-community/blessing-skin-server/blob/b737a65f5f5fce1f897f8603db74fd970437b351/app/Models/Concerns/HasPassword.php)。本轮 `credential` 支持 BCRYPT、PHP_PASSWORD_HASH、ARGON2I、ARGON2ID、MD5、SHA256、SHA512，并限制可验证编码和工作因子；超出实现范围的编码或参数同样会阻止导入。MD5、SHA256、SHA512 只支持站点盐为空的已核实形式，非空盐会阻止导入；BCRYPT 还检查前缀、编码和尾位。BS 的 SALTED2MD5、SALTED2SHA256、SALTED2SHA512 及 `verify_password` / `user_password` 过滤器尚未适配，不能仅把方法名改成另一算法后导入。
+密码配置依据 [secure.php](https://github.com/bs-community/blessing-skin-server/blob/b737a65f5f5fce1f897f8603db74fd970437b351/config/secure.php) 与 [HasPassword.php](https://github.com/bs-community/blessing-skin-server/blob/b737a65f5f5fce1f897f8603db74fd970437b351/app/Models/Concerns/HasPassword.php)。`credential` 支持 BCRYPT、PHP_PASSWORD_HASH、ARGON2I、ARGON2ID、MD5、SHA256、SHA512，并限制可验证编码和工作因子；超出实现范围的编码或参数同样会阻止导入。MD5、SHA256、SHA512 只支持站点盐为空的已核实形式，非空盐会阻止导入；BCRYPT 还检查前缀、编码和尾位。BS 的 SALTED2MD5、SALTED2SHA256、SALTED2SHA512 及 `verify_password` / `user_password` 过滤器尚未适配，不能仅把方法名改成另一算法后导入。
 
 ## 已核对的归档联合版
 
@@ -58,7 +58,7 @@
 
 ## 材质文件与 hash 模式
 
-核心 [SkinlibController.php](https://github.com/bs-community/blessing-skin-server/blob/b737a65f5f5fce1f897f8603db74fd970437b351/app/Http/Controllers/SkinlibController.php) 默认计算文件 SHA-256，再应用 `uploaded_texture_hash` 过滤器；[filesystems.php](https://github.com/bs-community/blessing-skin-server/blob/b737a65f5f5fce1f897f8603db74fd970437b351/config/filesystems.php) 的材质目录是 `TEXTURES_DIR`，默认 `storage/textures`。导出时必须另行取得一致的本地材质副本；远程 FS_DRIVER 没有在本轮适配。
+核心 [SkinlibController.php](https://github.com/bs-community/blessing-skin-server/blob/b737a65f5f5fce1f897f8603db74fd970437b351/app/Http/Controllers/SkinlibController.php) 默认计算文件 SHA-256，再应用 `uploaded_texture_hash` 过滤器；[filesystems.php](https://github.com/bs-community/blessing-skin-server/blob/b737a65f5f5fce1f897f8603db74fd970437b351/config/filesystems.php) 的材质目录是 `TEXTURES_DIR`，默认 `storage/textures`。导出时必须另行取得一致的本地材质副本；远程 FS_DRIVER 尚未适配。
 
 - `hash_mode=sha256`：每个源文件的 SHA-256 必须与原 hash 完全相同。
 - `hash_mode=preserve-custom`：必须填写 `hash_explanation`，说明源过滤器或自定义标识的来源。保留源 hash，并使用单独 SHA-256 核对复制前后字节；报告明确声明未验证源过滤器算法。
@@ -69,7 +69,7 @@
 
 衣柜的重复 `(user_uid,texture_tid)`、断开的账号/材质引用，以及超过 255 个 Unicode 码点的别名均阻止导入，不合并或截断。相同图片的不同记录保留独立上传者、名称、描述和收藏关系；目标只去重图片文件。升级格式不会重算 UUID、恢复旧会话或自动标记邮箱已验证。
 
-2026-10-23 用户确认：BS 普通管理员（原权限 1）在新站作为普通用户使用，由服主逐个重新授权；超级管理员（2）保留管理员权限。原数值继续保存，不把 1 自动提升为 2。报告的 `permissions` 只包含映射规则及四类账号数量，不列出邮箱、昵称或凭据。
+迁移权限规则：BS 普通管理员（原权限 1）在新站作为普通用户使用，由服主逐个重新授权；超级管理员（2）保留管理员权限。原数值继续保存，不把 1 自动提升为 2。报告的 `permissions` 只包含映射规则及四类账号数量，不列出邮箱、昵称或凭据。
 
 v2 用户新增可选 `verified`。新只读导出直接读取固定核心 `users.verified`，不是 0/1 或缺失列时拒绝；旧 v1/v2 快照缺字段时报告 `unknown`，不修改旧任务指纹。只有明确已验证的账号才写入 `account_states(email_verified=true, verification_required=false)`；未验证或未知的旧账号继续按原迁移兼容方式登录，不设置新的验证门槛。报告分别计数已验证、未验证和未知，不包含邮箱。此字段不能补入已提交的旧任务；需要重新导出并迁入独立空目标。
 
@@ -79,7 +79,7 @@ v2 用户新增可选 `verified`。新只读导出直接读取固定核心 `user
 
 v2 的可选 `branding` 固定包含 `site_name`、`site_description`、`announcement` 三项。只读导出读取固定核心默认值并叠加数据库覆盖值，分别写入新站 `site_name`、`site_tagline`、`site_notice`。名称 1–64、简介至多 200、公告至多 1000 个 Unicode 码点；名称和简介不允许换行，无法无损表示时阻止导入。HTML 与 `{version}` 等占位符均作为字面文字，不自动翻译。注册模式、邮件凭据、公开地址、自定义 CSS/JS 和其他运营配置不应用；积分只保留核对清单，由管理员重新配置。旧快照缺少品牌时报告不可用。
 
-2026-10-23 用户确认旧 BS 举报完整保留为独立只读历史。依据固定核心的 [Report 模型](https://github.com/bs-community/blessing-skin-server/blob/b737a65f5f5fce1f897f8603db74fd970437b351/app/Models/Report.php) 和 [举报建表迁移](https://github.com/bs-community/blessing-skin-server/blob/b737a65f5f5fce1f897f8603db74fd970437b351/database/migrations/2019_03_23_171728_create_report_table.php)，源表只有上述七字段，状态为 0 待处理、1 已处置、2 已驳回，没有处理人、动作及处理时间。原因使用 `LONGTEXT`，迁移不套用新举报的 1000 字限制。
+旧 BS 举报作为独立只读历史完整保留。依据固定核心的 [Report 模型](https://github.com/bs-community/blessing-skin-server/blob/b737a65f5f5fce1f897f8603db74fd970437b351/app/Models/Report.php) 和 [举报建表迁移](https://github.com/bs-community/blessing-skin-server/blob/b737a65f5f5fce1f897f8603db74fd970437b351/database/migrations/2019_03_23_171728_create_report_table.php)，源表只有上述七字段，状态为 0 待处理、1 已处置、2 已驳回，没有处理人、动作及处理时间。原因使用 `LONGTEXT`，迁移不套用新举报的 1000 字限制。
 
 v2 可选 `legacy_reports.items` 保存所有记录。缺少包装字段表示历史不可用；显式空数组表示已检查且为零。源表不存在时另报告未检查，不当成零。`report_at` 通过 MySQL `CAST(... AS CHAR)` 读取，保留日期时间文本（含零日期和小数秒）或 NULL，不经驱动日期解析、不赋予时区。无效状态、重复/非正举报 ID、无效 UTF-8、NUL 或不符合源 DATETIME 文本形状的值阻止导入；源引用编号不要求现存对象。旧快照指纹保持不变，不把历史补入已提交的旧任务。
 
@@ -105,7 +105,7 @@ snapshot 含密码哈希、站点盐和签名私钥，属于敏感备份。只�
 4. 用户、材质、衣柜、角色、签名和 `partial` 状态在同一数据库事务提交。数据库失败时业务行回滚，已完成的本任务材质保留供重试；重试会校验并复用这些文件。
 5. 相同任务再次运行只验证现存副本并返回 `already_imported=true`，不重复插入。其他快照不能借用该任务恢复。
 
-当前故障测试覆盖文件阶段实际终止导入进程、材质发布后及业务事务末段入库失败后的重试；两库大样本恢复结果与普通导入逐表/逐文件摘要相同，见[手动验收清单](manual-acceptance.md)。检查点用于文件恢复，业务单事务提交，不是多批数据库提交。断电导致文件系统或数据库自身损坏、目录清单首次写入时的撕裂、外部进程篡改目标和跨主机恢复尚未演练；损坏的清单会停止导入，工具不会猜测归属后清除目录。业务写入开放后的数据合并、反向迁移和无损回滚也不在本轮范围。
+当前故障测试覆盖文件阶段实际终止导入进程、材质发布后及业务事务末段入库失败后的重试；两库大样本恢复结果与普通导入逐表/逐文件摘要相同，见[手动验收清单](manual-acceptance.md)。检查点用于文件恢复，业务单事务提交，不是多批数据库提交。断电导致文件系统或数据库自身损坏、目录清单首次写入时的撕裂、外部进程篡改目标和跨主机恢复尚未演练；损坏的清单会停止导入，工具不会猜测归属后清除目录。业务写入开放后的数据合并、反向迁移和无损回滚也不在迁移支持范围。
 
 ## 可重复的本地样本
 
@@ -117,7 +117,7 @@ snapshot 含密码哈希、站点盐和签名私钥，属于敏感备份。只�
 go run ./testdata/bs/generate.go <不存在的本地临时目录>
 ```
 
-输出包含带测试私钥的 `snapshot.json`、PNG 和 `source.sql`。`source.sql` 只是可选的本地合成源库种子，只有本轮需要的字段；它不是官方完整 schema，也不是生产备份。仅可由操作人员导入新建的空本地源库，再使用只读导出器读取。迁移器本身从不执行该 SQL 文件。
+输出包含带测试私钥的 `snapshot.json`、PNG 和 `source.sql`。`source.sql` 只是可选的本地合成源库种子，只有测试场景需要的字段；它不是官方完整 schema，也不是生产备份。仅可由操作人员导入新建的空本地源库，再使用只读导出器读取。迁移器本身从不执行该 SQL 文件。
 
 单元测试运行：
 
