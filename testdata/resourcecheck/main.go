@@ -87,7 +87,7 @@ func main() {
 	data, err := json.Marshal(s)
 	must(err)
 	must(os.WriteFile(filepath.Join(dir, "snapshot.json"), data, 0600))
-	upload := noisePNG(1024, 1001)
+	upload := noisePNG(128, 1001)
 	must(os.WriteFile(filepath.Join(dir, "upload.png"), upload, 0600))
 	r, err := bsmigration.Preflight(s, dir)
 	must(err)

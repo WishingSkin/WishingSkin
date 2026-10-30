@@ -323,7 +323,7 @@ def run_database(driver, base, image, run_id):
         db_args = ["docker", "run", "-d", "--name", db, "--network", network, "--network-alias", "db", "--cpus=1", "--memory=1536m", "--memory-swap=1536m", "--mount", f"type=volume,src={prefix}-db,dst=" + ("/var/lib/mysql" if driver == "mysql" else "/var/lib/postgresql/data")]
         if driver == "mysql":
             db_args += ["-e", "MYSQL_DATABASE=resource", "-e", "MYSQL_ROOT_PASSWORD=" + DB_PASSWORD]
-            ready = ["docker", "exec", "-e", "MYSQL_PWD=" + DB_PASSWORD, db, "mysql", "-uroot", "-D", "resource", "-Nse", "SELECT 1"]
+            ready = ["docker", "exec", "-e", "MYSQL_PWD=" + DB_PASSWORD, db, "mysql", "-h127.0.0.1", "-uroot", "-D", "resource", "-Nse", "SELECT 1"]
             dsn = f"root:{DB_PASSWORD}@tcp(db:3306)/resource?parseTime=true"
         else:
             db_args += ["-e", "POSTGRES_DB=resource", "-e", "POSTGRES_USER=resource", "-e", "POSTGRES_PASSWORD=" + DB_PASSWORD]
