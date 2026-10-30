@@ -1,4 +1,5 @@
 <script setup lang="ts">
+import { feedbackRef } from '../feedback'
 import { computed, onMounted, ref, watch } from 'vue'
 import type { AccessMode, SiteAccess } from '../accountTypes'
 import { t } from '../i18n'
@@ -15,8 +16,8 @@ const purpose = ref<'verify' | 'reset'>('verify')
 const challengeToken = ref('')
 const challenge = ref<InstanceType<typeof TurnstileChallenge> | null>(null)
 const busy = ref(false)
-const error = ref('')
-const message = ref('')
+const error = feedbackRef('error')
+const message = feedbackRef('success')
 const oidcRegistration = new URLSearchParams(window.location.search).get('oidc') === '1'
 const oidcReady = ref(!oidcRegistration)
 onMounted(async () => {
@@ -49,7 +50,7 @@ async function submit() {
       password.value = ''; confirmation.value = ''
       emit('completed', props.mode === 'verify' ? '邮箱已验证，请登录。' : '密码已重设，所有网页会话与游戏令牌已撤销。请用新密码登录。')
     } else {
-      message.value = props.mode === 'register' ? '账号已创建，验证邮件已提交发送。请验证邮箱后登录。' : '如有符合条件的账号，邮件已提交发送，请检查邮箱。'
+      message.value = props.mode === 'register' ? (props.site.manualEmailVerification ? '账号已创建，请等待管理员完成邮箱验证。' : '账号已创建，验证邮件已提交发送。请验证邮箱后登录。') : '如有符合条件的账号，邮件已提交发送，请检查邮箱。'
       if (props.mode === 'register') { password.value = ''; confirmation.value = '' }
     }
   } catch { error.value = '无法确认操作结果，请检查邮箱或稍后重试。' }
@@ -59,7 +60,7 @@ async function submit() {
 
 <template>
   <section class="login-panel access-panel" aria-labelledby="access-title">
-    <div class="login-heading"><h2 id="access-title">{{ t(title) }}</h2><p>{{ mode === 'register' ? t('验证邮箱后即可使用工作台和游戏认证。') : mode === 'verify' ? t('点击确认完成验证。打开此页面不会使用链接。') : mode === 'reset' ? t('重设后需要重新登录网页和启动器。') : t('选择邮件用途，输入账号邮箱。') }}</p></div>
+    <div class="login-heading"><h2 id="access-title">{{ t(title) }}</h2><p>{{ mode === 'register' ? t(site.manualEmailVerification ? '创建账号后由管理员完成邮箱验证。' : '验证邮箱后即可使用工作台和游戏认证。') : mode === 'verify' ? t('确认后完成邮箱验证。') : mode === 'reset' ? t('重设后需要重新登录网页和启动器。') : t('选择邮件用途，输入账号邮箱。') }}</p></div>
     <p v-if="mode === 'register' && site.registration === 'closed'" class="notice" role="status">{{ t('注册当前已关闭') }}</p>
     <form v-else class="access-form" @submit.prevent="submit">
       <fieldset :disabled="busy">
@@ -84,9 +85,9 @@ async function submit() {
       </fieldset>
       <TurnstileChallenge v-if="mode === 'register'" ref="challenge" :site-key="site.turnstileSiteKey" action="register" :dark="dark" @token="challengeToken = $event" />
       <p v-if="mode === 'mail' && !site.mailEnabled" class="notice">{{ t('邮件服务尚未配置，请联系管理员') }}</p>
-      <p v-if="error" class="form-error" role="alert">{{ t(error) }}</p>
-      <p v-if="message" class="action-success" role="status">{{ t(message) }}</p>
-      <button class="primary-button login-button" type="submit" :disabled="busy || !oidcReady || (mode === 'register' && (!challengeToken || !site.mailEnabled)) || (mode === 'mail' && !site.mailEnabled)">{{ busy ? t('正在处理…') : mode === 'register' ? t('创建账号并发送验证邮件') : mode === 'mail' ? t('发送邮件') : mode === 'verify' ? t('确认验证邮箱') : t('保存新密码') }}</button>
+
+
+      <button class="primary-button login-button" type="submit" :disabled="busy || !oidcReady || (mode === 'register' && (!challengeToken || (!site.mailEnabled && !site.manualEmailVerification))) || (mode === 'mail' && !site.mailEnabled)">{{ busy ? t('正在处理…') : mode === 'register' ? t(site.manualEmailVerification ? '创建账号' : '创建账号并发送验证邮件') : mode === 'mail' ? t('发送邮件') : mode === 'verify' ? t('确认验证邮箱') : t('保存新密码') }}</button>
     </form>
     <button class="secondary-button browse-library" type="button" :disabled="busy" @click="emit('back')">{{ t('返回') }}</button>
   </section>

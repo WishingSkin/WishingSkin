@@ -1,4 +1,5 @@
 <script setup lang="ts">
+import { feedbackRef } from '../feedback'
 import { onMounted, ref } from 'vue'
 import { t } from '../i18n'
 import TurnstileChallenge from './TurnstileChallenge.vue'
@@ -18,8 +19,8 @@ const testBusy = ref(false)
 const turnstileTestBusy = ref(false)
 const turnstileTestToken = ref('')
 const turnstileChallenge = ref<InstanceType<typeof TurnstileChallenge> | null>(null)
-const error = ref('')
-const message = ref('')
+const error = feedbackRef('error')
+const message = feedbackRef('success')
 async function load() {
   loading.value = true; error.value = ''
   try {
@@ -73,7 +74,7 @@ onMounted(load)
 </script>
 <template>
   <section class="settings-section"><h3>{{ t('邮件与验证') }}</h3><p>{{ t('注册始终需要验证邮箱和完成人机验证。请先配置邮件服务与 Turnstile。') }}</p>
-    <p v-if="loading" role="status">{{ t('正在加载…') }}</p><p v-if="error" class="form-error" role="alert">{{ t(error) }} <button v-if="!draft && !loading" class="text-button" type="button" @click="load">{{ t('重试') }}</button></p>
+    <p v-if="loading" role="status">{{ t('正在加载…') }}</p><p v-if="error" class="form-error" role="alert"><button v-if="!draft && !loading" class="text-button" type="button" @click="load">{{ t('重试') }}</button></p>
     <form v-if="draft" class="settings-form" @submit.prevent="save"><p class="password-rule">{{ draft.source === 'database' ? t('当前使用后台保存的配置。') : t('当前使用启动时的配置，保存后将以后台配置为准。') }}</p><p v-if="!draft.editable" class="notice">{{ t('本地设置密钥尚不可用') }}</p><fieldset :disabled="busy || !draft.editable">
       <h4>SMTP</h4><label class="settings-check"><input v-model="draft.smtpEnabled" type="checkbox" />{{ t('启用邮件服务') }}</label>
       <label class="binding-field"><span>{{ t('SMTP 服务器与端口') }}</span><input v-model="draft.address" placeholder="smtp.example.com:587" :required="draft.smtpEnabled" /></label>
@@ -87,12 +88,12 @@ onMounted(load)
       <label class="binding-field"><span>Secret key <small>{{ draft.secretConfigured ? t('已配置') : t('未配置') }}</small></span><input v-model="secret" type="password" maxlength="256" autocomplete="new-password" :disabled="clearSecret" /></label>
       <label class="settings-check"><input v-model="clearSecret" type="checkbox" />{{ t('清除已保存的 Turnstile Secret') }}</label>
       <p class="password-rule">{{ t('密码与 Secret 留空会保留现有值；勾选清除后才会移除。启用中的服务必须配置完整。') }}</p>
-      <div class="mail-test-settings"><label class="binding-field"><span>{{ t('SMTP 测试收件地址') }}</span><input v-model="draft.testRecipient" type="email" :placeholder="t('默认使用当前管理员邮箱')" /></label><p class="password-rule">{{ t('测试邮件只发送到这里，不会修改站点发件人配置。') }}</p></div>
+      <div class="mail-test-settings"><label class="binding-field"><span>{{ t('SMTP 测试收件地址') }}</span><input v-model="draft.testRecipient" type="email" :placeholder="t('默认使用当前管理员邮箱')" /></label><p class="password-rule">{{ t('测试邮件的收件地址。') }}</p></div>
       <p class="password-rule">{{ t('登录在 15 分钟内失败 5 次后要求人机验证；正常登录不显示。注册始终要求验证。') }}</p>
       <p v-if="savedServices?.turnstileHostname" class="password-rule">{{ t('Turnstile 允许的主机名：{hostname}', { hostname: savedServices.turnstileHostname }) }}</p>
-      <div v-if="savedServices?.turnstileEnabled" class="turnstile-test-settings"><h5>{{ t('测试 Turnstile') }}</h5><p class="password-rule">{{ t('使用当前已保存配置验证 hostname 和 action，不会计入登录失败次数。') }}</p><TurnstileChallenge ref="turnstileChallenge" :site-key="savedServices.siteKey" action="admin-test" :dark="false" @token="turnstileTestToken = $event" /><button class="secondary-button" type="button" :disabled="turnstileTestBusy || busy || !turnstileTestToken" @click="testTurnstile">{{ turnstileTestBusy ? t('正在测试 Turnstile…') : t('测试 Turnstile') }}</button></div>
+      <div v-if="savedServices?.turnstileEnabled" class="turnstile-test-settings"><h5>{{ t('测试 Turnstile') }}</h5><p class="password-rule">{{ t('使用已保存配置测试人机验证。') }}</p><TurnstileChallenge ref="turnstileChallenge" :site-key="savedServices.siteKey" action="admin-test" :dark="false" @token="turnstileTestToken = $event" /><button class="secondary-button" type="button" :disabled="turnstileTestBusy || busy || !turnstileTestToken" @click="testTurnstile">{{ turnstileTestBusy ? t('正在测试 Turnstile…') : t('测试 Turnstile') }}</button></div>
       <div class="settings-actions"><button class="primary-button" type="submit">{{ busy ? t('正在保存…') : t('保存邮件与验证设置') }}</button><button class="secondary-button" type="button" :disabled="testBusy || busy || !draft.smtpEnabled" @click="sendTest">{{ testBusy ? t('正在发送测试邮件…') : t('发送测试邮件') }}</button></div>
-    </fieldset></form><p v-if="message" class="action-success" role="status">{{ t(message) }}</p>
+    </fieldset></form>
     <EmailTemplateSettings v-if="savedServices" :csrf-token="csrfToken" :recipient="savedServices.testRecipient" :smtp-enabled="savedServices.smtpEnabled" @expired="emit('expired')" />
   </section>
 </template>

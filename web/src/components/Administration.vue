@@ -1,4 +1,6 @@
 <script setup lang="ts">
+import AppModal from './AppModal.vue'
+import { feedbackRef } from '../feedback'
 import { computed, nextTick, onMounted, ref } from 'vue'
 import { locale, t } from '../i18n'
 import ContentReview from './ContentReview.vue'
@@ -25,15 +27,15 @@ const eventTotal = ref(0)
 const usersBusy = ref(false)
 const eventsBusy = ref(false)
 const saving = ref(false)
-const userError = ref('')
-const eventError = ref('')
-const actionError = ref('')
-const message = ref('')
-const pending = ref<{ user: AdminUser; field: 'banned' | 'isAdmin'; value: boolean } | null>(null)
+const userError = feedbackRef('error')
+const eventError = feedbackRef('error')
+const actionError = feedbackRef('error')
+const message = feedbackRef('success')
+const pending = ref<{ user: AdminUser; field: 'banned' | 'isAdmin' | 'emailVerified'; value: boolean } | null>(null)
 const confirmButton = ref<HTMLButtonElement | null>(null)
 const pendingLabel = computed(() => pending.value ? actionLabel(pending.value.field, pending.value.value) : '')
 const actionNames: Record<string, string> = {
-  'administrator.initialize': '创建首个管理员', 'user.ban': '封禁用户', 'user.unban': '解封用户',
+  'user.verify_email': '完成邮箱验证', 'administrator.initialize': '创建首个管理员', 'user.ban': '封禁用户', 'user.unban': '解封用户',
   'user.promote': '设为管理员', 'user.demote': '设为普通用户', 'settings.character_limit': '修改角色上限',
   'registration.closed': '关闭注册', 'registration.open': '开放注册', 'registration.invitation': '启用邀请码注册', 'invitation.create': '生成邀请码',
   'texture.disable': '下架整份图片',
@@ -49,7 +51,7 @@ const actionNames: Record<string, string> = {
 const targetNames: Record<string, string> = { user: '用户', site: '站点', invitation: '邀请码', texture: '图片', character: '角色', wardrobe: '衣柜', report: '举报' }
 const tabNames = { users: '用户管理', characters: '角色管理', wardrobe: '衣柜管理', textures: '材质管理', reports: '举报管理', events: '管理记录', settings: '站点设置', plugins: '插件管理' }
 const settingNames: Record<string, string> = { registration: '注册模式', character_limit: '角色数量上限', branding: '品牌与公告', points: '积分与签到', appearance: '个性化', services: '邮件与验证', invitations: '邀请码插件', login_image: '登录页图片', oidc: 'OIDC 登录', 'wishingskin.oidc': 'OIDC 登录' }
-function actionLabel(field: 'banned' | 'isAdmin', value: boolean) { return field === 'banned' ? (value ? '封禁用户' : '解封用户') : (value ? '设为管理员' : '设为普通用户') }
+function actionLabel(field: 'banned' | 'isAdmin' | 'emailVerified', value: boolean) { return field === 'emailVerified' ? '完成邮箱验证' : field === 'banned' ? (value ? '封禁用户' : '解封用户') : (value ? '设为管理员' : '设为普通用户') }
 function timeLabel(value: number) { return new Date(value * 1000).toLocaleString(locale.value === 'en' ? 'en-US' : 'zh-CN') }
 async function loadUsers() {
   if (usersBusy.value || saving.value) return
@@ -87,7 +89,7 @@ async function exportEvents() {
 function findUsers() { if (usersBusy.value || saving.value) return; query.value = search.value; userPage.value = 1; pending.value = null; loadUsers() }
 function turnPage(kind: 'users' | 'events', offset: number) { if (kind === 'users') { userPage.value += offset; pending.value = null; loadUsers() } else { eventPage.value += offset; loadEvents() } }
 function selectTab(value: typeof tab.value) { tab.value = value; if (value === 'events') loadEvents() }
-async function confirm(user: AdminUser, field: 'banned' | 'isAdmin') { pending.value = { user, field, value: !user[field] }; actionError.value = ''; message.value = ''; await nextTick(); confirmButton.value?.focus() }
+async function confirm(user: AdminUser, field: 'banned' | 'isAdmin' | 'emailVerified') { pending.value = { user, field, value: !user[field] }; actionError.value = ''; message.value = ''; await nextTick(); confirmButton.value?.focus() }
 async function apply() {
   const change = pending.value
   if (!change || saving.value) return
@@ -97,7 +99,7 @@ async function apply() {
     if (response.status === 401) { emit('expired'); return }
     if (!response.ok) { const data = await response.json().catch(() => ({})); actionError.value = data.error || '管理操作未完成，请重试'; return }
     pending.value = null
-    if (change.user.id === props.userId) { emit('expired'); return }
+    if (change.user.id === props.userId && change.field !== 'emailVerified') { emit('expired'); return }
     message.value = '用户状态已更新。'
   } catch { actionError.value = '无法确认操作结果，请刷新用户列表后检查。' }
   finally { saving.value = false }
@@ -114,22 +116,22 @@ onMounted(loadUsers)
     <ResourceAdministration v-if="tab === 'characters' || tab === 'wardrobe'" :key="tab" :mode="tab" :csrf-token="csrfToken" @expired="emit('expired')" />
     <section v-show="tab === 'users'" :aria-label="t('用户管理')">
       <form class="admin-search panel" @submit.prevent="findUsers"><label class="binding-field"><span>{{ t('搜索用户') }}</span><input v-model="search" maxlength="255" :placeholder="t('邮箱、昵称或用户编号')" :disabled="saving" /></label><button type="submit" class="primary-button" :disabled="usersBusy || saving">{{ t('搜索') }}</button><button type="button" class="secondary-button" :disabled="usersBusy || saving" @click="loadUsers">{{ t('刷新列表') }}</button></form>
-      <div v-if="pending" class="admin-confirm panel" role="alertdialog" aria-modal="false" aria-labelledby="admin-confirm-title" aria-describedby="admin-confirm-description">
-        <h2 id="admin-confirm-title">{{ t('确认{action}', { action: t(pendingLabel) }) }}</h2><p class="admin-identity">{{ pending.user.nickname }} · {{ pending.user.email }} · #{{ pending.user.id }}</p><p id="admin-confirm-description">{{ t('变更会退出该用户的全部网页会话，并撤销游戏令牌和邮件链接；角色与材质会保留。') }} {{ pending.user.id === userId ? t('你正在修改自己的账号，完成后需要重新登录。') : '' }}</p>
-        <div class="admin-actions"><button ref="confirmButton" class="danger-button" type="button" :disabled="saving" @click="apply">{{ saving ? t('正在保存…') : t('确认{action}', { action: t(pendingLabel) }) }}</button><button class="secondary-button" type="button" :disabled="saving" @click="pending = null; actionError = ''">{{ t('取消') }}</button></div>
-      </div>
-      <p v-if="actionError" class="form-error action-feedback" role="alert">{{ t(actionError) }}</p><p v-if="message" class="action-success" role="status">{{ t(message) }}</p>
+      <AppModal v-if="pending" :title="t('确认{action}', { action: t(pendingLabel) })" :busy="saving" @close="pending = null"><div  class="admin-confirm panel" aria-describedby="admin-confirm-description">
+        <p class="admin-identity">{{ pending.user.nickname }} / {{ pending.user.email }} / #{{ pending.user.id }}</p><p id="admin-confirm-description">{{ pending.field === 'emailVerified' ? t('将此用户的邮箱标记为已验证。') : t('确认修改此用户的账号状态？') }}</p>
+        <div class="admin-actions"><button ref="confirmButton" :class="pending.field === 'emailVerified' ? 'primary-button' : 'danger-button'" type="button" :disabled="saving" @click="apply">{{ saving ? t('正在保存…') : t('确认{action}', { action: t(pendingLabel) }) }}</button><button class="secondary-button" type="button" :disabled="saving" @click="pending = null; actionError = ''">{{ t('取消') }}</button></div>
+      </div></AppModal>
+
       <div v-if="usersBusy" class="empty-state panel" role="status"><p>{{ t('正在加载用户…') }}</p></div>
-      <div v-else-if="userError" class="empty-state panel" role="alert"><p>{{ t(userError) }}</p><button class="secondary-button" type="button" @click="loadUsers">{{ t('重新加载') }}</button></div>
-      <div v-else class="panel admin-list"><p v-if="!users.length" class="empty-state">{{ t('没有找到匹配的用户。') }}</p><article v-for="item in users" :key="item.id" class="admin-user"><div class="admin-user-copy"><h2>{{ item.nickname || t('用户') }} <small>#{{ item.id }}{{ item.id === userId ? ` · ${t('你自己')}` : '' }}</small></h2><p>{{ item.email }}</p><div class="admin-status"><span>{{ item.isAdmin ? t('管理员') : t('普通用户') }}</span><span :class="{ 'form-error': item.banned }">{{ item.banned ? t('已封禁') : t('正常') }}</span><span>{{ item.emailVerified ? t('邮箱已验证') : item.verificationRequired ? t('待验证邮箱后登录') : t('邮箱未验证') }}</span></div></div><div class="admin-actions"><button type="button" class="secondary-button" :disabled="saving" @click="confirm(item, 'isAdmin')">{{ t(actionLabel('isAdmin', !item.isAdmin)) }}</button><button type="button" :class="item.banned ? 'secondary-button' : 'danger-button'" :disabled="saving" @click="confirm(item, 'banned')">{{ t(actionLabel('banned', !item.banned)) }}</button></div></article>
+      <div v-else-if="userError" class="empty-state panel" role="alert"><button class="secondary-button" type="button" @click="loadUsers">{{ t('重新加载') }}</button></div>
+      <div v-else class="panel admin-list"><p v-if="!users.length" class="empty-state">{{ t('没有找到匹配的用户。') }}</p><article v-for="item in users" :key="item.id" class="admin-user"><div class="admin-user-copy"><h2>{{ item.nickname || t('用户') }} <small>#{{ item.id }}{{ item.id === userId ? ` / ${t('你自己')}` : '' }}</small></h2><p>{{ item.email }}</p><div class="admin-status"><span>{{ item.isAdmin ? t('管理员') : t('普通用户') }}</span><span :class="{ 'form-error': item.banned }">{{ item.banned ? t('已封禁') : t('正常') }}</span><span>{{ item.emailVerified ? t('邮箱已验证') : item.verificationRequired ? t('待验证邮箱后登录') : t('邮箱未验证') }}</span></div></div><div class="admin-actions"><button v-if="!item.emailVerified" type="button" class="secondary-button" :disabled="saving" @click="confirm(item, 'emailVerified')">{{ t('完成邮箱验证') }}</button><button type="button" class="secondary-button" :disabled="saving" @click="confirm(item, 'isAdmin')">{{ t(actionLabel('isAdmin', !item.isAdmin)) }}</button><button type="button" :class="item.banned ? 'secondary-button' : 'danger-button'" :disabled="saving" @click="confirm(item, 'banned')">{{ t(actionLabel('banned', !item.banned)) }}</button></div></article>
         <div class="library-pagination"><button class="secondary-button" type="button" :disabled="userPage <= 1 || saving" @click="turnPage('users', -1)">{{ t('上一页') }}</button><span>{{ t('第 {page} 页，共 {total} 位用户', { page: userPage, total: userTotal }) }}</span><button class="secondary-button" type="button" :disabled="userPage * 20 >= userTotal || saving" @click="turnPage('users', 1)">{{ t('下一页') }}</button></div>
       </div>
     </section>
     <ReportsView v-if="tab === 'reports'" admin :csrf-token="csrfToken" @expired="emit('expired')" />
     <section v-show="tab === 'events'" :aria-label="t('管理记录')">
       <form class="admin-search panel" @submit.prevent="findEvents"><label class="binding-field"><span>{{ t('搜索管理记录') }}</span><input v-model="eventSearch" maxlength="255" :placeholder="t('动作、对象类型、对象编号或操作者')" :disabled="eventsBusy" /></label><button type="submit" class="primary-button" :disabled="eventsBusy">{{ t('搜索') }}</button><button type="button" class="secondary-button" :disabled="eventsBusy" @click="loadEvents">{{ t('刷新列表') }}</button><button type="button" class="secondary-button" :disabled="eventsBusy" @click="exportEvents">{{ t('导出 CSV') }}</button></form>
-      <div class="admin-record-heading"><p>{{ t('这里只展示已成功提交的管理变更。') }}</p></div>
-      <div v-if="eventsBusy" class="empty-state panel" role="status"><p>{{ t('正在加载管理记录…') }}</p></div><div v-else-if="eventError" class="empty-state panel" role="alert"><p>{{ t(eventError) }}</p><button class="secondary-button" type="button" @click="loadEvents">{{ t('重新加载') }}</button></div>
+      <div class="admin-record-heading"><p>{{ t('查看用户与站点的管理记录。') }}</p></div>
+      <div v-if="eventsBusy" class="empty-state panel" role="status"><p>{{ t('正在加载管理记录…') }}</p></div><div v-else-if="eventError" class="empty-state panel" role="alert"><button class="secondary-button" type="button" @click="loadEvents">{{ t('重新加载') }}</button></div>
       <div v-else class="panel admin-list"><p v-if="!events.length" class="empty-state">{{ t('暂无管理记录。') }}</p><article v-for="item in events" :key="item.id" class="admin-event"><h2>{{ t(actionNames[item.action] || '其他管理操作') }}</h2><time :datetime="new Date(item.createdAt * 1000).toISOString()">{{ timeLabel(item.createdAt) }}</time><p>{{ t('操作者') }}：{{ item.actorId === '0' ? t('本机初始化') : `#${item.actorId}` }}</p><p>{{ t(targetNames[item.targetType] || '管理对象') }}：{{ item.targetType === 'site' ? t(settingNames[item.targetId] || '站点设置') : item.targetType === 'invitation' ? t('已生成（不显示邀请码）') : `#${item.targetId}` }}</p></article><div class="library-pagination"><button class="secondary-button" type="button" :disabled="eventPage <= 1" @click="turnPage('events', -1)">{{ t('上一页') }}</button><span>{{ t('第 {page} 页，共 {total} 条记录', { page: eventPage, total: eventTotal }) }}</span><button class="secondary-button" type="button" :disabled="eventPage * 20 >= eventTotal" @click="turnPage('events', 1)">{{ t('下一页') }}</button></div></div>
     </section>
     <PluginWorkspace v-if="tab === 'plugins'" :csrf-token="csrfToken" @expired="emit('expired')" @updated="emit('updated')" />

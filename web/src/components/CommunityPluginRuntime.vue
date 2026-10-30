@@ -1,4 +1,5 @@
 <script setup lang="ts">
+import { feedbackRef, toast } from '../feedback'
 import { onBeforeUnmount, onMounted, ref, watch } from 'vue'
 import { locale, t } from '../i18n'
 const props = defineProps<{ pluginId: string; enabled: boolean; csrfToken: string }>()
@@ -7,7 +8,7 @@ interface Task { id: string; schedule: string; status: { state: string; startedA
 interface Document { title: string; summary: string; sections: { title: string; body: string; items: { label: string; value: string }[] | null }[] | null }
 const pages = ref<{ id: string; label: string }[]>([])
 const tasks = ref<Task[]>([])
-const selected = ref(''), document = ref<Document>(), loading = ref(false), busy = ref(''), error = ref('')
+const selected = ref(''), document = ref<Document>(), loading = ref(false), busy = ref(''), error = feedbackRef('error')
 let timer: ReturnType<typeof setTimeout> | undefined
 let generation = 0
 const base = `/api/admin/plugin-runtime/${encodeURIComponent(props.pluginId)}`
@@ -50,6 +51,7 @@ async function run(task: Task) {
     if (version !== generation) return
     if (response.status === 401) { emit('expired'); return }
     if (!response.ok) { const data = await response.json().catch(() => ({})); error.value = data.error || '暂时无法启动插件任务'; return }
+    toast('任务已启动。')
     await load()
   } catch { if (version === generation) error.value = '暂时无法启动插件任务' }
   finally { busy.value = '' }
@@ -80,7 +82,7 @@ onBeforeUnmount(() => { generation++; clearTimeout(timer) })
         <button class="secondary-button" type="button" :disabled="!!busy || task.status.state === 'running'" @click="run(task)">{{ t(task.status.state === 'running' ? '正在运行' : '运行任务') }}</button>
       </article>
     </div>
-    <p v-if="error" class="form-error" role="alert">{{ t(error) }} <button class="text-button" type="button" @click="selected ? open(selected) : load()">{{ t('重试') }}</button></p>
+    <p v-if="error" class="form-error" role="alert"><button class="text-button" type="button" @click="selected ? open(selected) : load()">{{ t('重试') }}</button></p>
   </section>
   <p v-else class="password-rule">{{ t('启用插件后可访问页面和运行任务。') }}</p>
 </template>

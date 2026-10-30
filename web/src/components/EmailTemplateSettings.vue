@@ -1,4 +1,5 @@
 <script setup lang="ts">
+import { feedbackRef } from '../feedback'
 import { computed, onMounted, ref, watch } from 'vue'
 import { t } from '../i18n'
 type Purpose = 'verify' | 'reset' | 'test'
@@ -10,8 +11,8 @@ const draft = ref<MailTemplate | null>(null)
 const saved = ref('')
 const purpose = ref<Purpose>('verify')
 const busy = ref(false)
-const error = ref('')
-const message = ref('')
+const error = feedbackRef('error')
+const message = feedbackRef('success')
 const preview = ref<{ subject: string; text: string; html: string } | null>(null)
 const dirty = computed(() => JSON.stringify(draft.value) !== saved.value)
 const titles: Record<Purpose, string> = { verify: '验证邮箱', reset: '找回密码', test: 'SMTP 测试' }
@@ -59,7 +60,7 @@ onMounted(load)
   <section class="settings-section email-template-settings" aria-labelledby="email-template-heading">
     <h4 id="email-template-heading">{{ t('邮件样式') }}</h4>
     <p v-if="!draft && busy" role="status">{{ t('正在加载…') }}</p>
-    <p v-if="error" class="form-error" role="alert">{{ t(error) }} <button v-if="!draft" class="text-button" type="button" @click="load">{{ t('重试') }}</button></p>
+    <p v-if="error" class="form-error" role="alert"><button v-if="!draft" class="text-button" type="button" @click="load">{{ t('重试') }}</button></p>
     <form v-if="draft" class="email-template-editor" @submit.prevent="perform('save')">
       <fieldset :disabled="busy" class="settings-form">
         <div class="email-brand-fields">
@@ -76,7 +77,7 @@ onMounted(load)
         <label class="binding-field"><span>{{ t('邮件标题') }}</span><input v-model="draft[purpose].title" maxlength="160" required /></label>
         <label class="binding-field"><span>{{ t('邮件正文') }}</span><textarea v-model="draft[purpose].body" rows="5" maxlength="2000" required></textarea></label>
         <label v-if="purpose !== 'test'" class="binding-field"><span>{{ t('按钮文字') }}</span><input v-model="draft[purpose].button" maxlength="80" required /></label>
-        <p class="password-rule">{{ t('有效期和一次性使用提示会自动保留。样例邮件不能验证邮箱或重设密码。') }}</p>
+        <p class="password-rule">{{ t('预览验证与找回密码邮件的样式。') }}</p>
         <p class="password-rule email-template-entry">{{ t('实际验证和找回邮件请从账号邮件入口发起。') }} <a href="/login?mode=mail">{{ t('打开实际账号邮件入口') }} ↗</a></p>
         <div class="settings-actions">
           <button class="primary-button" type="submit">{{ t('保存邮件样式') }}</button>
@@ -90,6 +91,6 @@ onMounted(load)
         <details><summary>{{ t('纯文本版本') }}</summary><pre>{{ preview.text }}</pre></details>
       </div>
     </form>
-    <p v-if="message" class="action-success" role="status">{{ t(message) }}</p>
+
   </section>
 </template>

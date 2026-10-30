@@ -22,6 +22,7 @@ export interface SiteAccess {
   randomUserIds?: boolean
   emailDomains: string[]
   blockedEmailDomains?: string[]
+  manualEmailVerification?: boolean
   mailEnabled: boolean
   turnstileSiteKey: string
 }

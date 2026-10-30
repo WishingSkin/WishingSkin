@@ -1,11 +1,12 @@
 <script setup lang="ts">
+import { feedbackRef } from '../feedback'
 import { onMounted, ref } from 'vue'
 import { t } from '../i18n'
 const props = defineProps<{ csrfToken: string }>()
 const emit = defineEmits<{ expired: []; updated: [] }>()
 const draft = ref({ endpoint: '', bucket: '', region: 'us-east-1', prefix: 'textures', accessKey: '', secretKey: '' })
 const configured = ref(false), loaded = ref(false), busy = ref(false)
-const error = ref(''), message = ref('')
+const error = feedbackRef('error'), message = feedbackRef('success')
 async function load() {
   try { const r = await fetch('/api/admin/object-storage', { credentials: 'same-origin' }); if (r.status === 401) { emit('expired'); return }; if (!r.ok) throw new Error(); const data = await r.json(); draft.value = { ...draft.value, ...data.config }; configured.value = data.credentialsConfigured; loaded.value = true }
   catch { error.value = '暂时无法读取对象存储配置' }
@@ -21,5 +22,5 @@ onMounted(load)
 <template><section class="settings-section"><h3>{{ t('S3 兼容对象存储') }}</h3><p>{{ t('启用后，新上传材质同步至对象存储。保留本地副本用于回退和备份，已有材质继续读取本地文件。') }}</p>
   <form class="settings-form" @submit.prevent="save"><fieldset :disabled="!loaded || busy"><label v-for="[key,label] in ([['endpoint','服务地址'],['bucket','存储桶'],['region','区域'],['prefix','对象前缀']] as const)" :key="key" class="binding-field"><span>{{ t(label) }}</span><input v-model="draft[key]" :required="key === 'endpoint' || key === 'bucket'" :placeholder="key === 'endpoint' ? 'https://s3.example.com' : ''" /></label>
     <label class="binding-field"><span>Access Key</span><input v-model="draft.accessKey" type="password" autocomplete="new-password" :required="!configured" :placeholder="configured ? t('留空保留已保存凭据') : ''" /></label><label class="binding-field"><span>Secret Key</span><input v-model="draft.secretKey" type="password" autocomplete="new-password" :required="!configured" :placeholder="configured ? t('留空保留已保存凭据') : ''" /></label>
-    <button class="primary-button" type="submit">{{ busy ? t('正在保存…') : t('保存配置') }}</button></fieldset></form><p v-if="error" class="form-error" role="alert">{{ t(error) }} <button v-if="!loaded" class="text-button" type="button" @click="load">{{ t('重试') }}</button></p><p v-if="message" class="action-success" role="status">{{ t(message) }}</p>
+    <button class="primary-button" type="submit">{{ busy ? t('正在保存…') : t('保存配置') }}</button></fieldset></form><p v-if="error" class="form-error" role="alert"><button v-if="!loaded" class="text-button" type="button" @click="load">{{ t('重试') }}</button></p>
 </section></template>

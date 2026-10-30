@@ -1,4 +1,5 @@
 <script setup lang="ts">
+import { feedbackRef } from '../feedback'
 import { ref } from 'vue'
 import { t } from '../i18n'
 
@@ -11,7 +12,7 @@ const status = ref('')
 const query = ref('')
 const busy = ref(false)
 const loaded = ref(false)
-const error = ref('')
+const error = feedbackRef('error')
 const statuses = ['待处理', '已处置', '已驳回']
 async function load() {
   if (busy.value) return
@@ -42,7 +43,7 @@ function turn(offset: number) { page.value += offset; load() }
         <button class="primary-button" type="submit" :disabled="busy">{{ t('筛选') }}</button><button class="secondary-button" type="button" :disabled="busy" @click="load">{{ t('刷新列表') }}</button>
       </form>
       <div v-if="busy" class="empty-state panel" role="status"><p>{{ t('正在加载历史举报…') }}</p></div>
-      <div v-else-if="error" class="empty-state panel" role="alert"><p>{{ t(error) }}</p><button class="secondary-button" type="button" @click="load">{{ t('重新加载') }}</button></div>
+      <div v-else-if="error" class="empty-state panel" role="alert"><button class="secondary-button" type="button" @click="load">{{ t('重新加载') }}</button></div>
       <div v-else class="panel admin-list">
         <p v-if="!items.length" class="empty-state">{{ t('暂无匹配的历史举报。') }}</p>
         <article v-for="item in items" :key="item.id" class="admin-user report-item">

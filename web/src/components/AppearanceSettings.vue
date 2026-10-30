@@ -1,4 +1,5 @@
 <script setup lang="ts">
+import { feedbackRef } from '../feedback'
 import { computed, ref, watch } from 'vue'
 import type { Appearance } from '../accountTypes'
 import { t } from '../i18n'
@@ -14,8 +15,8 @@ const dirty = computed(() => settingsSnapshot(draft.value) !== saved.value)
 watch(() => props.appearance, () => { if (!dirty.value) { draft.value = cloneDraft(); saved.value = settingsSnapshot(draft.value) } })
 const busy = ref(false)
 const imageBusy = ref(false)
-const error = ref('')
-const message = ref('')
+const error = feedbackRef('error')
+const message = feedbackRef('success')
 async function pick(event: Event) {
   imageBusy.value = true; error.value = ''; message.value = ''
   try { const value = await imageData(event); if (value) draft.value.logoImage = value }
@@ -31,7 +32,7 @@ async function save() {
     const data = await response.json()
     if (!response.ok) { error.value = data.error || '暂时无法保存站点设置'; return false }
     draft.value = { ...data, advanced: cloneAdvanced(data.advanced) }; saved.value = settingsSnapshot(draft.value)
-    message.value = '个性化设置已保存。'; if (!props.managed) emit('updated'); return true
+    if (!props.managed) { message.value = '个性化设置已保存。'; emit('updated') }; return true
   } catch { error.value = '无法确认操作结果，请重新检查设置。'; return false }
   finally { busy.value = false }
 }
@@ -45,7 +46,7 @@ defineExpose({ draft, dirty, busy: computed(() => busy.value || imageBusy.value)
       <label class="binding-field"><span>{{ t('主题配色') }}</span><select v-model="draft.accent"><option value="blue">{{ t('蓝色') }}</option><option value="green">{{ t('绿色') }}</option><option value="violet">{{ t('紫色') }}</option><option value="rose">{{ t('玫瑰') }}</option><option value="orange">{{ t('橙色') }}</option><option value="teal">{{ t('青色') }}</option><option value="gray">{{ t('石墨') }}</option></select></label>
       <label class="binding-field"><span>{{ t('站点默认主题') }}</span><select v-model="draft.defaultTheme"><option value="system">{{ t('跟随系统') }}</option><option value="light">{{ t('浅色') }}</option><option value="dark">{{ t('深色') }}</option></select></label>
       <label class="binding-field"><span>{{ t('面板效果') }}</span><select v-model="draft.surfaceEffect"><option value="solid">{{ t('实色') }}</option><option value="translucent">{{ t('半透明') }}</option><option value="glass">{{ t('毛玻璃') }}</option></select></label>
-      <p v-if="error" class="form-error" role="alert">{{ t(error) }}</p><button v-if="!managed" class="primary-button" type="submit">{{ busy ? t('正在保存…') : t('保存个性化设置') }}</button>
-    </fieldset></form><p v-if="message" class="action-success" role="status">{{ t(message) }}</p>
+      <button v-if="!managed" class="primary-button" type="submit">{{ busy ? t('正在保存…') : t('保存个性化设置') }}</button>
+    </fieldset></form>
   </section>
 </template>

@@ -1,4 +1,5 @@
 <script setup lang="ts">
+import { feedbackRef, confirmAction, toast } from '../feedback'
 import { computed, onMounted, ref } from 'vue'
 import { oidcMessages } from '../oidcMessages'
 import { t } from '../i18n'
@@ -8,7 +9,7 @@ const emit = defineEmits<{ expired: [] }>()
 const providers = ref<{ id: string; enabled: boolean; name: string; linked: boolean }[]>([])
 const selected=ref('')
 const state=computed(()=>providers.value.find(p=>p.id===selected.value) || { id:'',enabled:false,name:'OIDC',linked:false })
-const loaded = ref(false), password = ref(''), busy = ref(false), error = ref('')
+const loaded = ref(false), password = ref(''), busy = ref(false), error = feedbackRef('error')
 const failureCode = new URLSearchParams(window.location.search).get('oidcError')
 const callbackError = failureCode ? oidcMessages[failureCode] || oidcMessages.failed : ''
 const linkedNow = new URLSearchParams(window.location.search).get('oidcLinked') === '1'
@@ -25,7 +26,7 @@ async function load() {
   } catch { error.value = '暂时无法读取绑定状态' }
 }
 async function submit() {
-  if (state.value.linked && !window.confirm(t('解除绑定会退出所有网页会话，之后可用本地密码重新登录。'))) return
+  if (busy.value || (state.value.linked && !await confirmAction({ title: '解除绑定', message: t('解除与 {name} 的绑定？完成后需要重新登录。', { name: state.value.name }), danger: true }))) return
   busy.value = true; error.value = ''
   try {
     const response = await fetch(state.value.linked ? '/api/account/oidc' : '/api/auth/oidc/start', { method: state.value.linked ? 'DELETE' : 'POST', credentials: 'same-origin', headers: { 'Content-Type': 'application/json', 'X-CSRF-Token': props.csrfToken }, body: JSON.stringify({ password: password.value, link: true, provider: selected.value }) })
@@ -38,19 +39,19 @@ async function submit() {
   } catch { error.value = '无法开始 OIDC 登录' }
   finally { busy.value = false }
 }
-onMounted(load)
+onMounted(() => { if (callbackError) toast(callbackError, 'error'); if (linkedNow) toast('OIDC 绑定成功。'); void load() })
 function finishConfirmation(path: string) { window.location.assign(path) }
 </script>
 <template>
   <section class="account-password oidc-account">
     <h3>{{ t('第三方登录') }}</h3>
     <p v-if="!loaded && !error" role="status">{{ t('正在加载…') }}</p>
-    <p v-if="callbackError" class="form-error" role="alert">{{ t(callbackError) }}</p>
-    <p v-if="error" class="form-error" role="alert">{{ t(error) }} <button v-if="!loaded" class="text-button" type="button" @click="load">{{ t('重试') }}</button></p>
+
+    <p v-if="error" class="form-error" role="alert"><button v-if="!loaded" class="text-button" type="button" @click="load">{{ t('重试') }}</button></p>
     <template v-if="loaded">
       <label class="binding-field"><span>{{ t('身份提供商') }}</span><select v-model="selected"><option v-for="p in providers" :key="p.id" :value="p.id">{{ p.name }}</option></select></label>
       <p>{{ state.linked ? t('已绑定 {name}', { name: state.name }) : state.enabled ? t('绑定后可使用 {name} 登录当前账号。', { name: state.name }) : t('站点尚未启用第三方登录。') }}</p>
-      <p v-if="linkedNow && state.linked" class="action-success" role="status">{{ t('OIDC 绑定成功。') }}</p>
+
       <form v-if="state.enabled || state.linked" class="password-form" @submit.prevent="submit">
         <fieldset :disabled="busy">
           <label class="binding-field"><span>{{ t('当前密码') }}</span><input v-model="password" type="password" autocomplete="current-password" required /></label>

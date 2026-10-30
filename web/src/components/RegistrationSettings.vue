@@ -1,16 +1,19 @@
 <script setup lang="ts">
+import { feedbackRef } from '../feedback'
 import { ref, watch } from 'vue'
 import type { SiteAccess } from '../accountTypes'
 import { t } from '../i18n'
 const props = defineProps<{ site: SiteAccess; csrfToken: string }>()
 const emit = defineEmits<{ updated: []; expired: [] }>()
 const mode = ref(props.site.registration === 'closed' ? 'closed' : 'open')
+const manualEmailVerification = ref(props.site.manualEmailVerification === true)
+watch(() => props.site.manualEmailVerification, value => { manualEmailVerification.value = value === true })
 const randomUserIds = ref(props.site.randomUserIds === true)
 const emailDomains = ref(props.site.emailDomains.join('\n'))
 const blockedEmailDomains = ref((props.site.blockedEmailDomains || []).join('\n'))
 const busy = ref(false)
-const error = ref('')
-const message = ref('')
+const error = feedbackRef('error')
+const message = feedbackRef('success')
 watch(() => props.site.registration, value => { mode.value = value === 'closed' ? 'closed' : 'open' })
 watch(() => props.site.emailDomains, value => { emailDomains.value = value.join('\n') })
 watch(() => props.site.blockedEmailDomains, value => { blockedEmailDomains.value = (value || []).join('\n') })
@@ -21,7 +24,7 @@ async function submit() {
   try {
     const domains = emailDomains.value.split(/[\n,]/).map(value => value.trim()).filter(Boolean)
     const blocked = blockedEmailDomains.value.split(/[\n,]/).map(value => value.trim()).filter(Boolean)
-    const response = await fetch('/api/admin/registration', { method: 'PATCH', credentials: 'same-origin', headers: { 'Content-Type': 'application/json', 'X-CSRF-Token': props.csrfToken }, body: JSON.stringify({ mode: mode.value, emailDomains: domains, blockedEmailDomains: blocked, randomUserIds: randomUserIds.value }) })
+    const response = await fetch('/api/admin/registration', { method: 'PATCH', credentials: 'same-origin', headers: { 'Content-Type': 'application/json', 'X-CSRF-Token': props.csrfToken }, body: JSON.stringify({ mode: mode.value, manualEmailVerification: manualEmailVerification.value, emailDomains: domains, blockedEmailDomains: blocked, randomUserIds: randomUserIds.value }) })
     if (response.status === 401) { emit('expired'); return }
     if (!response.ok) { const data = await response.json().catch(() => ({})); error.value = data.error || '操作未完成，请重试。'; return }
     message.value = '注册模式已保存。'; emit('updated')
@@ -33,15 +36,16 @@ async function submit() {
 <template>
   <section class="account-password registration-settings" aria-labelledby="registration-settings-title">
     <h3 id="registration-settings-title">{{ t('注册') }}</h3>
-    <p>{{ t('默认使用邮箱验证注册。邀请码要求在官方插件页单独设置。') }}</p>
+    <p>{{ t('选择注册开放状态与邮箱验证方式。') }}</p>
     <form class="password-form registration-form" @submit.prevent="submit()">
       <label class="binding-field">
         <span>{{ t('注册模式') }}</span>
         <select v-model="mode" :aria-label="t('注册模式')" :disabled="busy">
           <option value="closed">{{ t('关闭注册') }}</option>
-          <option value="open">{{ t('邮箱验证注册') }}</option>
+          <option value="open">{{ t('开放注册') }}</option>
         </select>
       </label>
+      <label class="binding-field"><span>{{ t('邮箱验证方式') }}</span><select v-model="manualEmailVerification" :disabled="busy"><option :value="false">{{ t('邮件验证') }}</option><option :value="true">{{ t('管理员验证') }}</option></select></label>
       <label class="binding-field">
         <span>{{ t('允许的邮箱域名') }}</span>
         <textarea v-model="emailDomains" rows="4" maxlength="5000" :placeholder="t('每行或逗号分隔，例如 example.com')" aria-describedby="registration-domains-hint" :disabled="busy" />
@@ -58,7 +62,7 @@ async function submit() {
       </label>
       <button class="primary-button" type="submit" :disabled="busy">{{ t('保存注册设置') }}</button>
     </form>
-    <p v-if="error" class="form-error" role="alert">{{ t(error) }}</p><p v-if="message" class="action-success" role="status">{{ t(message) }}</p>
+
   </section>
 </template>
 

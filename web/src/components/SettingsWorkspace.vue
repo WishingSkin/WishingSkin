@@ -1,4 +1,5 @@
 <script setup lang="ts">
+import { feedbackRef } from '../feedback'
 import { computed, onBeforeUnmount, onMounted, ref, watch } from 'vue'
 import AdvancedAppearanceSettings from './AdvancedAppearanceSettings.vue'
 import type { AdvancedAppearance } from '../accountTypes'
@@ -24,8 +25,8 @@ const sections = computed(() => [appearance.value, branding.value, homepage.valu
 const dirty = computed(() => sections.value.some(section => section.dirty))
 const pending = computed(() => sections.value.some(section => section.busy))
 const saving = ref(false)
-const saveError = ref('')
-const savedMessage = ref('')
+const saveError = feedbackRef('error')
+const savedMessage = feedbackRef('success')
 watch(dirty, () => { savedMessage.value = ''; saveError.value = '' })
 async function saveAll() {
   if (!dirty.value || saving.value || pending.value) return
@@ -52,10 +53,10 @@ const labels = { site: '站点', appearance: '个性化', services: '邮件与�
       <LoginImageSettings ref="loginImage" managed :csrf-token="csrfToken" @expired="emit('expired')" />
       <section v-if="appearance" class="settings-section"><AdvancedAppearanceSettings v-model="appearance.draft.advanced" /></section>
     </fieldset>
-    <p v-if="savedMessage" class="action-success" role="status">{{ t(savedMessage) }}</p>
+
   </div>
   <div v-if="dirty || saving" class="personalization-save-bar" role="region" :aria-label="t('保存个性化设置')">
-    <p :class="{ 'form-error': saveError }" :role="saveError ? 'alert' : 'status'">{{ t(saveError || '有未保存的个性化设置') }}</p>
+    <p role="status">{{ t('有未保存的个性化设置') }}</p>
     <button class="primary-button" type="button" :disabled="saving || pending" @click="saveAll">{{ saving ? t('正在保存…') : t('保存全部') }}</button>
   </div>
   <OperationsSettings v-if="tab === 'operations'" :csrf-token="csrfToken" @expired="emit('expired')" />

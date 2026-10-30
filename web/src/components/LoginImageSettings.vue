@@ -1,4 +1,5 @@
 <script setup lang="ts">
+import { feedbackRef } from '../feedback'
 import { computed, onMounted, ref } from 'vue'
 import { t } from '../i18n'
 
@@ -10,8 +11,8 @@ const dirty = computed(() => loaded.value && image.value !== saved.value)
 const loaded = ref(false)
 const busy = ref(false)
 const imageBusy = ref(false)
-const error = ref('')
-const message = ref('')
+const error = feedbackRef('error')
+const message = feedbackRef('success')
 
 async function load() {
   busy.value = true; error.value = ''
@@ -54,7 +55,7 @@ async function save() {
     if (response.status === 401) { emit('expired'); return false }
     const data = await response.json()
     if (!response.ok) { error.value = data.error || '暂时无法保存登录页图片'; return false }
-    image.value = data.image; saved.value = image.value; message.value = '登录页图片已保存。'; if (!props.managed) emit('updated'); return true
+    image.value = data.image; saved.value = image.value; if (!props.managed) { message.value = '登录页图片已保存。'; emit('updated') }; return true
   } catch { error.value = '无法确认操作结果，请重新检查设置。'; return false }
   finally { busy.value = false }
 }
@@ -76,7 +77,7 @@ defineExpose({ dirty, busy: computed(() => busy.value || imageBusy.value), save 
         <button v-if="!managed" class="primary-button" type="submit">{{ busy ? t('正在保存…') : t('保存登录页图片') }}</button>
       </div>
     </fieldset></form>
-    <p v-if="error" class="form-error" role="alert">{{ t(error) }} <button v-if="!loaded" class="text-button" type="button" :disabled="busy" @click="load">{{ t('重试') }}</button></p>
-    <p v-if="message" class="action-success" role="status">{{ t(message) }}</p>
+    <p v-if="error" class="form-error" role="alert"><button v-if="!loaded" class="text-button" type="button" :disabled="busy" @click="load">{{ t('重试') }}</button></p>
+
   </section>
 </template>

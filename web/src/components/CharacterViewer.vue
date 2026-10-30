@@ -1,4 +1,5 @@
 <script setup lang="ts">
+import { toast } from '../feedback'
 import { nextTick, onBeforeUnmount, onMounted, ref, watch } from 'vue'
 import type { SkinViewer } from 'skinview3d'
 import { t } from '../i18n'
@@ -9,7 +10,6 @@ const emit = defineEmits<{ fallback: [] }>()
 const stage = ref<HTMLDivElement>()
 const canvas = ref<HTMLCanvasElement>()
 const state = ref<'loading' | 'ready' | 'error'>('loading')
-const error = ref('')
 const attempt = ref(0)
 const rotating = ref(false)
 const walking = ref(false)
@@ -64,7 +64,7 @@ function releaseViewer() {
 
 function fail(message: string) {
   state.value = 'error'
-  error.value = message
+  toast(message, 'error')
   rotating.value = false
 	walking.value = false
   controller?.abort()
@@ -101,7 +101,6 @@ async function initialize() {
   releaseViewer()
   rotating.value = false
   state.value = 'loading'
-  error.value = ''
   attempt.value++
   await nextTick()
   if (!mounted || run !== generation || !canvas.value) return
@@ -224,15 +223,15 @@ onBeforeUnmount(() => {
     <div ref="stage" class="viewer-stage" :class="{ 'viewer-unavailable': state === 'error' }" :aria-busy="state === 'loading'">
       <canvas :key="attempt" ref="canvas" class="character-canvas" :class="{ 'canvas-ready': state === 'ready' }" role="img" :aria-label="t('“{name}”的三维角色外观，可使用下方按钮调整视角', { name })"></canvas>
       <div v-if="state === 'loading'" class="viewer-message" role="status"><span class="loading-dot"></span><p>{{ t("正在穿戴角色材质…") }}</p></div>
-      <div v-else-if="state === 'error'" class="viewer-message viewer-error" role="alert"><span class="viewer-error-symbol" aria-hidden="true">◇</span><p>{{ t(error) }}</p><button class="secondary-button" type="button" @click="initialize">{{ t("重试 3D 预览") }}</button></div>
-      <span v-if="state === 'ready'" class="viewer-interaction-hint">{{ t("拖动旋转 · 滚轮或双指缩放") }}</span>
+      <div v-else-if="state === 'error'" class="viewer-message viewer-error" role="alert"><span class="viewer-error-symbol" aria-hidden="true">◇</span><p>{{ t('模型预览不可用') }}</p><button class="secondary-button" type="button" @click="initialize">{{ t("重试 3D 预览") }}</button></div>
+      <span v-if="state === 'ready'" class="viewer-interaction-hint">{{ t("拖动旋转，滚轮或双指缩放") }}</span>
     </div>
     <div class="viewer-controls" role="group" :aria-label="t('外观视角控制')">
       <div class="view-buttons"><button class="secondary-button" type="button" :disabled="state !== 'ready'" @click="setView('front')">{{ t("正面") }}</button><button class="secondary-button" type="button" :disabled="state !== 'ready'" @click="setView('back')">{{ t("背面") }}</button><button class="secondary-button" type="button" :disabled="state !== 'ready'" @click="setView('reset')">{{ t("重置视角") }}</button><button class="secondary-button zoom-button" type="button" :aria-label="t('放大角色')" :disabled="state !== 'ready'" @click="zoom(0.85)">＋</button><button class="secondary-button zoom-button" type="button" :aria-label="t('缩小角色')" :disabled="state !== 'ready'" @click="zoom(1.15)">−</button></div>
       <div class="viewer-motion-buttons"><button class="secondary-button rotation-button" type="button" :aria-pressed="rotating" :disabled="state !== 'ready' || reducedMotion" @click="rotating = !rotating">{{ rotating ? t('停止旋转') : t('自动旋转') }}</button><button class="secondary-button rotation-button" type="button" :aria-pressed="walking" :disabled="state !== 'ready' || reducedMotion" @click="walking = !walking">{{ walking ? t('停止走动') : t('走动') }}</button></div>
     </div>
     <p v-if="state === 'ready' && !skinHash" class="viewer-note">{{ t('默认皮肤：{name}', { name: model === 'slim' ? 'Alex' : 'Steve' }) }}</p>
-    <p v-if="reducedMotion" class="viewer-note">{{ t("已启用减少动态效果，自动旋转已关闭。") }}</p>
+    <p v-if="reducedMotion" class="viewer-note">{{ t("已启用减少动态效果。") }}</p>
   </section>
 </template>
 

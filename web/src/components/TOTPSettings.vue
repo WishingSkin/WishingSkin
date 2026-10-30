@@ -1,10 +1,12 @@
 <script setup lang="ts">
+import { feedbackRef, confirmAction } from '../feedback'
+import AppModal from './AppModal.vue'
 import { onMounted, onBeforeUnmount, ref } from 'vue'
 import { t } from '../i18n'
 const props = defineProps<{ csrfToken: string }>()
 const emit = defineEmits<{ expired: [] }>()
 const enabled = ref(false), loaded = ref(false), busy = ref(false)
-const password = ref(''), code = ref(''), secret = ref(''), error = ref(''), message = ref('')
+const password = ref(''), code = ref(''), secret = ref(''), error = feedbackRef('error'), message = feedbackRef('success')
 const qrCode = ref('')
 const recovery = ref<string[]>([])
 async function load() {
@@ -13,6 +15,7 @@ async function load() {
 }
 async function submit(action: 'setup' | 'enable' | 'disable' | 'recovery') {
   if (busy.value) return
+  if ((action === 'disable' || action === 'recovery') && !await confirmAction({ title: action === 'disable' ? '停用双重验证' : '重新生成恢复码', message: t(action === 'disable' ? '停用当前账号的双重验证？' : '重新生成恢复码？现有恢复码将失效。'), danger: true })) return
   busy.value = true; error.value = ''; message.value = ''; recovery.value = []
   try {
     const r = await fetch(`/api/account/totp/${action}`, { method: 'POST', credentials: 'same-origin', headers: { 'Content-Type': 'application/json', 'X-CSRF-Token': props.csrfToken }, body: JSON.stringify({ currentPassword: password.value, code: code.value }) })
@@ -37,7 +40,7 @@ onBeforeUnmount(() => { secret.value = ''; qrCode.value = ''; recovery.value = [
       <label v-if="enabled || secret" class="binding-field"><span>{{ t('验证码或恢复码') }}</span><input v-model="code" autocomplete="one-time-code" maxlength="32" required /></label>
       <div class="settings-actions"><button class="primary-button" type="submit">{{ t(secret ? '确认启用' : enabled ? '停用双重验证' : '设置双重验证') }}</button><button v-if="enabled" class="secondary-button" type="button" :disabled="!password || !code" @click="submit('recovery')">{{ t('重新生成恢复码') }}</button></div>
     </fieldset></form>
-    <div v-if="recovery.length"><p class="password-rule">{{ t('恢复码仅显示一次，每个只能使用一次。请离线保存。重新生成后旧码失效。') }}</p><ul class="totp-codes"><li v-for="item in recovery" :key="item"><code>{{ item }}</code></li></ul><button class="secondary-button" type="button" @click="recovery = []">{{ t('我已保存') }}</button></div>
-    <p v-if="error" class="form-error" role="alert">{{ t(error) }}</p><p v-if="message" class="action-success" role="status">{{ t(message) }}</p>
+    <AppModal v-if="recovery.length" :title="t('恢复码')" @close="recovery = []"><div><p class="password-rule">{{ t('恢复码仅显示一次，每个只能使用一次。请离线保存。重新生成后旧码失效。') }}</p><ul class="totp-codes"><li v-for="item in recovery" :key="item"><code>{{ item }}</code></li></ul><button class="secondary-button" type="button" @click="recovery = []">{{ t('我已保存') }}</button></div></AppModal>
+
   </section>
 </template>

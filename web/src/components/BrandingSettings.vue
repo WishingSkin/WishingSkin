@@ -1,4 +1,5 @@
 <script setup lang="ts">
+import { feedbackRef } from '../feedback'
 import { computed, onMounted, ref, watch } from 'vue'
 import HomepageContent from './HomepageContent.vue'
 import IconImageField from './IconImageField.vue'
@@ -14,15 +15,15 @@ const notice = ref(props.site.notice || '')
 const format = ref(props.site.noticeFormat || 'plain')
 const preview = ref('')
 const busy = ref(false)
-const error = ref('')
-const message = ref('')
+const error = feedbackRef('error')
+const message = feedbackRef('success')
 const nameLength = computed(() => Array.from(name.value.trim()).length)
 const taglineLength = computed(() => Array.from(tagline.value).length)
 const noticeLength = computed(() => Array.from(notice.value).length)
 const homepageBlocks = ref<HomepageBlock[]>(cloneBlocks(props.site.homepage?.blocks || []))
 const homepageBusy = ref(false)
-const homepageError = ref('')
-const homepageMessage = ref('')
+const homepageError = feedbackRef('error')
+const homepageMessage = feedbackRef('success')
 const homepageLoaded = ref(false)
 const homepagePreview = ref(false)
 const background = ref({ image: '', overlay: 65 })
@@ -86,7 +87,7 @@ async function save() {
     const response = await fetch('/api/admin/branding', { method: 'PATCH', credentials: 'same-origin', headers: { 'Content-Type': 'application/json', 'X-CSRF-Token': props.csrfToken }, body: JSON.stringify({ name: name.value, tagline: tagline.value, footer: footer.value, notice: notice.value, noticeFormat: format.value }) })
     if (response.status === 401) { emit('expired'); return false }
     if (!response.ok) { const data = await response.json().catch(() => ({})); error.value = data.error || '暂时无法保存站点设置'; return false }
-    savedBranding.value = settingsSnapshot(brandingValue.value); message.value = '站点文案已保存。'; if (!props.managed) emit('updated'); return true
+    savedBranding.value = settingsSnapshot(brandingValue.value); if (!props.managed) { message.value = '站点文案已保存。'; emit('updated') }; return true
   } catch { error.value = '无法确认操作结果，请重新检查设置。'; return false }
   finally { busy.value = false }
 }
@@ -135,7 +136,7 @@ async function saveHomepage() {
     homepageBlocks.value = cloneBlocks(data.blocks || [])
     background.value = { image: data.background?.image || '', overlay: data.background?.overlay ?? 65 }
     savedHomepage.value = settingsSnapshot(previewSettings.value)
-    homepageMessage.value = '首页区块已保存。'; if (!props.managed) emit('updated'); return true
+    if (!props.managed) { homepageMessage.value = '首页区块已保存。'; emit('updated') }; return true
   } catch { homepageError.value = '无法确认操作结果，请重新检查首页设置。'; return false }
   finally { homepageBusy.value = false }
 }
@@ -144,14 +145,14 @@ defineExpose({ dirty: computed(() => props.section === 'homepage' ? homepageDirt
 </script>
 
 <template>
-  <section v-if="section !== 'homepage'" class="account-password branding-settings" aria-labelledby="branding-title"><h3 id="branding-title">{{ t('品牌与公告') }}</h3><form class="password-form" @submit.prevent="!managed && save()"><fieldset :disabled="busy"><label class="binding-field"><span>{{ t('站点名称') }} <small>{{ nameLength }}/64</small></span><input v-model="name" required /></label><label class="binding-field"><span>{{ t('站点简介') }} <small>{{ taglineLength }}/200</small></span><input v-model="tagline" /></label><label class="binding-field"><span>{{ t('自定义页脚信息') }} <small>{{ Array.from(footer).length }}/200</small></span><input v-model="footer" :placeholder="t('显示在项目页脚旁，不会替换 Powered by WishingSkin')" /></label><label class="binding-field"><span>{{ t('公告格式') }}</span><select v-model="format"><option value="plain">{{ t('纯文本') }}</option><option value="markdown">Markdown + HTML</option></select></label><label class="binding-field"><span>{{ t('站点公告') }} <small>{{ noticeLength }}/1000</small></span><textarea v-model="notice" rows="5"></textarea></label><p v-if="format === 'markdown'" class="password-rule">{{ t('支持粗体、链接、列表等排版，脚本、图片和自定义样式会被过滤。') }}</p><button class="secondary-button" type="button" @click="previewNotice">{{ t('预览公告') }}</button><div v-if="preview" class="notice-content notice-preview" v-html="preview"></div><p class="password-rule">{{ t('保存会发布新公告；清空后保留历史记录。') }}</p><p v-if="error" class="form-error" role="alert">{{ t(error) }}</p><button v-if="!managed" class="primary-button" type="submit">{{ busy ? t('正在保存…') : t('保存品牌与公告') }}</button></fieldset></form><p v-if="message" class="action-success" role="status">{{ t(message) }}</p></section>
+  <section v-if="section !== 'homepage'" class="account-password branding-settings" aria-labelledby="branding-title"><h3 id="branding-title">{{ t('品牌与公告') }}</h3><form class="password-form" @submit.prevent="!managed && save()"><fieldset :disabled="busy"><label class="binding-field"><span>{{ t('站点名称') }} <small>{{ nameLength }}/64</small></span><input v-model="name" required /></label><label class="binding-field"><span>{{ t('站点简介') }} <small>{{ taglineLength }}/200</small></span><input v-model="tagline" /></label><label class="binding-field"><span>{{ t('自定义页脚信息') }} <small>{{ Array.from(footer).length }}/200</small></span><input v-model="footer" :placeholder="t('显示在页脚的自定义文字')" /></label><label class="binding-field"><span>{{ t('公告格式') }}</span><select v-model="format"><option value="plain">{{ t('纯文本') }}</option><option value="markdown">Markdown + HTML</option></select></label><label class="binding-field"><span>{{ t('站点公告') }} <small>{{ noticeLength }}/1000</small></span><textarea v-model="notice" rows="5"></textarea></label><p v-if="format === 'markdown'" class="password-rule">{{ t('支持粗体、链接、列表等排版，脚本、图片和自定义样式会被过滤。') }}</p><button class="secondary-button" type="button" @click="previewNotice">{{ t('预览公告') }}</button><div v-if="preview" class="notice-content notice-preview" v-html="preview"></div><p class="password-rule">{{ t('保存会发布新公告；清空后保留历史记录。') }}</p><button v-if="!managed" class="primary-button" type="submit">{{ busy ? t('正在保存…') : t('保存品牌与公告') }}</button></fieldset></form></section>
 <section v-if="section !== 'site'" class="account-password homepage-settings" aria-labelledby="homepage-title">
   <p v-if="!homepageLoaded" role="status">{{ t('正在加载…') }} <button v-if="homepageError" class="text-button" type="button" @click="loadHomepage">{{ t('重试') }}</button></p>
   <fieldset :disabled="!homepageLoaded || homepageBusy" class="homepage-editor-fields">
   <div class="homepage-background-settings"><label class="binding-field"><span>{{ t('主页背景') }}</span><input type="file" accept="image/png,image/jpeg" @change="pickBackground" /></label><p class="password-rule">{{ t('PNG 或 JPEG，最大 2 MiB、4096×4096。仅用于公开主页。') }}</p><img v-if="background.image" class="homepage-background-thumbnail" :src="background.image" :alt="t('主页背景预览')" /><div class="settings-actions"><button class="secondary-button" type="button" :disabled="!background.image" @click="background.image = ''">{{ t('移除背景') }}</button><button class="secondary-button" type="button" :aria-expanded="homepagePreview" @click="homepagePreview = !homepagePreview">{{ homepagePreview ? t('收起主页预览') : t('预览主页') }}</button></div><label v-if="background.image" class="binding-field"><span>{{ t('背景遮罩') }} {{ background.overlay }}%</span><input v-model.number="background.overlay" type="range" min="0" max="100" step="1" /></label></div>
   <div v-if="homepagePreview" class="homepage-draft-preview"><p class="password-rule">{{ t('草稿预览，保存后才会公开。') }}</p><HomepageContent :homepage="previewSettings" :name="name" :tagline="tagline" :notice="site.notice" :notice-html="site.noticeHtml" preview /></div>
   <div class="settings-section-heading"><div><h3 id="homepage-title">{{ t('首页区块') }}</h3><p class="password-rule">{{ t('用安全区块编辑主页内容，可启停并调整顺序。按钮只允许站内路径或 HTTPS。') }}</p></div><button class="secondary-button" type="button" :disabled="homepageBusy || homepageBlocks.length >= 8" @click="addHomepageBlock">{{ t('添加区块') }}</button></div>
-  <p class="password-rule">{{ t('图标可上传 PNG/JPEG（最大 512 KiB、2048×2048），或填写 HTTPS URL、站内资源路径（如 /assets/icon.png）。不支持本机文件路径。') }}</p>
+  <p class="password-rule">{{ t('上传 PNG/JPEG，或填写 HTTPS URL、站内资源路径（如 /assets/icon.png）。最大 512 KiB、2048×2048。') }}</p>
   <div v-if="homepageBlocks.length" class="homepage-block-list">
     <article v-for="(block, index) in homepageBlocks" :key="block.id" class="homepage-block-editor">
       <div class="homepage-block-toolbar"><strong>{{ index + 1 }}. {{ block.id }}</strong><label class="checkbox-label"><input v-model="block.enabled" type="checkbox" :disabled="homepageBusy" /> {{ t('启用') }}</label><select v-model="block.kind" :disabled="homepageBusy" :aria-label="t('区块类型')"><option v-for="kind in homepageKinds" :key="kind.value" :value="kind.value">{{ t(kind.label) }}</option></select><button class="text-button" type="button" :disabled="homepageBusy || index === 0" @click="moveHomepageBlock(index, -1)">{{ t('上移') }}</button><button class="text-button" type="button" :disabled="homepageBusy || index === homepageBlocks.length - 1" @click="moveHomepageBlock(index, 1)">{{ t('下移') }}</button><button class="text-button danger-text" type="button" :disabled="homepageBusy" @click="removeHomepageBlock(index)">{{ t('删除') }}</button></div>
@@ -161,7 +162,7 @@ defineExpose({ dirty: computed(() => props.section === 'homepage' ? homepageDirt
     </article>
   </div>
   <p v-else class="password-rule">{{ t('尚未配置首页区块，主页将显示站点简介。') }}</p>
-  <p v-if="homepageError" class="form-error" role="alert">{{ t(homepageError) }}</p><p v-if="homepageMessage" class="action-success" role="status">{{ t(homepageMessage) }}</p><button v-if="!managed" class="primary-button" type="button" :disabled="homepageBusy" @click="saveHomepage">{{ homepageBusy ? t('正在保存…') : t('保存首页区块') }}</button>
+  <button v-if="!managed" class="primary-button" type="button" :disabled="homepageBusy" @click="saveHomepage">{{ homepageBusy ? t('正在保存…') : t('保存首页区块') }}</button>
   </fieldset>
 </section>
 </template>

@@ -1,4 +1,5 @@
 <script setup lang="ts">
+import { feedbackRef } from '../feedback'
 import { onMounted, ref } from 'vue'
 import { t } from '../i18n'
 const props = defineProps<{ csrfToken: string }>()
@@ -10,8 +11,8 @@ const count = ref(10)
 const codes = ref<string[]>([])
 const loading = ref(false)
 const busy = ref(false)
-const error = ref('')
-const message = ref('')
+const error = feedbackRef('error')
+const message = feedbackRef('success')
 async function load() {
   loading.value = true; error.value = ''
   try {
@@ -51,13 +52,13 @@ async function download(status: 'unused' | 'all', format: 'txt' | 'csv') {
 onMounted(load)
 </script>
 <template>
-  <section class="settings-section invitation-plugin"><h3>{{ t('邀请码设置') }}</h3><p>{{ t('开启后可要求新账号提供邀请码，邮箱验证与人机验证仍然必需。关闭插件不会删除已生成的码。') }}</p>
-    <p v-if="loading" role="status">{{ t('正在加载…') }}</p><p v-if="error" class="form-error" role="alert">{{ t(error) }} <button v-if="!options && !loading" class="text-button" type="button" @click="load">{{ t('重试') }}</button></p>
+  <section class="settings-section invitation-plugin"><h3>{{ t('邀请码设置') }}</h3><p>{{ t('设置注册邀请码的使用规则。') }}</p>
+    <p v-if="loading" role="status">{{ t('正在加载…') }}</p><p v-if="error" class="form-error" role="alert"><button v-if="!options && !loading" class="text-button" type="button" @click="load">{{ t('重试') }}</button></p>
     <template v-if="options"><form class="settings-form" @submit.prevent="submit(false)"><fieldset :disabled="busy"><label class="settings-check"><input v-model="enabled" type="checkbox" />{{ t('启用邀请码插件') }}</label><label class="settings-check"><input v-model="required" type="checkbox" :disabled="!enabled" />{{ t('注册时必须填写邀请码') }}</label><button class="primary-button" type="submit">{{ busy ? t('正在保存…') : t('保存插件设置') }}</button></fieldset></form>
       <form v-if="options.enabled" class="settings-form plugin-generation" @submit.prevent="submit(true)"><fieldset :disabled="busy"><h3>{{ t('批量生成') }}</h3><div class="settings-grid"><label class="binding-field"><span>{{ t('生成数量') }}</span><input v-model.number="count" type="number" min="1" max="100" required /></label></div><p class="password-rule">{{ t('每个邀请码只能使用一次，永久有效。服务器保存加密值，可在此页重复导出。') }}</p><button class="secondary-button" type="submit">{{ t('生成邀请码') }}</button></fieldset></form>
       <div v-if="options.migration" class="invitation-migration"><h3>{{ t('迁移统计') }}</h3><p>{{ t('共 {total} 个，未使用 {unused} 个，已使用 {used} 个。', options.migration) }}</p></div>
       <div v-if="options.enabled" class="invitation-export"><h3>{{ t('重复导出') }}</h3><div class="settings-actions"><button v-for="format in ['txt', 'csv']" :key="`unused-${format}`" class="secondary-button" type="button" @click="download('unused', format as 'txt' | 'csv')">{{ t(`导出未使用 ${format.toUpperCase()}`) }}</button><button v-for="format in ['txt', 'csv']" :key="`all-${format}`" class="secondary-button" type="button" @click="download('all', format as 'txt' | 'csv')">{{ t(`导出全部 ${format.toUpperCase()}`) }}</button></div></div>
       <div v-if="codes.length" class="invitation-result"><label class="binding-field"><span>{{ t('本次生成的邀请码') }}</span><textarea :value="codes.join('\n')" readonly rows="6" :aria-label="t('生成的邀请码')"></textarea></label></div>
-    </template><p v-if="message" class="action-success" role="status">{{ t(message) }}</p>
+    </template>
   </section>
 </template>

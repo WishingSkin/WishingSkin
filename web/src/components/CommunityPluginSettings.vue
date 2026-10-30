@@ -1,4 +1,5 @@
 <script setup lang="ts">
+import { feedbackRef } from '../feedback'
 import { onMounted, ref } from 'vue'
 import type { PluginManifest } from '../pluginModel'
 import { t } from '../i18n'
@@ -7,7 +8,7 @@ const props = defineProps<{ plugin: PluginManifest; csrfToken: string }>()
 const emit = defineEmits<{ expired: [] }>()
 const draft = ref<Record<string, string | number | boolean>>({})
 const configured = ref<Record<string, boolean>>({})
-const busy = ref(false), loaded = ref(false), error = ref(''), message = ref('')
+const busy = ref(false), loaded = ref(false), error = feedbackRef('error'), message = feedbackRef('success')
 async function load() {
   try { const r = await fetch(`/api/admin/plugin-settings/${encodeURIComponent(props.plugin.id)}`, { credentials: 'same-origin' }); if (r.status === 401) { emit('expired'); return }; if (!r.ok) throw new Error(); const data = await r.json(); configured.value = data.configured; for (const field of props.plugin.settings || []) draft.value[field.key] = data.values[field.key] ?? (field.type === 'boolean' ? false : field.type === 'number' ? 0 : ''); loaded.value = true }
   catch { error.value = '暂时无法读取插件配置' }
@@ -20,4 +21,4 @@ async function save() {
 }
 onMounted(load)
 </script>
-<template><form v-if="plugin.settings?.length" class="settings-form" @submit.prevent="save"><fieldset :disabled="!loaded || busy"><label v-for="field in plugin.settings" :key="field.key" class="binding-field"><span>{{ t(field.label) }}</span><input v-if="field.type === 'boolean'" v-model="draft[field.key]" type="checkbox" /><input v-else-if="field.type === 'number'" v-model.number="draft[field.key]" type="number" /><input v-else v-model="draft[field.key]" :type="field.type === 'secret' ? 'password' : 'text'" maxlength="4096" :autocomplete="field.type === 'secret' ? 'new-password' : 'off'" :placeholder="configured[field.key] ? t('留空保留已保存凭据') : ''" /></label><button class="primary-button" type="submit">{{ t('保存配置') }}</button></fieldset></form><p v-else class="password-rule">{{ t('此插件无需配置。') }}</p><p v-if="error" class="form-error" role="alert">{{ t(error) }} <button v-if="!loaded" class="text-button" type="button" @click="load">{{ t('重试') }}</button></p><p v-if="message" class="action-success" role="status">{{ t(message) }}</p><CommunityPluginRuntime :plugin-id="plugin.id" :enabled="plugin.enabled" :csrf-token="csrfToken" @expired="emit('expired')" /></template>
+<template><form v-if="plugin.settings?.length" class="settings-form" @submit.prevent="save"><fieldset :disabled="!loaded || busy"><label v-for="field in plugin.settings" :key="field.key" class="binding-field"><span>{{ t(field.label) }}</span><input v-if="field.type === 'boolean'" v-model="draft[field.key]" type="checkbox" /><input v-else-if="field.type === 'number'" v-model.number="draft[field.key]" type="number" /><input v-else v-model="draft[field.key]" :type="field.type === 'secret' ? 'password' : 'text'" maxlength="4096" :autocomplete="field.type === 'secret' ? 'new-password' : 'off'" :placeholder="configured[field.key] ? t('留空保留已保存凭据') : ''" /></label><button class="primary-button" type="submit">{{ t('保存配置') }}</button></fieldset></form><p v-else class="password-rule">{{ t('此插件无需配置。') }}</p><p v-if="error" class="form-error" role="alert"><button v-if="!loaded" class="text-button" type="button" @click="load">{{ t('重试') }}</button></p><CommunityPluginRuntime :plugin-id="plugin.id" :enabled="plugin.enabled" :csrf-token="csrfToken" @expired="emit('expired')" /></template>

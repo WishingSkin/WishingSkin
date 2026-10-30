@@ -1,4 +1,6 @@
 <script setup lang="ts">
+import { feedbackRef } from '../feedback'
+import AppModal from './AppModal.vue'
 import { computed, ref, watch } from 'vue'
 import { t } from '../i18n'
 
@@ -7,8 +9,8 @@ const emit = defineEmits<{ expired: []; login: [] }>()
 const open = ref(false)
 const reason = ref('')
 const busy = ref(false)
-const error = ref('')
-const message = ref('')
+const error = feedbackRef('error')
+const message = feedbackRef('success')
 const length = computed(() => Array.from(reason.value.trim()).length)
 watch(() => props.recordId, () => { open.value = false; reason.value = ''; error.value = ''; message.value = '' })
 async function submit() {
@@ -30,12 +32,12 @@ async function submit() {
 <template>
   <div class="report-form">
     <button v-if="!open" class="text-button" type="button" :disabled="busy" @click="csrfToken ? open = true : emit('login')">{{ csrfToken ? t('举报这份材质') : t('登录后举报') }}</button>
-    <form v-else class="report-fields" @submit.prevent="submit">
+    <AppModal v-if="open" :title="t('举报材质')" :busy="busy" @close="open = false"><form class="report-fields" @submit.prevent="submit">
       <p>{{ t('举报材质：{name}', { name }) }}</p>
       <label class="binding-field"><span>{{ t('举报原因') }} <small>{{ length }}/1000</small></span><textarea v-model="reason" rows="4" :disabled="busy" required /></label>
-      <p>{{ t('同一账号对同一材质只能提交一次；原因仅向管理员展示。') }}</p>
+
       <div class="admin-actions"><button class="primary-button" type="submit" :disabled="busy">{{ busy ? t('正在提交…') : t('提交举报') }}</button><button class="secondary-button" type="button" :disabled="busy" @click="open = false">{{ t('取消') }}</button></div>
-    </form>
-    <p v-if="error" class="form-error" role="alert">{{ t(error) }}</p><p v-if="message" class="action-success" role="status">{{ t(message) }}</p>
+    </form></AppModal>
+
   </div>
 </template>

@@ -1,4 +1,5 @@
 <script setup lang="ts">
+import { feedbackRef } from '../feedback'
 import { onMounted, ref } from 'vue'
 import { t } from '../i18n'
 const props = defineProps<{ csrfToken: string }>()
@@ -10,7 +11,7 @@ const selected = ref('')
 function select(id: string) { selected.value=id; draft.value=providers.value.find(p=>p.id===id)! }
 function add() { const id='provider-'+crypto.randomUUID().slice(0,8); providers.value.push({ ...blank(), id }); select(id) }
 function remove() { providers.value=providers.value.filter(p=>p.id!==selected.value); select('') }
-const loaded = ref(false), busy = ref(false), error = ref(''), message = ref('')
+const loaded = ref(false), busy = ref(false), error = feedbackRef('error'), message = feedbackRef('success')
 async function load() {
   error.value = ''
   try {
@@ -36,7 +37,7 @@ onMounted(load)
 </script>
 <template>
   <section class="settings-section oidc-settings"><h3>{{ t('OIDC 登录') }}</h3><p class="password-rule">{{ t('连接身份提供商。新账号仍遵守本站注册和邮箱验证规则。') }}</p>
-    <p v-if="!loaded && !error" role="status">{{ t('正在加载…') }}</p><p v-if="error" class="form-error" role="alert">{{ t(error) }} <button v-if="!loaded" class="text-button" type="button" @click="load">{{ t('重试') }}</button></p>
+    <p v-if="!loaded && !error" role="status">{{ t('正在加载…') }}</p><p v-if="error" class="form-error" role="alert"><button v-if="!loaded" class="text-button" type="button" @click="load">{{ t('重试') }}</button></p>
     <div v-if="loaded" class="settings-actions"><label class="binding-field"><span>{{ t('身份提供商') }}</span><select :value="selected" @change="select(($event.target as HTMLSelectElement).value)"><option v-for="p in providers" :key="p.id" :value="p.id">{{ p.name }}{{ p.id ? '' : ' (' + t('默认') + ')' }}</option></select></label><button class="secondary-button" type="button" :disabled="busy || providers.length >= 12" @click="add">{{ t('添加提供商') }}</button><button v-if="selected" class="text-button" type="button" :disabled="busy" @click="remove">{{ t('移除提供商') }}</button></div><form v-if="loaded" class="settings-form" @submit.prevent="save"><fieldset :disabled="busy">
       <label class="checkbox-label"><input v-model="draft.enabled" type="checkbox" /> {{ t('启用 OIDC 登录') }}</label>
       <label class="binding-field"><span>{{ t('登录按钮名称') }}</span><input v-model="draft.name" maxlength="64" required /></label>
@@ -46,6 +47,6 @@ onMounted(load)
       <label v-if="draft.secretConfigured" class="checkbox-label"><input v-model="draft.clearSecret" type="checkbox" /> {{ t('清除已保存的密钥') }}</label>
       <dl class="oidc-redirect"><dt>{{ t('回调地址') }}</dt><dd>{{ draft.redirectUri }}</dd></dl>
       <button class="primary-button" type="submit">{{ busy ? t('正在保存…') : t('保存 OIDC 设置') }}</button>
-    </fieldset></form><p v-if="message" class="action-success" role="status">{{ t(message) }}</p>
+    </fieldset></form>
   </section>
 </template>

@@ -1,4 +1,6 @@
 <script setup lang="ts">
+import { feedbackRef } from '../feedback'
+import AppModal from './AppModal.vue'
 import { onMounted, ref } from 'vue'
 import { t } from '../i18n'
 
@@ -16,9 +18,8 @@ interface Confirmation {
 const props = defineProps<{ csrfToken: string; loginLayout?: boolean }>()
 const emit = defineEmits<{ completed: [next: string] }>()
 const data = ref<Confirmation | null>(null)
-const dialog = ref<HTMLDialogElement | null>(null)
 const busy = ref(false)
-const error = ref('')
+const error = feedbackRef('error')
 
 async function load() {
   error.value = ''
@@ -51,17 +52,12 @@ async function decide(action: 'confirm' | 'cancel') {
 function back() { window.location.assign(props.loginLayout ? '/login' : '/user/account/profile') }
 
 onMounted(() => {
-  dialog.value?.showModal()
   void load()
 })
 </script>
 
 <template>
-  <Teleport to="body">
-  <dialog ref="dialog" class="notice-dialog oidc-confirmation-dialog" aria-labelledby="oidc-confirmation-title" @cancel.prevent="decide('cancel')">
-    <div class="login-heading">
-      <h2 id="oidc-confirmation-title" tabindex="-1" autofocus>{{ t('确认 OIDC 账号') }}</h2>
-    </div>
+  <AppModal :title="t('确认 OIDC 账号')" :busy="busy" @close="data ? decide('cancel') : back()">
     <p v-if="!data && !error" class="password-rule" role="status">{{ t('正在加载…') }}</p>
     <dl v-if="data" class="oidc-identity-details">
       <div><dt>{{ t('身份提供商') }}</dt><dd>{{ data.provider || t('未提供') }}</dd></div>
@@ -71,12 +67,11 @@ onMounted(() => {
       <div><dt>{{ t('OIDC 邮箱') }}</dt><dd>{{ data.email || t('未提供') }}</dd></div>
       <div><dt>{{ t('邮箱验证状态') }}</dt><dd>{{ data.emailVerified ? t('已验证') : t('未验证或未提供') }}</dd></div>
     </dl>
-    <p v-if="error" class="form-error" role="alert">{{ t(error) }}</p>
+
     <div class="oidc-confirmation-actions">
       <button class="primary-button" type="button" :disabled="busy || !data" @click="decide('confirm')">{{ busy ? t('正在处理…') : data?.purpose === 'link' ? t('确认并绑定') : t('确认并登录') }}</button>
       <button v-if="data" class="secondary-button" type="button" :disabled="busy" @click="decide('cancel')">{{ t('取消') }}</button>
       <button v-else class="secondary-button" type="button" :disabled="busy" @click="back">{{ t('返回') }}</button>
     </div>
-  </dialog>
-  </Teleport>
+  </AppModal>
 </template>
