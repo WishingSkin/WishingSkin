@@ -62,7 +62,7 @@ func Preflight(s *Snapshot, sourceDir string) (Report, error) {
 		r.Unsupported = append(r.Unsupported, Omitted{Scope: "source_schema_inventory", Count: -1, Reason: "Snapshot has no source schema inventory; extra tables and columns have not been checked."})
 	}
 	r.Unsupported = append(r.Unsupported, Omitted{Scope: "source_runtime", Count: -1, Reason: "Installed PHP plugins, password hooks and runtime behavior were not inspected; source versions and configuration are operator-confirmed declarations."})
-	if (s.FormatVersion != 1 && s.FormatVersion != FormatVersion) || s.Source.CoreVersion != CoreVersion || s.Source.CoreCommit != CoreCommit || s.Source.PluginVersion != PluginVersion || s.Source.PluginCommit != PluginCommit {
+	if (s.FormatVersion != 1 && s.FormatVersion != FormatVersion) || !supportedSource(s.Source) {
 		block("version", "source", "source does not match the frozen BS/plugin contract")
 	}
 	if s.FormatVersion == 1 && len(s.Wardrobe) != 0 {
@@ -384,7 +384,9 @@ func validatePrivateKey(value string) error {
 
 func validDimensions(kind string, w, h int) bool {
 	if kind == "cape" {
-		return w >= 64 && w <= 1024 && w%64 == 0 && h*2 == w
+		// BS accepted high-resolution capes; preserve their bytes within an
+		// 8 MiB encoded / 8 megapixel decoded bound without changing new uploads.
+		return w >= 64 && w <= 4096 && w%64 == 0 && h*2 == w
 	}
 	return w >= 64 && w <= 1024 && w%64 == 0 && (h == w || h*2 == w)
 }

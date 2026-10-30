@@ -25,7 +25,7 @@ func ExportMySQL(ctx context.Context, db *sql.DB, opts ExportOptions) (*Snapshot
 	if !prefixPattern.MatchString(opts.TablePrefix) {
 		return nil, fmt.Errorf("invalid source table prefix")
 	}
-	if opts.Source.Instance == "" || opts.Source.CoreVersion != CoreVersion || opts.Source.CoreCommit != CoreCommit || opts.Source.PluginVersion != PluginVersion || opts.Source.PluginCommit != PluginCommit {
+	if opts.Source.Instance == "" || !supportedSource(opts.Source) {
 		return nil, fmt.Errorf("source instance and confirmed frozen core/plugin versions are required")
 	}
 	tx, err := db.BeginTx(ctx, &sql.TxOptions{ReadOnly: true, Isolation: sql.LevelRepeatableRead})

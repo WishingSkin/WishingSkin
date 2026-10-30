@@ -1,14 +1,18 @@
 package bsmigration
 
 import (
+	"bytes"
 	"context"
 	"crypto/md5"
 	"crypto/rand"
 	"crypto/rsa"
+	"crypto/sha256"
 	"crypto/x509"
 	"encoding/hex"
 	"encoding/json"
 	"encoding/pem"
+	"image"
+	"image/png"
 	"os"
 	"path/filepath"
 	"strings"
@@ -50,6 +54,52 @@ func fixture(t *testing.T) (*Snapshot, string) {
 		}
 	}
 	return s, dir
+}
+
+func TestLegacyHighResolutionCapes(t *testing.T) {
+	for _, size := range []image.Point{{1280, 640}, {4096, 2048}, {4160, 2080}} {
+		s, dir := fixture(t)
+		var encoded bytes.Buffer
+		if err := png.Encode(&encoded, image.NewNRGBA(image.Rectangle{Max: size})); err != nil {
+			t.Fatal(err)
+		}
+		hash := sha256.Sum256(encoded.Bytes())
+		s.Textures[0].Hash = hex.EncodeToString(hash[:])
+		s.Textures[0].Type = "cape"
+		s.Characters[0].SkinID, s.Characters[0].CapeID = 0, s.Textures[0].ID
+		if err := os.WriteFile(filepath.Join(dir, s.Textures[0].Hash), encoded.Bytes(), 0600); err != nil {
+			t.Fatal(err)
+		}
+		r, err := Preflight(s, dir)
+		if size.X <= 4096 && (err != nil || r.Files != 1) {
+			t.Fatalf("legacy cape %v was rejected", size)
+		}
+		if size.X > 4096 && (err == nil || r.Status != "blocked") {
+			t.Fatal("oversized cape accepted")
+		}
+	}
+}
+
+func TestArchivedSourceContract(t *testing.T) {
+	s, dir := fixture(t)
+	s.Source.CoreCommit, s.Source.PluginCommit = "", ""
+	s.Source.CoreTreeSHA256, s.Source.PluginTreeSHA256 = ArchivedCoreTree, ArchivedPluginTree
+	s.Source.PluginVersion = ArchivedPluginVersion
+	if report, err := Preflight(s, dir); err != nil || report.Status != "partial" {
+		t.Fatal("audited archived source rejected")
+	}
+	for _, mutate := range []func(*Source){
+		func(source *Source) { source.PluginTreeSHA256 = strings.Repeat("0", 64) },
+		func(source *Source) { source.CoreTreeSHA256 = "" },
+		func(source *Source) { source.CoreCommit = CoreCommit },
+		func(source *Source) { source.PluginVersion = "5.2.2" },
+	} {
+		copy := *s
+		mutate(&copy.Source)
+		if report, err := Preflight(&copy, dir); err == nil || report.Status != "blocked" {
+			t.Fatal("unverified source variant accepted")
+		}
+	}
 }
 
 func TestFixturePreservesActualIdentityAndLegacyPassword(t *testing.T) {

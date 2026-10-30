@@ -9,24 +9,40 @@ import (
 )
 
 const (
-	FormatVersion = 2
-	CoreVersion   = "6.0.2"
-	CoreCommit    = "b737a65f5f5fce1f897f8603db74fd970437b351"
-	PluginVersion = "5.2.1"
-	PluginCommit  = "de016f4cbb43df7bd6d46193d5625693f8c79b3f"
+	FormatVersion         = 2
+	CoreVersion           = "6.0.2"
+	CoreCommit            = "b737a65f5f5fce1f897f8603db74fd970437b351"
+	PluginVersion         = "5.2.1"
+	PluginCommit          = "de016f4cbb43df7bd6d46193d5625693f8c79b3f"
+	ArchivedCoreTree      = "1eaa6d052fa42c22ae89a34bf6b9af7d113c6ed5b32e560b08b1c827f7863d16"
+	ArchivedPluginVersion = "5.2.2-0.2.5"
+	ArchivedPluginTree    = "60c056460e1e3bea2ce151b43c78b2a961fe4027d8d36b5689ffd66d4d4833ed"
 )
 
 type Source struct {
-	Instance        string `json:"instance"`
-	CoreVersion     string `json:"core_version"`
-	CoreCommit      string `json:"core_commit"`
-	PluginVersion   string `json:"plugin_version"`
-	PluginCommit    string `json:"plugin_commit"`
-	PasswordMethod  string `json:"password_method"`
-	PasswordSalt    string `json:"password_salt"`
-	HashMode        string `json:"hash_mode"` // sha256, or preserve-custom with a documented filter
-	HashExplanation string `json:"hash_explanation,omitempty"`
-	UUIDAlgorithm   string `json:"uuid_algorithm"`
+	Instance         string `json:"instance"`
+	CoreVersion      string `json:"core_version"`
+	CoreCommit       string `json:"core_commit"`
+	PluginVersion    string `json:"plugin_version"`
+	PluginCommit     string `json:"plugin_commit"`
+	CoreTreeSHA256   string `json:"core_tree_sha256,omitempty"`
+	PluginTreeSHA256 string `json:"plugin_tree_sha256,omitempty"`
+	PasswordMethod   string `json:"password_method"`
+	PasswordSalt     string `json:"password_salt"`
+	HashMode         string `json:"hash_mode"` // sha256, or preserve-custom with a documented filter
+	HashExplanation  string `json:"hash_explanation,omitempty"`
+	UUIDAlgorithm    string `json:"uuid_algorithm"`
+}
+
+func supportedSource(source Source) bool {
+	if source.CoreVersion != CoreVersion {
+		return false
+	}
+	if source.CoreTreeSHA256 != "" || source.PluginTreeSHA256 != "" {
+		return source.CoreCommit == "" && source.PluginCommit == "" &&
+			source.CoreTreeSHA256 == ArchivedCoreTree && source.PluginVersion == ArchivedPluginVersion && source.PluginTreeSHA256 == ArchivedPluginTree
+	}
+	return source.CoreCommit == CoreCommit && source.PluginVersion == PluginVersion && source.PluginCommit == PluginCommit
 }
 
 type User struct {

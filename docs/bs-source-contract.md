@@ -41,13 +41,28 @@
 
 密码配置依据 [secure.php](https://github.com/bs-community/blessing-skin-server/blob/b737a65f5f5fce1f897f8603db74fd970437b351/config/secure.php) 与 [HasPassword.php](https://github.com/bs-community/blessing-skin-server/blob/b737a65f5f5fce1f897f8603db74fd970437b351/app/Models/Concerns/HasPassword.php)。本轮 `credential` 支持 BCRYPT、PHP_PASSWORD_HASH、ARGON2I、ARGON2ID、MD5、SHA256、SHA512，并限制可验证编码和工作因子；超出实现范围的编码或参数同样会阻止导入。MD5、SHA256、SHA512 只支持站点盐为空的已核实形式，非空盐会阻止导入；BCRYPT 还检查前缀、编码和尾位。BS 的 SALTED2MD5、SALTED2SHA256、SALTED2SHA512 及 `verify_password` / `user_password` 过滤器尚未适配，不能仅把方法名改成另一算法后导入。
 
+## 已核对的归档联合版
+
+另支持一个明确固定的 BS 6.0.2 / `yggdrasil-api 5.2.2-0.2.5` 归档来源。它不是官方 5.2.1，也没有可核实的 Git commit。账号、密码、角色、材质、上传校验与默认配置关键文件和上述固定核心一致。插件继续读取实际 `uuid` 映射和 `ygg_private_key`；额外改动包括角色名大小写修正、联合服务配置及额外 OAuth2 签名配置。联合服务、远端身份、额外签名配置及 PHP 运行行为不迁移。
+
+该来源的 `core_commit` / `plugin_commit` 均留空，填写以下树摘要；不能只改版本号，不能把官方 commit 填到归档来源：
+
+| 字段 | 固定值 |
+| --- | --- |
+| `core_version` | `6.0.2` |
+| `plugin_version` | `5.2.2-0.2.5` |
+| `core_tree_sha256` | `1eaa6d052fa42c22ae89a34bf6b9af7d113c6ed5b32e560b08b1c827f7863d16` |
+| `plugin_tree_sha256` | `60c056460e1e3bea2ce151b43c78b2a961fe4027d8d36b5689ffd66d4d4833ed` |
+
+摘要计算方式：核心枚举 `app/`、`config/`、`database/`、`routes/` 下全部普通文件，插件枚举 `plugins/yggdrasil-api/` 下全部普通文件。按相对于 BS 根目录的 POSIX 路径排序，依次向 SHA-256 写入 `UTF-8 路径 + NUL + 文件内容 SHA-256 的 32 字节原值`。不包含时间、权限、目录项或 `.env`。操作人员必须从实际归档计算并比对；导出器只能验证声明值和数据库内容，不能远程验证 PHP 文件。其他树摘要仍被拒绝。
+
 ## 材质文件与 hash 模式
 
 核心 [SkinlibController.php](https://github.com/bs-community/blessing-skin-server/blob/b737a65f5f5fce1f897f8603db74fd970437b351/app/Http/Controllers/SkinlibController.php) 默认计算文件 SHA-256，再应用 `uploaded_texture_hash` 过滤器；[filesystems.php](https://github.com/bs-community/blessing-skin-server/blob/b737a65f5f5fce1f897f8603db74fd970437b351/config/filesystems.php) 的材质目录是 `TEXTURES_DIR`，默认 `storage/textures`。导出时必须另行取得一致的本地材质副本；远程 FS_DRIVER 没有在本轮适配。
 
 - `hash_mode=sha256`：每个源文件的 SHA-256 必须与原 hash 完全相同。
 - `hash_mode=preserve-custom`：必须填写 `hash_explanation`，说明源过滤器或自定义标识的来源。保留源 hash，并使用单独 SHA-256 核对复制前后字节；报告明确声明未验证源过滤器算法。
-- 两种模式都只接受 32–128 位十六进制文件名，不接受路径、扩展名、目录或符号链接。文件限 8 MiB，并完整解码 PNG；本轮支持宽度 64–1024、64 的倍数，皮肤高为宽或宽的一半，披风高为宽的一半。
+- 两种模式都只接受 32–128 位十六进制文件名，不接受路径、扩展名、目录或符号链接。文件限 8 MiB，并完整解码 PNG；皮肤宽度 64–1024、64 的倍数，高为宽或宽的一半；旧披风宽度允许到 4096、高为宽的一半，解码最多 8,388,608 像素。保留原文件与 hash，不重采样；此兼容范围不改变新上传规则。
 - 目标按文件 hash 保存材质字节，并用独立材质记录保存名称、类型、模型和公开状态。因此多个 BS 记录共用同一 hash 时，只保留一份文件字节，各记录仍分别导入；源记录 ID 只用于生成目标记录标识和角色引用映射。hash 大小写冲突仍会被阻止，以免不同系统的文件名规则产生不同结果。
 
 旧 `format_version=1` snapshot 没有材质上传者、描述和衣柜。旧快照继续按原语义导入，`owner_id=NULL`、描述为空，并报告缺口；不会把角色所属账号视为上传者，也不会把新数据合入已导入的旧任务。v1 的序列化指纹保持不变，可继续原任务恢复。新导出器生成 `format_version=2`，必须从源字段读取上传者和衣柜；描述表不存在时为空，旧 `textures_desc` 或其他未支持表仍列为缺口。
