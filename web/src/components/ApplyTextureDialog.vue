@@ -10,6 +10,7 @@ const emit = defineEmits<{ close: []; applied: []; expired: [] }>()
 type Character = { id: number; name: string; skinHash: string; capeHash: string; model: string }
 const characters = ref<Character[]>([]), selected = ref<Character>(), busy = ref(false), loading = ref(true)
 const failed = ref(false)
+const model = ref(props.texture.model === 'slim' ? 'slim' : 'default')
 const controller = new AbortController()
 async function load() {
   loading.value = true; failed.value = false
@@ -29,7 +30,7 @@ async function apply() {
   if (!selected.value || busy.value) return
   busy.value = true
   try {
-    const r = await fetch(`/api/characters/${selected.value.id}/textures/${props.texture.kind}`, { method: 'PUT', credentials: 'same-origin', headers: { 'Content-Type': 'application/json', 'X-CSRF-Token': props.csrfToken }, body: JSON.stringify({ recordId: props.texture.id }), signal: controller.signal })
+    const r = await fetch(`/api/characters/${selected.value.id}/textures/${props.texture.kind}`, { method: 'PUT', credentials: 'same-origin', headers: { 'Content-Type': 'application/json', 'X-CSRF-Token': props.csrfToken }, body: JSON.stringify({ recordId: props.texture.id, ...(props.texture.kind === 'skin' ? { model: model.value } : {}) }), signal: controller.signal })
     if (r.status === 401) { emit('expired'); return }
     if (!r.ok) { const data = await r.json(); toast(data.error || '操作未完成，请重试。', 'error'); return }
     toast(props.texture.kind === 'skin' ? '皮肤已应用。' : '披风已应用。'); emit('applied'); emit('close')
@@ -42,7 +43,8 @@ async function apply() {
     <p>{{ texture.name }}</p><p v-if="loading" class="modal-empty" role="status">{{ t('正在加载角色…') }}</p>
     <div v-else-if="failed" class="modal-empty"><button class="secondary-button" type="button" @click="load">{{ t('重新加载') }}</button></div>
     <form v-else-if="characters.length" class="settings-form" @submit.prevent="apply"><label class="binding-field"><span>{{ t('选择角色') }}</span><select v-model="selected" :disabled="busy"><option v-for="character in characters" :key="character.id" :value="character">{{ character.name }}</option></select></label>
-      <CharacterViewer v-if="selected" :name="selected.name" :model="texture.kind === 'skin' ? texture.model : selected.model" :skin-hash="texture.kind === 'skin' ? texture.fileHash : selected.skinHash" :cape-hash="texture.kind === 'cape' ? texture.fileHash : selected.capeHash" />
+      <label v-if="texture.kind === 'skin'" class="binding-field"><span>{{ t('手臂模型') }}</span><select v-model="model" :disabled="busy"><option value="default">{{ t('标准手臂') }}</option><option value="slim">{{ t('纤细手臂') }}</option></select></label>
+      <CharacterViewer v-if="selected" :name="selected.name" :model="texture.kind === 'skin' ? model : selected.model" :skin-hash="texture.kind === 'skin' ? texture.fileHash : selected.skinHash" :cape-hash="texture.kind === 'cape' ? texture.fileHash : selected.capeHash" />
       <div class="modal-actions"><button class="secondary-button" type="button" :disabled="busy" @click="emit('close')">{{ t('取消') }}</button><button class="primary-button" :disabled="busy || !selected">{{ busy ? t('正在保存…') : t('确认应用') }}</button></div>
     </form><p v-else class="modal-empty">{{ t('请先在角色管理中创建角色。') }}</p>
   </AppModal>

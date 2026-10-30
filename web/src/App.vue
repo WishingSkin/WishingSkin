@@ -1,6 +1,6 @@
 <script setup lang="ts">
 import { feedbackRef, confirmAction, clearFeedback, toast } from './feedback'
-import { computed, onBeforeUnmount, onMounted, ref, watch } from 'vue'
+import { computed, nextTick, onBeforeUnmount, onMounted, ref, watch } from 'vue'
 import FeedbackHost from './components/FeedbackHost.vue'
 import InterfaceIcon from './components/InterfaceIcon.vue'
 import { setInterfaceAppearance, applyInterfaceColors } from './interfaceAppearance'
@@ -186,7 +186,29 @@ function setRouteView(path: string, search = '') {
     accessMode.value = mode === 'register' || mode === 'mail' ? mode : null
   } else if (!linkToken.value) accessMode.value = null
 }
+let navigationVersion = 0
+let navigationAnimations: Animation[] = []
 function navigate(path: string, replace = false) {
+  const version = ++navigationVersion
+  navigationAnimations.forEach(animation => animation.cancel()); navigationAnimations = []
+  const region = document.querySelector<HTMLElement>('.workspace-content, .public-home-page, .login-layout, .public-library-layout, .access-layout')
+  const animate = !!region && !window.matchMedia('(prefers-reduced-motion: reduce)').matches
+  const oldAnimation = animate ? region.animate([{ opacity: 1 }, { opacity: 0 }], { duration: 150, easing: 'ease-in' }) : undefined
+  if (oldAnimation) navigationAnimations.push(oldAnimation)
+  const change = async () => {
+    oldAnimation?.cancel()
+    if (version !== navigationVersion) return
+    updateRoute(path, replace)
+    await nextTick()
+    if (animate) {
+      const entering = document.querySelector<HTMLElement>('.workspace-content, .public-home-page, .login-layout, .public-library-layout, .access-layout')?.animate([{ opacity: 0 }, { opacity: 1 }], { duration: 250, easing: 'ease-out' })
+      if (entering) { navigationAnimations.push(entering); void entering.finished.then(() => entering.cancel(), () => {}) }
+    }
+  }
+  if (oldAnimation) void oldAnimation.finished.then(change, change)
+  else void change()
+}
+function updateRoute(path: string, replace = false) {
   const url = new URL(path, window.location.origin)
   const normalized = normalizePath(url.pathname)
   const next = normalized + url.search
@@ -293,7 +315,7 @@ function acceptSession(session: Session) {
   const currentPath = normalizePath(window.location.pathname)
   const destination = currentPath === '/login' && accessMode.value === 'mail'
     ? '/login?mode=mail'
-    : pendingNext.value || (currentPath === '/' ? '/' : '/user')
+    : pendingNext.value || (currentPath === '/' || currentPath === '/library' ? currentPath : '/user')
   if (destination.startsWith('/user/oauth/authorize?')) { window.location.assign(destination); return }
   navigate(destination, true)
   pendingNext.value = null
@@ -436,7 +458,7 @@ async function loadWardrobe() {
 function expireSession() { clearSession(); loginError.value = '登录已过期，请重新登录。' }
 
 async function wearCollected(_texture: LibraryRecord) { await loadCharacters() }
-async function pickTexture(texture: TextureRecord) { await bindTexture(texture.kind, texture.id); if (!actionError.value) texturePicker.value = undefined }
+async function pickTexture(texture: TextureRecord, model?: string) { await bindTexture(texture.kind, texture.id, model); if (!actionError.value) texturePicker.value = undefined }
 
 async function collectOwnTexture() {
   if (!selectedTexture.value) return
@@ -514,9 +536,9 @@ async function clearTexture(kind: 'skin' | 'cape') {
   await bindTexture(kind, '')
 }
 
-async function bindTexture(kind: 'skin' | 'cape', recordId: string) {
+async function bindTexture(kind: 'skin' | 'cape', recordId: string, model?: string) {
   if (!selected.value) return
-  const ok = await mutate(`/api/characters/${selected.value.id}/textures/${kind}`, 'PUT', JSON.stringify({ recordId }))
+  const ok = await mutate(`/api/characters/${selected.value.id}/textures/${kind}`, 'PUT', JSON.stringify({ recordId, ...(kind === 'skin' && model ? { model } : {}) }))
   if (!ok) return
   fallbackViewer.value = ''
   actionMessage.value = recordId ? (kind === 'skin' ? '皮肤已应用。' : '披风已应用。') : (kind === 'skin' ? '皮肤已清除。' : '披风已清除。')
@@ -717,7 +739,10 @@ const handlePopState = () => {
   readMailLink()
 }
 
+let topbarObserver: ResizeObserver | undefined
 onMounted(() => {
+  const topbar = document.querySelector<HTMLElement>('.topbar')
+  if (topbar) { topbarObserver = new ResizeObserver(() => { document.querySelector<HTMLElement>('.app-shell')?.style.setProperty('--topbar-height', topbar.getBoundingClientRect().height + 'px') }); topbarObserver.observe(topbar) }
   window.addEventListener('hashchange', readMailLink)
   window.addEventListener('popstate', handlePopState)
   let preference: string | null = null
@@ -728,6 +753,8 @@ onMounted(() => {
   void loadSite()
 })
 onBeforeUnmount(() => {
+  topbarObserver?.disconnect()
+  navigationAnimations.forEach(animation => animation.cancel())
   textureRequest?.abort()
   window.removeEventListener('hashchange', readMailLink)
   window.removeEventListener('popstate', handlePopState)

@@ -1,12 +1,14 @@
 <script setup lang="ts">
 import { computed, onBeforeUnmount, onMounted, ref, watch } from 'vue'
-import AppModal from './AppModal.vue'
 import { toast } from '../feedback'
 import { locale, t } from '../i18n'
 
 const props = defineProps<{ notice: string; format: string }>()
 interface Notice { id: string; html: string; createdAt: number }
 const opened = ref(false)
+const trigger = ref<HTMLButtonElement>()
+const popover = ref<HTMLElement>()
+const position = ref({ top: '0px', left: '0px' })
 const notices = ref<Notice[]>([])
 const currentId = ref('')
 const seenId = ref('')
@@ -16,7 +18,7 @@ const unread = computed(() => !!currentId.value && currentId.value !== seenId.va
 let controller: AbortController | undefined
 try { seenId.value = localStorage.getItem('wishingskin-notice-read') || '' } catch { /* Keep the read state for this visit. */ }
 
-async function load(autoOpen = true) {
+async function load() {
   controller?.abort()
   const request = controller = new AbortController()
   busy.value = true
@@ -28,41 +30,44 @@ async function load(autoOpen = true) {
     if (request.signal.aborted) return
     notices.value = data.notices
     currentId.value = data.currentId
-    if (autoOpen && unread.value && !opened.value) opened.value = true
   } catch {
     if (!request.signal.aborted) { error.value = true; toast('暂时无法读取公告', 'error') }
   } finally {
     if (!request.signal.aborted) busy.value = false
   }
 }
-function open() {
-  opened.value = true
-  void load(false)
+function place() {
+  if (!trigger.value) return
+  const rect = trigger.value.getBoundingClientRect()
+  const width = Math.min(420, window.innerWidth - 24)
+  position.value = { top: Math.min(rect.bottom + 12, window.innerHeight - 120) + 'px', left: Math.max(12, Math.min(rect.right - width, window.innerWidth - width - 12)) + 'px' }
 }
-function closed() {
-  opened.value = false
-  if (!error.value && currentId.value) {
+function toggled(event: Event) {
+  opened.value = (event as ToggleEvent).newState === 'open'
+  if (opened.value) { place(); void load() }
+  else if (!error.value && currentId.value) {
     seenId.value = currentId.value
-    try { localStorage.setItem('wishingskin-notice-read', currentId.value) } catch { /* Keep the read state for this visit. */ }
+    try { localStorage.setItem('wishingskin-notice-read', currentId.value) } catch { /* Read state remains available for this visit. */ }
   }
 }
+function open() { place(); popover.value?.togglePopover() }
 function date(value: number) {
   return new Intl.DateTimeFormat(locale.value, { dateStyle: 'medium', timeStyle: 'short' }).format(new Date(value))
 }
 watch([() => props.notice, () => props.format], () => { void load() })
-onMounted(() => { void load() })
-onBeforeUnmount(() => controller?.abort())
+onMounted(() => { void load(); window.addEventListener('resize', place); window.addEventListener('scroll', place, true) })
+onBeforeUnmount(() => { controller?.abort(); window.removeEventListener('resize', place); window.removeEventListener('scroll', place, true) })
 </script>
 
 <template>
-  <button class="icon-button notice-toggle" type="button" :aria-label="unread ? t('公告（有新公告）') : t('公告')" :title="t('公告')" aria-haspopup="dialog" @click="open">
+  <button ref="trigger" class="icon-button notice-toggle" type="button" :aria-label="unread ? t('公告（有新公告）') : t('公告')" :title="t('公告')" aria-haspopup="dialog" :aria-expanded="opened" @click="open">
     <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" aria-hidden="true"><path d="M18 8a6 6 0 0 0-12 0c0 7-3 7-3 9h18c0-2-3-2-3-9M10 21h4"/></svg>
     <span v-if="unread" class="notice-unread" aria-hidden="true"></span>
   </button>
-  <AppModal v-if="opened" :title="t('站点公告')" @close="closed">
+  <Teleport to="body"><section ref="popover" popover="auto" role="dialog" class="notice-popover" :aria-label="t('站点公告')" :style="position" @toggle="toggled"><header class="notice-popover-heading"><h2>{{ t('站点公告') }}</h2><button type="button" class="text-button" :aria-label="t('关闭')" @click="popover?.hidePopover()">×</button></header>
       <div class="notice-dialog-content" :aria-busy="busy">
         <p v-if="busy && !notices.length" role="status">{{ t('正在加载…') }}</p>
-        <p v-else-if="error" class="form-error" role="alert"><button class="text-button" type="button" @click="load(false)">{{ t('重试') }}</button></p>
+        <p v-else-if="error" class="form-error" role="alert"><button class="text-button" type="button" @click="load()">{{ t('重试') }}</button></p>
         <template v-else>
           <p v-if="!notices.length">{{ t('暂无公告') }}</p>
           <article v-for="notice in notices" :key="notice.id" class="notice-entry">
@@ -71,5 +76,5 @@ onBeforeUnmount(() => controller?.abort())
           </article>
         </template>
       </div>
-    </AppModal>
+    </section></Teleport>
 </template>

@@ -67,6 +67,7 @@ const homepageKinds: Array<{ value: HomepageBlock['kind']; label: string }> = [
   { value: 'features', label: '功能卡' },
   { value: 'notice', label: '公告' },
   { value: 'cta', label: '行动区' },
+  { value: 'showcase', label: '展示区' },
 ]
 
 function cloneBlocks(value: HomepageBlock[]) {
@@ -74,7 +75,7 @@ function cloneBlocks(value: HomepageBlock[]) {
 }
 
 watch([() => props.site.name, () => props.site.tagline, () => props.site.footer, () => props.site.notice, () => props.site.noticeFormat], () => { if (brandingDirty.value) return; name.value = props.site.name || 'WishingSkin'; tagline.value = props.site.tagline || ''; footer.value = props.site.footer || ''; notice.value = props.site.notice || ''; format.value = props.site.noticeFormat || 'plain'; preview.value = ''; savedBranding.value = settingsSnapshot(brandingValue.value) })
-watch(() => props.site.homepage?.blocks, blocks => { if (homepageDirty.value) return; homepageBlocks.value = cloneBlocks(blocks || []); savedHomepage.value = settingsSnapshot(previewSettings.value) }, { deep: true })
+watch(() => props.site.homepage?.blocks, blocks => { if (homepageLoaded.value || homepageDirty.value) return; homepageBlocks.value = cloneBlocks(blocks || []); savedHomepage.value = settingsSnapshot(previewSettings.value) }, { deep: true })
 async function save() {
   if (busy.value) return false
   error.value = ''; message.value = ''
@@ -103,9 +104,18 @@ async function previewNotice() {
   } catch { error.value = '暂时无法预览公告' }
   finally { busy.value = false }
 }
+async function uploadShowcase(event: Event, block: HomepageBlock) {
+  const input = event.target as HTMLInputElement, file = input.files?.[0]
+  if (!file) return
+  if (!['image/png', 'image/jpeg'].includes(file.type) || file.size > 2 * 1024 * 1024) { homepageError.value = '展示图片须为不超过 2 MiB 的 PNG 或 JPEG'; input.value = ''; return }
+  processImage(true)
+  try { block.image = await new Promise<string>((resolve, reject) => { const reader = new FileReader(); reader.onload = () => resolve(String(reader.result)); reader.onerror = reject; reader.readAsDataURL(file) }) }
+  catch { homepageError.value = '展示图片读取失败' }
+  finally { processImage(false); input.value = '' }
+}
 function addHomepageBlock() {
   if (homepageBlocks.value.length >= 8) { homepageError.value = '首页区块最多 8 个'; return }
-  homepageBlocks.value.push({ id: `block-${Date.now().toString(36)}`, kind: 'cta', enabled: true, title: '新的首页区块', body: '', buttonLabel: '', buttonHref: '', features: [] })
+  homepageBlocks.value.push({ id: `block-${Date.now().toString(36)}`, kind: 'showcase', name: '', enabled: true, title: '新的首页区块', body: '', buttonLabel: '', buttonHref: '', features: [] })
   homepageMessage.value = ''
   homepageError.value = ''
 }
@@ -151,13 +161,14 @@ defineExpose({ dirty: computed(() => props.section === 'homepage' ? homepageDirt
   <fieldset :disabled="!homepageLoaded || homepageBusy" class="homepage-editor-fields">
   <div class="homepage-background-settings"><label class="binding-field"><span>{{ t('主页背景') }}</span><input type="file" accept="image/png,image/jpeg" @change="pickBackground" /></label><p class="password-rule">{{ t('PNG 或 JPEG，最大 2 MiB、4096×4096。仅用于公开主页。') }}</p><img v-if="background.image" class="homepage-background-thumbnail" :src="background.image" :alt="t('主页背景预览')" /><div class="settings-actions"><button class="secondary-button" type="button" :disabled="!background.image" @click="background.image = ''">{{ t('移除背景') }}</button><button class="secondary-button" type="button" :aria-expanded="homepagePreview" @click="homepagePreview = !homepagePreview">{{ homepagePreview ? t('收起主页预览') : t('预览主页') }}</button></div><label v-if="background.image" class="binding-field"><span>{{ t('背景遮罩') }} {{ background.overlay }}%</span><input v-model.number="background.overlay" type="range" min="0" max="100" step="1" /></label></div>
   <div v-if="homepagePreview" class="homepage-draft-preview"><p class="password-rule">{{ t('草稿预览，保存后才会公开。') }}</p><HomepageContent :homepage="previewSettings" :name="name" :tagline="tagline" :notice="site.notice" :notice-html="site.noticeHtml" preview /></div>
-  <div class="settings-section-heading"><div><h3 id="homepage-title">{{ t('首页区块') }}</h3><p class="password-rule">{{ t('用安全区块编辑主页内容，可启停并调整顺序。按钮只允许站内路径或 HTTPS。') }}</p></div><button class="secondary-button" type="button" :disabled="homepageBusy || homepageBlocks.length >= 8" @click="addHomepageBlock">{{ t('添加区块') }}</button></div>
+  <div class="settings-section-heading"><div><h3 id="homepage-title">{{ t('首页区块') }}</h3></div><button class="secondary-button" type="button" :disabled="homepageBusy || homepageBlocks.length >= 8" @click="addHomepageBlock">{{ t('添加区块') }}</button></div>
   <p class="password-rule">{{ t('上传 PNG/JPEG，或填写 HTTPS URL、站内资源路径（如 /assets/icon.png）。最大 512 KiB、2048×2048。') }}</p>
   <div v-if="homepageBlocks.length" class="homepage-block-list">
     <article v-for="(block, index) in homepageBlocks" :key="block.id" class="homepage-block-editor">
-      <div class="homepage-block-toolbar"><strong>{{ index + 1 }}. {{ block.id }}</strong><label class="checkbox-label"><input v-model="block.enabled" type="checkbox" :disabled="homepageBusy" /> {{ t('启用') }}</label><select v-model="block.kind" :disabled="homepageBusy" :aria-label="t('区块类型')"><option v-for="kind in homepageKinds" :key="kind.value" :value="kind.value">{{ t(kind.label) }}</option></select><button class="text-button" type="button" :disabled="homepageBusy || index === 0" @click="moveHomepageBlock(index, -1)">{{ t('上移') }}</button><button class="text-button" type="button" :disabled="homepageBusy || index === homepageBlocks.length - 1" @click="moveHomepageBlock(index, 1)">{{ t('下移') }}</button><button class="text-button danger-text" type="button" :disabled="homepageBusy" @click="removeHomepageBlock(index)">{{ t('删除') }}</button></div>
+      <div class="homepage-block-toolbar"><strong>{{ index + 1 }}. {{ block.name || block.title || t('新的首页区块') }}</strong><label class="checkbox-label"><input v-model="block.enabled" type="checkbox" :disabled="homepageBusy" /> {{ t('启用') }}</label><select v-model="block.kind" :disabled="homepageBusy" :aria-label="t('区块类型')"><option v-for="kind in homepageKinds" :key="kind.value" :value="kind.value">{{ t(kind.label) }}</option></select><button class="text-button" type="button" :disabled="homepageBusy || index === 0" @click="moveHomepageBlock(index, -1)">{{ t('上移') }}</button><button class="text-button" type="button" :disabled="homepageBusy || index === homepageBlocks.length - 1" @click="moveHomepageBlock(index, 1)">{{ t('下移') }}</button><button class="text-button danger-text" type="button" :disabled="homepageBusy" @click="removeHomepageBlock(index)">{{ t('删除') }}</button></div>
+      <div v-if="block.kind === 'showcase'" class="showcase-image-editor"><label class="binding-field"><span>{{ t('展示图片地址') }}</span><input :value="block.image?.startsWith('data:') ? '' : block.image" @input="block.image = ($event.target as HTMLInputElement).value" :disabled="homepageBusy" :placeholder="t('HTTPS URL 或站内资源路径')" /></label><label class="binding-field"><span>{{ t('上传展示图片') }}</span><input type="file" accept="image/png,image/jpeg" :disabled="homepageBusy" @change="uploadShowcase($event, block)" /></label><label class="binding-field"><span>{{ t('图片说明') }}</span><input v-model="block.imageAlt" maxlength="160" :disabled="homepageBusy" /></label><img v-if="block.image" :src="block.image" :alt="block.imageAlt || ''" class="showcase-editor-preview checkerboard" /><button v-if="block.image" class="text-button" type="button" @click="block.image = ''">{{ t('移除图片') }}</button></div>
       <IconImageField v-if="block.kind === 'intro'" v-model="block.iconImage" label="首页主标志图片" @processing="processImage" />
-      <div class="homepage-block-fields"><label class="binding-field"><span>{{ t('区块标题') }}</span><input v-model="block.title" :disabled="homepageBusy" maxlength="80" /></label><label class="binding-field"><span>{{ t('区块正文') }}</span><textarea v-model="block.body" :disabled="homepageBusy" rows="3" maxlength="1000"></textarea></label><label class="binding-field"><span>{{ t('按钮文字') }}</span><input v-model="block.buttonLabel" :disabled="homepageBusy" maxlength="40" /></label><label class="binding-field"><span>{{ t('按钮链接') }}</span><input v-model="block.buttonHref" :disabled="homepageBusy" placeholder="/login 或 https://…" /></label></div>
+      <div class="homepage-block-fields"><label class="binding-field"><span>{{ t('区块名称') }}</span><input v-model="block.name" :disabled="homepageBusy" maxlength="80" /></label><label class="binding-field"><span>{{ t('区块标题') }}</span><input v-model="block.title" :disabled="homepageBusy" maxlength="80" /></label><label class="binding-field"><span>{{ t('区块正文') }}</span><textarea v-model="block.body" :disabled="homepageBusy" rows="3" maxlength="1000"></textarea></label><label class="binding-field"><span>{{ t('按钮文字') }}</span><input v-model="block.buttonLabel" :disabled="homepageBusy" maxlength="40" /></label><label class="binding-field"><span>{{ t('按钮链接') }}</span><input v-model="block.buttonHref" :disabled="homepageBusy" placeholder="/login 或 https://…" /></label></div>
       <div v-if="block.kind === 'features'" class="homepage-feature-editor"><div class="settings-section-heading"><strong>{{ t('功能卡') }}</strong><button class="text-button" type="button" :disabled="homepageBusy || (block.features?.length || 0) >= 6" @click="addFeature(block)">{{ t('添加功能卡') }}</button></div><div v-for="(feature, featureIndex) in block.features || []" :key="featureIndex" class="homepage-feature-row"><div class="homepage-feature-icon-editor"><IconImageField v-model="feature.iconImage" label="功能卡图标图片" @processing="processImage" /><label class="binding-field"><span>{{ t('备用图标文本') }}</span><input v-model="feature.icon" maxlength="4" :placeholder="t('留空使用默认线条图标')" /></label></div><label class="binding-field"><span>{{ t('卡片标题') }}</span><input v-model="feature.title" :disabled="homepageBusy" maxlength="80" /></label><label class="binding-field"><span>{{ t('卡片正文') }}</span><input v-model="feature.body" :disabled="homepageBusy" maxlength="240" /></label><label class="binding-field"><span>{{ t('卡片链接') }}</span><input v-model="feature.href" :disabled="homepageBusy" placeholder="/library" /></label><button class="text-button danger-text" type="button" :disabled="homepageBusy" @click="removeFeature(block, featureIndex)">{{ t('删除') }}</button></div></div>
     </article>
   </div>
