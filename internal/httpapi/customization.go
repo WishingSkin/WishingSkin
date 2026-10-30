@@ -47,6 +47,9 @@ func (a *Server) putSetting(ctx context.Context, tx *sql.Tx, key string, value a
 	if err != nil {
 		return err
 	}
+	if err := a.captureSettingChange(ctx, tx, key, string(data)); err != nil {
+		return err
+	}
 	query := "INSERT INTO settings(setting_key,value) VALUES(?,?) ON CONFLICT(setting_key) DO UPDATE SET value=EXCLUDED.value"
 	if a.s.Dialect == "mysql" {
 		query = "INSERT INTO settings(setting_key,value) VALUES(?,?) ON DUPLICATE KEY UPDATE value=VALUES(value)"
@@ -241,6 +244,7 @@ func (a *Server) registerCustomization() {
 	a.mux.HandleFunc("PATCH /api/admin/homepage", a.updateHomepage)
 	a.mux.HandleFunc("GET /api/admin/homepage", a.adminHomepage)
 	a.mux.HandleFunc("GET /api/homepage/background", a.homepageBackgroundImage)
+	a.mux.HandleFunc("GET /api/homepage/blocks/{id}/image", a.homepageBlockImage)
 	a.mux.HandleFunc("GET /api/admin/login-image", a.adminLoginImage)
 	a.mux.HandleFunc("PATCH /api/admin/login-image", a.updateLoginImage)
 	a.mux.HandleFunc("GET /api/login/image", a.loginImageFile)

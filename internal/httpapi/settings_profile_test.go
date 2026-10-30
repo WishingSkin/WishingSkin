@@ -27,6 +27,18 @@ func TestEncryptedServicesBothDatabases(t *testing.T) {
 			if strings.Contains(raw, "only-in-ciphertext") || strings.Contains(raw, "never-return-this-secret") {
 				t.Fatal("plaintext secret stored")
 			}
+			for _, path := range []string{"/api/admin/events", "/api/admin/events/export"} {
+				audit := f.call(3, "GET", path, nil)
+				webStatus(t, audit, 200)
+				for _, private := range []string{"only-in-ciphertext", "never-return-this-secret", "mail@example.test", "qa@example.test"} {
+					if strings.Contains(audit.Body.String(), private) {
+						t.Fatal("audit exposed private configuration")
+					}
+				}
+				if !strings.Contains(audit.Body.String(), "services.smtpPassword") || !strings.Contains(audit.Body.String(), "services.turnstileSecret") {
+					t.Fatal("audit omitted credential update markers")
+				}
+			}
 			body["password"] = ""
 			body["secret"] = ""
 			body["from"] = "updated@example.test"
@@ -37,6 +49,9 @@ func TestEncryptedServicesBothDatabases(t *testing.T) {
 			}
 			view := f.call(3, "GET", "/api/admin/services", nil)
 			webStatus(t, view, 200)
+			if !strings.Contains(view.Body.String(), `"from":"updated@example.test"`) {
+				t.Fatal("SMTP sender was not returned to the settings form")
+			}
 			if !strings.Contains(view.Body.String(), `"testRecipient":"qa@example.test"`) {
 				t.Fatal("SMTP test recipient was not persisted", view.Body)
 			}

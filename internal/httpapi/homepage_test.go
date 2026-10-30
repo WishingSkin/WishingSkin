@@ -112,3 +112,50 @@ func TestHomepageIconAddressesBothDatabases(t *testing.T) {
 		})
 	}
 }
+
+func TestHomepageShowcaseBothDatabases(t *testing.T) {
+	for _, dialect := range []string{"mysql", "postgres"} {
+		t.Run(dialect, func(t *testing.T) {
+			f := newManagementApp(t, dialect)
+			img := image.NewNRGBA(image.Rect(0, 0, 80, 40))
+			img.Set(20, 10, color.NRGBA{R: 100, A: 80})
+			var data bytes.Buffer
+			if err := png.Encode(&data, img); err != nil {
+				t.Fatal(err)
+			}
+			body := homepageSettings{Blocks: []homepageBlock{{ID: "gallery-one", Name: "Internal section", Kind: "showcase", Enabled: true, Title: "First", Body: "Line one\nLine two", Image: "data:image/png;base64," + base64.StdEncoding.EncodeToString(data.Bytes()), ImageAlt: "Artwork"}, {ID: "gallery-two", Name: "Second section", Kind: "showcase", Enabled: true, Title: "Second", Body: "Second paragraph"}}}
+			webStatus(t, f.call(3, "PATCH", "/api/admin/homepage", body), 200)
+			var saved homepageSettings
+			w := f.call(3, "GET", "/api/admin/homepage", nil)
+			webStatus(t, w, 200)
+			if err := json.Unmarshal(w.Body.Bytes(), &saved); err != nil || saved.Blocks[0].Name != "Internal section" || len(saved.Blocks) != 2 {
+				t.Fatal("showcase settings roundtrip", err)
+			}
+			var site struct{ Homepage homepageSettings }
+			w = f.call(0, "GET", "/api/site", nil)
+			webStatus(t, w, 200)
+			if err := json.Unmarshal(w.Body.Bytes(), &site); err != nil || strings.Contains(w.Body.String(), "data:image/png") || site.Homepage.Blocks[0].Name != "" {
+				t.Fatal("public image payload", err)
+			}
+			w = f.call(0, "GET", site.Homepage.Blocks[0].Image, nil)
+			webStatus(t, w, 200)
+			decoded, err := png.Decode(bytes.NewReader(w.Body.Bytes()))
+			if err != nil {
+				t.Fatal(err)
+			}
+			if decoded.Bounds().Dx() != 80 || decoded.Bounds().Dy() != 40 {
+				t.Fatal("image aspect changed")
+			}
+			_, _, _, alpha := decoded.At(20, 10).RGBA()
+			if alpha == 0 || alpha == 65535 {
+				t.Fatal("PNG transparency lost")
+			}
+			webStatus(t, f.call(3, "PATCH", "/api/admin/homepage", saved), 200)
+			saved.Blocks[0].Enabled = false
+			webStatus(t, f.call(3, "PATCH", "/api/admin/homepage", saved), 200)
+			webStatus(t, f.call(0, "GET", site.Homepage.Blocks[0].Image, nil), 404)
+			saved.Blocks[0].Image = "javascript:alert(1)"
+			webStatus(t, f.call(3, "PATCH", "/api/admin/homepage", saved), 400)
+		})
+	}
+}

@@ -15,6 +15,7 @@ import (
 	"strings"
 
 	"wishingskin/internal/mailer"
+	"wishingskin/internal/store"
 	"wishingskin/internal/turnstile"
 )
 
@@ -154,6 +155,7 @@ func (a *Server) updateServices(w http.ResponseWriter, r *http.Request) {
 		failure(w, 503, "无法解密服务设置，请检查本地设置密钥")
 		return
 	}
+	previous := value
 	value.SMTPEnabled = body.SMTPEnabled
 	value.Address = strings.TrimSpace(body.Address)
 	value.From = strings.TrimSpace(body.From)
@@ -191,6 +193,16 @@ func (a *Server) updateServices(w http.ResponseWriter, r *http.Request) {
 	if value.TurnstileEnabled && (value.SiteKey == "" || value.Secret == "" || len(value.SiteKey) > 256 || len(value.Secret) > 256) {
 		failure(w, 400, "Turnstile 的站点密钥和秘密密钥须成对填写")
 		return
+	}
+	a.auditJSON(r.Context(), "services", map[string]any{"smtpEnabled": previous.SMTPEnabled, "address": previous.Address, "tlsMode": previous.TLSMode, "turnstileEnabled": previous.TurnstileEnabled}, map[string]any{"smtpEnabled": value.SMTPEnabled, "address": value.Address, "tlsMode": value.TLSMode, "turnstileEnabled": value.TurnstileEnabled})
+	if previous.From != value.From {
+		store.CaptureAdminChange(r.Context(), "services.from", "", "发件人已更新")
+	}
+	if previous.Password != value.Password {
+		store.CaptureAdminChange(r.Context(), "services.smtpPassword", "", "凭据已更新")
+	}
+	if previous.Secret != value.Secret {
+		store.CaptureAdminChange(r.Context(), "services.turnstileSecret", "", "凭据已更新")
 	}
 	data, _ := json.Marshal(value)
 	block, _ := aes.NewCipher(a.cfg.SettingsKey)

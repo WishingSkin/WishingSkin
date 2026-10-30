@@ -7,6 +7,7 @@ import (
 	"encoding/base64"
 	"encoding/json"
 	"errors"
+	"fmt"
 	"html/template"
 	"net/http"
 	"net/url"
@@ -15,6 +16,7 @@ import (
 	"strconv"
 	"strings"
 	"time"
+	"wishingskin/internal/store"
 )
 
 type oauthClient struct {
@@ -112,6 +114,7 @@ func (a *Server) saveOAuthClient(w http.ResponseWriter, r *http.Request) {
 	id := r.PathValue("id")
 	fresh := id == ""
 	issued := ""
+	var previous oauthClient
 	var err error
 	if fresh {
 		id, err = randomUUID()
@@ -125,10 +128,15 @@ func (a *Server) saveOAuthClient(w http.ResponseWriter, r *http.Request) {
 			failure(w, 404, "应用不存在")
 			return
 		}
+		previous = old
 		v.Public = old.Public
 		v.SecretHash = old.SecretHash
 	}
 	v.ID = id
+	a.auditJSON(r.Context(), "oauth", map[string]any{"name": previous.Name, "enabled": previous.Enabled, "public": previous.Public}, map[string]any{"name": v.Name, "enabled": v.Enabled, "public": v.Public})
+	if fmt.Sprint(previous.Redirects) != fmt.Sprint(v.Redirects) {
+		store.CaptureAdminChange(r.Context(), "oauth.redirects", "", "回调地址已更新")
+	}
 	raw, _ := json.Marshal(v.Redirects)
 	if err == nil {
 		if fresh {

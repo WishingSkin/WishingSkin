@@ -124,6 +124,7 @@ func (a *Server) updatePointRules(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	if err == nil {
+		a.auditJSON(r.Context(), "points", map[string]any{"enabled": old.Enabled, "dailyReward": old.DailyReward, "uploadCost": old.UploadCost, "characterCost": old.CharacterCost}, map[string]any{"enabled": rules.Enabled, "dailyReward": rules.DailyReward, "uploadCost": rules.UploadCost, "characterCost": rules.CharacterCost})
 		raw, _ := json.Marshal(rules)
 		_, err = tx.ExecContext(r.Context(), a.s.Bind("UPDATE settings SET value=? WHERE setting_key='points_rules'"), string(raw))
 	}

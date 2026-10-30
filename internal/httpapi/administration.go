@@ -4,12 +4,14 @@ import (
 	"context"
 	"database/sql"
 	"encoding/csv"
+	"encoding/json"
 	"errors"
 	"fmt"
 	"net/http"
 	"strconv"
 	"strings"
 	"unicode/utf8"
+	"wishingskin/internal/store"
 )
 
 func (a *Server) registerAdministration() {
@@ -61,6 +63,7 @@ func (a *Server) beginAdminWrite(w http.ResponseWriter, r *http.Request, u User)
 		failure(w, 503, "管理操作暂不可用")
 		return nil, false
 	}
+	*r = *r.WithContext(store.WithAdminChanges(r.Context()))
 	return tx, true
 }
 
@@ -227,7 +230,7 @@ func (a *Server) updateAdminUser(w http.ResponseWriter, r *http.Request) {
 			_, err = tx.ExecContext(r.Context(), a.s.Bind("DELETE FROM account_tokens WHERE user_id=? AND purpose='verify'"), id)
 		}
 		if err == nil {
-			err = a.s.RecordAdminEvent(r.Context(), tx, u.ID, "user.verify_email", "user", strconv.FormatInt(id, 10))
+			err = a.s.RecordAdminEvent(r.Context(), tx, u.ID, "user.verify_email", "user", strconv.FormatInt(id, 10), store.AdminChange{Field: "emailVerified", Before: "false", After: "true"})
 		}
 	}
 	if err == nil && nextBanned != banned {
@@ -235,14 +238,14 @@ func (a *Server) updateAdminUser(w http.ResponseWriter, r *http.Request) {
 		if nextBanned {
 			action = "user.ban"
 		}
-		err = a.s.RecordAdminEvent(r.Context(), tx, u.ID, action, "user", strconv.FormatInt(id, 10))
+		err = a.s.RecordAdminEvent(r.Context(), tx, u.ID, action, "user", strconv.FormatInt(id, 10), store.AdminChange{Field: "banned", Before: strconv.FormatBool(banned), After: strconv.FormatBool(nextBanned)})
 	}
 	if err == nil && nextPermission != permission {
 		action := "user.demote"
 		if nextPermission >= 2 {
 			action = "user.promote"
 		}
-		err = a.s.RecordAdminEvent(r.Context(), tx, u.ID, action, "user", strconv.FormatInt(id, 10))
+		err = a.s.RecordAdminEvent(r.Context(), tx, u.ID, action, "user", strconv.FormatInt(id, 10), store.AdminChange{Field: "permission", Before: strconv.Itoa(permission), After: strconv.Itoa(nextPermission)})
 	}
 	if err == nil {
 		err = tx.Commit()
@@ -261,12 +264,13 @@ func (a *Server) hasOtherAvailableAdmin(ctx context.Context, tx *sql.Tx, id int6
 }
 
 type adminEvent struct {
-	ID         string `json:"id"`
-	ActorID    string `json:"actorId"`
-	Action     string `json:"action"`
-	TargetType string `json:"targetType"`
-	TargetID   string `json:"targetId"`
-	CreatedAt  int64  `json:"createdAt"`
+	Changes    []store.AdminChange `json:"changes,omitempty"`
+	ID         string              `json:"id"`
+	ActorID    string              `json:"actorId"`
+	Action     string              `json:"action"`
+	TargetType string              `json:"targetType"`
+	TargetID   string              `json:"targetId"`
+	CreatedAt  int64               `json:"createdAt"`
 }
 
 func adminEventFilter(w http.ResponseWriter, r *http.Request) (string, []any, bool) {
@@ -304,7 +308,7 @@ func (a *Server) adminEvents(w http.ResponseWriter, r *http.Request) {
 		failure(w, 503, "暂时无法读取管理记录")
 		return
 	}
-	rows, err := a.s.DB.QueryContext(r.Context(), a.s.Bind("SELECT event_id,actor_id,action,target_type,target_id,created_at FROM admin_events"+where+" ORDER BY created_at DESC,event_id DESC LIMIT ? OFFSET ?"), append(args, size, (page-1)*size)...)
+	rows, err := a.s.DB.QueryContext(r.Context(), a.s.Bind(adminEventSelect+where+" ORDER BY created_at DESC,event_id DESC LIMIT ? OFFSET ?"), append(args, size, (page-1)*size)...)
 	if err != nil {
 		failure(w, 503, "暂时无法读取管理记录")
 		return
@@ -314,11 +318,16 @@ func (a *Server) adminEvents(w http.ResponseWriter, r *http.Request) {
 	for rows.Next() {
 		var item adminEvent
 		var actor int64
-		if err := rows.Scan(&item.ID, &actor, &item.Action, &item.TargetType, &item.TargetID, &item.CreatedAt); err != nil {
+		var details string
+		if err := rows.Scan(&item.ID, &actor, &item.Action, &item.TargetType, &item.TargetID, &item.CreatedAt, &details); err != nil {
 			failure(w, 503, "暂时无法读取管理记录")
 			return
 		}
 		item.ActorID = strconv.FormatInt(actor, 10)
+		if err := json.Unmarshal([]byte(details), &item.Changes); err != nil {
+			failure(w, 503, "暂时无法读取管理记录")
+			return
+		}
 		items = append(items, item)
 	}
 	if rows.Err() != nil {
@@ -335,6 +344,8 @@ func csvCell(value string) string {
 	return value
 }
 
+const adminEventSelect = "SELECT event_id,actor_id,action,target_type,target_id,created_at,COALESCE((SELECT details_json FROM admin_event_changes c WHERE c.event_id=admin_events.event_id),'[]') FROM admin_events"
+
 func (a *Server) exportAdminEvents(w http.ResponseWriter, r *http.Request) {
 	if _, ok := a.adminRead(w, r); !ok {
 		return
@@ -343,7 +354,7 @@ func (a *Server) exportAdminEvents(w http.ResponseWriter, r *http.Request) {
 	if !ok {
 		return
 	}
-	rows, err := a.s.DB.QueryContext(r.Context(), a.s.Bind("SELECT event_id,actor_id,action,target_type,target_id,created_at FROM admin_events"+where+" ORDER BY created_at DESC,event_id DESC"), args...)
+	rows, err := a.s.DB.QueryContext(r.Context(), a.s.Bind(adminEventSelect+where+" ORDER BY created_at DESC,event_id DESC"), args...)
 	if err != nil {
 		failure(w, 503, "暂时无法导出管理记录")
 		return
@@ -353,16 +364,16 @@ func (a *Server) exportAdminEvents(w http.ResponseWriter, r *http.Request) {
 	w.Header().Set("Content-Disposition", `attachment; filename="wishingskin-admin-events.csv"`)
 	writer := csv.NewWriter(w)
 	_, _ = w.Write([]byte{0xEF, 0xBB, 0xBF})
-	if err := writer.Write([]string{"id", "actor_id", "action", "target_type", "target_id", "created_at"}); err != nil {
+	if err := writer.Write([]string{"id", "actor_id", "action", "target_type", "target_id", "created_at", "changes"}); err != nil {
 		return
 	}
 	for rows.Next() {
-		var id, action, targetType, targetID string
+		var id, action, targetType, targetID, details string
 		var actor, created int64
-		if err := rows.Scan(&id, &actor, &action, &targetType, &targetID, &created); err != nil {
+		if err := rows.Scan(&id, &actor, &action, &targetType, &targetID, &created, &details); err != nil {
 			return
 		}
-		if err := writer.Write([]string{csvCell(id), fmt.Sprintf("%d", actor), csvCell(action), csvCell(targetType), csvCell(targetID), fmt.Sprintf("%d", created)}); err != nil {
+		if err := writer.Write([]string{csvCell(id), fmt.Sprintf("%d", actor), csvCell(action), csvCell(targetType), csvCell(targetID), fmt.Sprintf("%d", created), csvCell(details)}); err != nil {
 			return
 		}
 	}

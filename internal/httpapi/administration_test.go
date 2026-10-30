@@ -195,3 +195,48 @@ func TestAdministrationRollbackAndActorRecheckBothDatabases(t *testing.T) {
 		})
 	}
 }
+
+func TestAdministrationChangeDetailsBothDatabases(t *testing.T) {
+	for _, dialect := range []string{"mysql", "postgres"} {
+		t.Run(dialect, func(t *testing.T) {
+			f := newManagementApp(t, dialect)
+			webStatus(t, f.call(3, "PATCH", "/api/admin/branding", map[string]string{"name": "Updated site", "tagline": "New tagline"}), 200)
+			webStatus(t, f.call(3, "PATCH", "/api/admin/settings", map[string]int{"characterLimit": 7}), 200)
+			webStatus(t, f.call(3, "PATCH", "/api/admin/users/1", map[string]bool{"banned": true}), 204)
+			w := f.call(3, "GET", "/api/admin/events", nil)
+			webStatus(t, w, 200)
+			var list struct{ Events []adminEvent }
+			if err := json.Unmarshal(w.Body.Bytes(), &list); err != nil {
+				t.Fatal(err)
+			}
+			found := map[string]bool{}
+			for _, event := range list.Events {
+				for _, change := range event.Changes {
+					if change.Field == "site_name" && change.After == "Updated site" {
+						found[change.Field] = true
+					}
+					if change.Field == "character_limit" && change.Before == "1" && change.After == "7" {
+						found[change.Field] = true
+					}
+					if change.Field == "banned" && change.Before == "false" && change.After == "true" {
+						found[change.Field] = true
+					}
+				}
+			}
+			if len(found) != 3 {
+				t.Fatal("field changes missing", found)
+			}
+			w = f.call(3, "GET", "/api/admin/events/export", nil)
+			webStatus(t, w, 200)
+			if !strings.Contains(w.Body.String(), "changes") || !strings.Contains(w.Body.String(), "Updated site") {
+				t.Fatal("CSV lacks changes")
+			}
+			f.exec("ALTER TABLE admin_event_changes RENAME COLUMN details_json TO unavailable_details")
+			webStatus(t, f.call(3, "PATCH", "/api/admin/settings", map[string]int{"characterLimit": 8}), 503)
+			var limit string
+			if err := f.db.DB.QueryRow("SELECT value FROM settings WHERE setting_key='character_limit'").Scan(&limit); err != nil || limit != "7" {
+				t.Fatal("detail failure committed setting", limit, err)
+			}
+		})
+	}
+}

@@ -223,13 +223,18 @@ func (a *Server) bindTexture(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	var body struct {
-		RecordID string `json:"recordId"`
+		RecordID string  `json:"recordId"`
+		Model    *string `json:"model"`
 	}
 	if !decode(w, r, &body) {
 		return
 	}
 	if body.RecordID != "" && !recordIDPattern.MatchString(body.RecordID) {
 		failure(w, 400, "材质记录无效")
+		return
+	}
+	if body.Model != nil && (kind != "skin" || body.RecordID == "" || (*body.Model != "default" && *body.Model != "slim")) {
+		failure(w, 400, "请选择标准或纤细手臂模型")
 		return
 	}
 	tx, err := a.s.DB.BeginTx(r.Context(), nil)
@@ -274,6 +279,9 @@ func (a *Server) bindTexture(w http.ResponseWriter, r *http.Request) {
 				return
 			}
 		}
+	}
+	if body.Model != nil {
+		model = *body.Model
 	}
 	query := "UPDATE characters SET skin_hash=?,model=? WHERE id=? AND user_id=?"
 	args := []any{fileHash, model, id, u.ID}
@@ -576,7 +584,14 @@ func (a *Server) updateAdminSettings(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	defer tx.Rollback()
-	_, err := tx.ExecContext(r.Context(), a.s.Bind(query), "character_limit", strconv.FormatInt(body.CharacterLimit, 10))
+	var previous string
+	err := tx.QueryRowContext(r.Context(), "SELECT value FROM settings WHERE setting_key='character_limit'").Scan(&previous)
+	if err != nil {
+		failure(w, 503, "暂时无法读取站点设置")
+		return
+	}
+	a.auditChange(r.Context(), "character_limit", previous, strconv.FormatInt(body.CharacterLimit, 10))
+	_, err = tx.ExecContext(r.Context(), a.s.Bind(query), "character_limit", strconv.FormatInt(body.CharacterLimit, 10))
 	if err == nil {
 		err = a.s.RecordAdminEvent(r.Context(), tx, u.ID, "settings.character_limit", "site", "character_limit")
 	}

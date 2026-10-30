@@ -13,6 +13,7 @@ import (
 	"regexp"
 	"strings"
 	"time"
+	"wishingskin/internal/store"
 
 	mysql "github.com/go-sql-driver/mysql"
 	"golang.org/x/crypto/bcrypt"
@@ -142,6 +143,28 @@ func (a *Server) updateConnectors(w http.ResponseWriter, r *http.Request) {
 		} else {
 			failure(w, 400, "连接器类型无效")
 			return
+		}
+	}
+	project := func(items []connectorConfig) any {
+		result := map[string]any{}
+		for _, item := range items {
+			result[item.ID] = map[string]any{"name": item.Name, "kind": item.Kind, "enabled": item.Enabled, "table": item.Table, "idColumn": item.IDColumn, "nameColumn": item.NameColumn, "passwordColumn": item.PasswordColumn}
+		}
+		return result
+	}
+	a.auditJSON(r.Context(), "connectors", project(old), project(body.Connectors))
+	for _, item := range body.Connectors {
+		var saved connectorConfig
+		for _, v := range old {
+			if v.ID == item.ID {
+				saved = v
+			}
+		}
+		if item.APIKey != saved.APIKey || item.DSN != saved.DSN {
+			store.CaptureAdminChange(r.Context(), "connectors."+item.ID+".credentials", "", "凭据已更新")
+		}
+		if item.Endpoint != saved.Endpoint {
+			store.CaptureAdminChange(r.Context(), "connectors."+item.ID+".endpoint", "", "地址已更新")
 		}
 	}
 	sealed, err := a.sealOIDC(body.Connectors, "connectors")

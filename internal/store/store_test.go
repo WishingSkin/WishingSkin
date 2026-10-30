@@ -64,6 +64,10 @@ func assertEmbeddedSchemasAgree(t *testing.T, migration string) {
 		if migration == "009_legacy_reports" {
 			source = strings.ReplaceAll(source, "LONGTEXT", "TEXT")
 		}
+		// PostgreSQL TEXT and MySQL MEDIUMTEXT both support large audit details.
+		if migration == "019_admin_event_changes" {
+			source = strings.ReplaceAll(source, "MEDIUMTEXT", "TEXT")
+		}
 		source = mysqlOptions.ReplaceAllString(source, "")
 		source = ownerIndex.ReplaceAllString(source, "")
 		// InnoDB creates this index for the foreign key automatically.
@@ -76,6 +80,9 @@ func assertEmbeddedSchemasAgree(t *testing.T, migration string) {
 		t.Fatal("MySQL and PostgreSQL schema definitions differ")
 	}
 	tables := []string{"ygg_join_sessions"}
+	if migration == "019_admin_event_changes" {
+		tables = []string{"admin_event_changes"}
+	}
 	if migration == "017_account_integrations" {
 		tables = []string{"oauth_clients", "oauth_codes", "oauth_tokens", "external_identities"}
 	}

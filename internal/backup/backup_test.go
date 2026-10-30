@@ -84,6 +84,7 @@ func seed(t *testing.T, dialect string) (*store.Store, string) {
 	exec("INSERT INTO site_notices(notice_id,content,format,created_at) VALUES(?,?,?,?)", "synthetic-notice", "**Backup notice**", "markdown", 1760000000000)
 	exec("UPDATE settings SET value=? WHERE setting_key='character_limit'", "3")
 	exec("INSERT INTO admin_events(event_id,actor_id,action,target_type,target_id,created_at) VALUES(?,?,?,?,?,?)", strings.Repeat("a", 32), uid, "fixture", "user", "1", 1700000000)
+	exec("INSERT INTO admin_event_changes(event_id,details_json) VALUES(?,?)", strings.Repeat("a", 32), "[{\"field\":\"name\",\"before\":\"Old\",\"after\":\"New\"}]")
 	exec("INSERT INTO reports(report_id,reporter_id,record_id,texture_name,reason,status,resolution,reply,reviewer_id,created_at,resolved_at) VALUES(?,?,?,?,?,?,?,?,?,?,?)", strings.Repeat("b", 32), uid, record, "Backup fixture", "Fixture reason", "pending", "", "", nil, 1700000000, 0)
 	exec("INSERT INTO point_entries(entry_id,user_id,kind,reference_id,delta,balance_after,created_at) VALUES(?,?,?,?,?,?,?)", strings.Repeat("c", 32), uid, "checkin", "2026-10-23", 10, int64(9007199254740993), 1700000000)
 	exec("INSERT INTO legacy_reports(id,tid,uploader,reporter,reason,status,report_at) VALUES(9007199254740993,99999,77777,88888,?,0,NULL),(2,0,-1,0,'zero date',2,'0000-00-00 00:00:00')", "History <script>literal</script>\n"+strings.Repeat("旧", 24000))

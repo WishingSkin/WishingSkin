@@ -7,6 +7,7 @@ import (
 	"regexp"
 	"strings"
 	"unicode/utf8"
+	"wishingskin/internal/store"
 )
 
 var providerIDPattern = regexp.MustCompile(`^[a-z][a-z0-9-]{0,31}$`)
@@ -141,6 +142,25 @@ func (a *Server) updateOIDCProviders(w http.ResponseWriter, r *http.Request) {
 		}
 		anyEnabled = anyEnabled || v.Enabled
 		values = append(values, v)
+	}
+	project := func(items []OIDCSettings) any {
+		result := map[string]any{}
+		for _, item := range items {
+			result[item.ID] = map[string]any{"name": item.Name, "enabled": item.Enabled, "issuer": item.Issuer, "clientId": item.ClientID}
+		}
+		return result
+	}
+	a.auditJSON(r.Context(), "oidc", project(old), project(values))
+	for _, item := range values {
+		previous := ""
+		for _, saved := range old {
+			if saved.ID == item.ID {
+				previous = saved.ClientSecret
+			}
+		}
+		if previous != item.ClientSecret {
+			store.CaptureAdminChange(r.Context(), "oidc."+item.ID+".clientSecret", "", "凭据已更新")
+		}
 	}
 	first, err := a.sealOIDC(values[0], "config")
 	if err == nil {

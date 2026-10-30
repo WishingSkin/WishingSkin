@@ -28,6 +28,7 @@ var tables = []table{
 	{"site_notices", "notice_id,content,format,created_at", "sssi", "notice_id"},
 	{"migration_state", "id,source_fingerprint,status,report", "isss", "id"},
 	{"admin_events", "event_id,actor_id,action,target_type,target_id,created_at", "sisssi", "event_id"},
+	{"admin_event_changes", "event_id,details_json", "ss", "event_id"},
 	{"reports", "report_id,reporter_id,record_id,texture_name,reason,status,resolution,reply,reviewer_id,created_at,resolved_at", "sissssssIii", "report_id"},
 	{"point_entries", "entry_id,user_id,kind,reference_id,delta,balance_after,created_at", "sissiii", "entry_id"},
 	{"legacy_reports", "id,tid,uploader,reporter,reason,status,report_at", "iiiisiS", "id"},

@@ -10,6 +10,7 @@ import (
 	"strings"
 	"unicode/utf8"
 	"wishingskin/internal/securebox"
+	"wishingskin/internal/store"
 	sdk "wishingskin/pkg/plugin"
 )
 
@@ -224,6 +225,15 @@ func (a *Server) updateCommunitySettings(w http.ResponseWriter, r *http.Request)
 	if len(body) != 0 {
 		failure(w, 400, "插件配置包含未声明的字段")
 		return
+	}
+	for _, field := range state.Manifest.Settings {
+		if fmt.Sprint(previous[field.Key]) != fmt.Sprint(next[field.Key]) {
+			if field.Type == "secret" || field.Type == "string" || field.Type == "text" {
+				store.CaptureAdminChange(r.Context(), "plugin."+field.Key, "", "配置已更新")
+			} else {
+				a.auditChange(r.Context(), "plugin."+field.Key, previous[field.Key], next[field.Key])
+			}
+		}
 	}
 	data, err := json.Marshal(next)
 	var sealed string

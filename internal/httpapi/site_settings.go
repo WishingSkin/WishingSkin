@@ -2,6 +2,8 @@ package httpapi
 
 import (
 	"context"
+	"database/sql"
+	"errors"
 	"net/http"
 	"strings"
 	"unicode"
@@ -101,6 +103,13 @@ func (a *Server) updateSiteBranding(w http.ResponseWriter, r *http.Request) {
 		if err != nil {
 			break
 		}
+		var previous string
+		readErr := tx.QueryRowContext(r.Context(), a.s.Bind("SELECT value FROM settings WHERE setting_key=?"), field.key).Scan(&previous)
+		if readErr != nil && !errors.Is(readErr, sql.ErrNoRows) {
+			err = readErr
+			break
+		}
+		a.auditChange(r.Context(), field.key, previous, field.value)
 		if _, err = tx.ExecContext(r.Context(), a.s.Bind(query), field.key, field.value); err != nil {
 			break
 		}

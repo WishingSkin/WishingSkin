@@ -232,6 +232,18 @@ func TestTextureManagementBothDatabases(t *testing.T) {
 				webStatus(t, f.call(user, "PUT", path, map[string]string{"recordId": recordID}), want)
 			}
 			bind(1, first.ID, 204)
+			for _, model := range []string{"default", "slim"} {
+				webStatus(t, f.call(1, "PUT", path, map[string]string{"recordId": first.ID, "model": model}), 204)
+				var applied, original string
+				if err := f.db.DB.QueryRow(f.db.Bind("SELECT model FROM characters WHERE id=?"), c.ID).Scan(&applied); err != nil || applied != model {
+					t.Fatal("character model override not applied", applied, err)
+				}
+				if err := f.db.DB.QueryRow(f.db.Bind("SELECT model FROM texture_records WHERE record_id=?"), first.ID).Scan(&original); err != nil || original != "slim" {
+					t.Fatal("upload model changed", original, err)
+				}
+			}
+			webStatus(t, f.call(1, "PUT", path, map[string]string{"recordId": first.ID, "model": "invalid"}), 400)
+			webStatus(t, f.call(1, "PUT", path, map[string]string{"recordId": "", "model": "slim"}), 400)
 			bind(1, first.ID, 204)
 			bind(1, second.ID, 404)
 			bind(2, first.ID, 404)

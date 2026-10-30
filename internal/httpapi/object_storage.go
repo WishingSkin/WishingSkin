@@ -10,6 +10,7 @@ import (
 	"time"
 	"wishingskin/internal/securebox"
 	localstorage "wishingskin/internal/storage"
+	"wishingskin/internal/store"
 	blob "wishingskin/pkg/storage"
 )
 
@@ -71,6 +72,10 @@ func (a *Server) updateObjectStorage(w http.ResponseWriter, r *http.Request) {
 	if localstorage.ValidateS3(body) != nil {
 		failure(w, 400, "请填写有效的 S3 地址、存储桶和访问凭据")
 		return
+	}
+	a.auditJSON(r.Context(), "objectStorage", map[string]any{"endpoint": previous.Endpoint, "region": previous.Region, "bucket": previous.Bucket, "prefix": previous.Prefix}, map[string]any{"endpoint": body.Endpoint, "region": body.Region, "bucket": body.Bucket, "prefix": body.Prefix})
+	if previous.AccessKey != body.AccessKey || previous.SecretKey != body.SecretKey {
+		store.CaptureAdminChange(r.Context(), "objectStorage.credentials", "", "凭据已更新")
 	}
 	data, err := json.Marshal(body)
 	var sealed string

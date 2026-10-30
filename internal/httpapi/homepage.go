@@ -22,6 +22,9 @@ type homepageFeature struct {
 }
 
 type homepageBlock struct {
+	Name        string            `json:"name,omitempty"`
+	Image       string            `json:"image,omitempty"`
+	ImageAlt    string            `json:"imageAlt,omitempty"`
 	IconImage   string            `json:"iconImage,omitempty"`
 	ID          string            `json:"id"`
 	Kind        string            `json:"kind"`
@@ -73,7 +76,7 @@ func (a *Server) updateHomepage(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	var body homepageSettings
-	if !decodeLimit(w, r, &body, 4<<20) {
+	if !decodeLimit(w, r, &body, 12<<20) {
 		return
 	}
 	if err := validateHomepage(body); err != nil {
@@ -91,9 +94,29 @@ func (a *Server) updateHomepage(w http.ResponseWriter, r *http.Request) {
 		failure(w, 429, "图片处理繁忙，请稍后重试")
 		return
 	}
+	current, err := a.homepage(r.Context())
+	if err != nil {
+		failure(w, 503, "暂时无法读取首页设置")
+		return
+	}
+	savedImages := map[string]string{}
+	for _, block := range current.Blocks {
+		savedImages[block.ID] = block.Image
+	}
 	for i := range body.Blocks {
 		block := &body.Blocks[i]
 		var err error
+		if block.Image != "" && block.Image != savedImages[block.ID] {
+			if strings.HasPrefix(block.Image, "data:") {
+				block.Image, err = normalizeLoginImage(block.Image)
+			} else {
+				block.Image, err = normalizeHomepageIcon(block.Image)
+			}
+			if err != nil {
+				failure(w, 400, strings.ReplaceAll(err.Error(), "登录页图片", "展示图片"))
+				return
+			}
+		}
 		block.IconImage, err = normalizeHomepageIcon(block.IconImage)
 		if err == nil {
 			for j := range block.Features {
@@ -107,11 +130,6 @@ func (a *Server) updateHomepage(w http.ResponseWriter, r *http.Request) {
 			failure(w, 400, err.Error())
 			return
 		}
-	}
-	current, err := a.homepage(r.Context())
-	if err != nil {
-		failure(w, 503, "暂时无法读取首页设置")
-		return
 	}
 	// Preserve the saved JPEG when only its overlay or the blocks change.
 	if body.Background.Image != current.Background.Image {
@@ -148,16 +166,16 @@ func validateHomepage(value homepageSettings) error {
 		return errors.New("首页区块最多 8 个")
 	}
 	seen := map[string]bool{}
-	allowed := map[string]bool{"intro": true, "features": true, "notice": true, "cta": true}
+	allowed := map[string]bool{"intro": true, "features": true, "notice": true, "cta": true, "showcase": true}
 	for _, block := range value.Blocks {
 		if !homepageIDPattern.MatchString(block.ID) || seen[block.ID] || !allowed[block.Kind] {
 			return errors.New("首页区块标识或类型无效")
 		}
 		seen[block.ID] = true
-		if utf8.RuneCountInString(block.Title) > 80 || utf8.RuneCountInString(block.Body) > 1000 || utf8.RuneCountInString(block.ButtonLabel) > 40 {
+		if utf8.RuneCountInString(block.Name) > 80 || utf8.RuneCountInString(block.ImageAlt) > 160 || utf8.RuneCountInString(block.Title) > 80 || utf8.RuneCountInString(block.Body) > 1000 || utf8.RuneCountInString(block.ButtonLabel) > 40 {
 			return errors.New("首页区块文案过长")
 		}
-		for _, text := range []string{block.Title, block.Body, block.ButtonLabel} {
+		for _, text := range []string{block.Name, block.ImageAlt, block.Title, block.Body, block.ButtonLabel} {
 			if strings.ContainsAny(text, "\x00\r") {
 				return errors.New("首页区块文案包含无效字符")
 			}

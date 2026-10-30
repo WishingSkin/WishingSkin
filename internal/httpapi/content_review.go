@@ -188,20 +188,22 @@ func (a *Server) reviewTexture(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	defer tx.Rollback()
-	var hash, category, tags string
+	var hash, category, tags, previousState, previousReason string
 	err := tx.QueryRowContext(r.Context(), a.s.Bind("SELECT file_hash FROM texture_records WHERE record_id=? AND deleted=FALSE FOR UPDATE"), id).Scan(&hash)
 	if errors.Is(err, sql.ErrNoRows) {
 		failure(w, 404, "材质不存在")
 		return
 	}
 	if err == nil {
-		err = tx.QueryRowContext(r.Context(), a.s.Bind("SELECT COALESCE(m.category,''),COALESCE(m.tags,'[]') FROM texture_records r LEFT JOIN texture_metadata m ON m.record_id=r.record_id WHERE r.record_id=?"), id).Scan(&category, &tags)
+		err = tx.QueryRowContext(r.Context(), a.s.Bind("SELECT COALESCE(m.category,''),COALESCE(m.tags,'[]'),COALESCE(m.review_state,'approved'),COALESCE(m.review_reason,'') FROM texture_records r LEFT JOIN texture_metadata m ON m.record_id=r.record_id WHERE r.record_id=?"), id).Scan(&category, &tags, &previousState, &previousReason)
 	}
 	var labels []string
 	if err == nil {
 		err = json.Unmarshal([]byte(tags), &labels)
 	}
 	if err == nil {
+		a.auditChange(r.Context(), "review_state", previousState, body.State)
+		a.auditChange(r.Context(), "review_reason", previousReason, strings.TrimSpace(body.Reason))
 		err = a.putTextureMetadata(r.Context(), tx, id, category, labels, body.State, strings.TrimSpace(body.Reason))
 	}
 	if err == nil {

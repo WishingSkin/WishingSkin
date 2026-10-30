@@ -74,6 +74,12 @@ func (a *Server) setRegistration(w http.ResponseWriter, r *http.Request) {
 		failure(w, 400, "开放注册前须配置验证服务")
 		return
 	}
+	var previous string
+	if err = tx.QueryRowContext(r.Context(), "SELECT value FROM settings WHERE setting_key='registration_mode'").Scan(&previous); err != nil {
+		failure(w, 503, "暂时无法读取注册设置")
+		return
+	}
+	a.auditChange(r.Context(), "registration_mode", previous, body.Mode)
 	_, err = tx.ExecContext(r.Context(), a.s.Bind("UPDATE settings SET value=? WHERE setting_key='registration_mode'"), body.Mode)
 	if err == nil && body.EmailDomains != nil {
 		err = a.putSetting(r.Context(), tx, "registration_email_domains", *body.EmailDomains)

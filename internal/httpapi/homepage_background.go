@@ -8,6 +8,7 @@ import (
 	"image/color"
 	"image/jpeg"
 	"net/http"
+	"slices"
 	"strings"
 )
 
@@ -18,6 +19,14 @@ type homepageBackground struct {
 }
 
 func publicHomepage(value homepageSettings) homepageSettings {
+	value.Blocks = slices.Clone(value.Blocks)
+	for i := range value.Blocks {
+		if strings.HasPrefix(value.Blocks[i].Image, "data:") {
+			value.Blocks[i].Image = "/api/homepage/blocks/" + value.Blocks[i].ID + "/image?v=" + tokenHash(value.Blocks[i].Image)[:16]
+		}
+		value.Blocks[i].Name = ""
+	}
+
 	if value.Background.Image != "" {
 		value.Background.ImageURL = "/api/homepage/background?v=" + tokenHash(value.Background.Image)[:16]
 	}
@@ -44,6 +53,21 @@ func (a *Server) homepageBackgroundImage(w http.ResponseWriter, r *http.Request)
 		return
 	}
 	serveSettingsJPEG(w, r, value.Background.Image)
+}
+
+func (a *Server) homepageBlockImage(w http.ResponseWriter, r *http.Request) {
+	value, err := a.homepage(r.Context())
+	if err != nil {
+		failure(w, 503, "暂时无法读取首页设置")
+		return
+	}
+	for _, block := range value.Blocks {
+		if block.ID == r.PathValue("id") && block.Enabled && strings.HasPrefix(block.Image, "data:") {
+			serveSettingsImage(w, r, block.Image)
+			return
+		}
+	}
+	http.NotFound(w, r)
 }
 
 func serveSettingsJPEG(w http.ResponseWriter, r *http.Request, value string) {

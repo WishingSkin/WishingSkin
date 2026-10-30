@@ -7,6 +7,7 @@ import (
 	"strconv"
 	"strings"
 	"unicode/utf8"
+	"wishingskin/internal/store"
 )
 
 func (a *Server) registerResourceAdministration() {
@@ -135,6 +136,7 @@ func (a *Server) updateAdminCharacter(w http.ResponseWriter, r *http.Request) {
 		failure(w, 503, "管理操作暂不可用")
 		return
 	}
+	oldName, oldSkin, oldCape := name, skin, cape
 	var actions []string
 	if body.Name != nil && *body.Name != name {
 		name = *body.Name
@@ -161,7 +163,11 @@ func (a *Server) updateAdminCharacter(w http.ResponseWriter, r *http.Request) {
 		if err != nil {
 			break
 		}
-		err = a.s.RecordAdminEvent(r.Context(), tx, u.ID, action, "character", strconv.FormatInt(id, 10))
+		err = a.s.RecordAdminEvent(r.Context(), tx, u.ID, action, "character", strconv.FormatInt(id, 10), map[string]store.AdminChange{
+			"character.rename":     {Field: "name", Before: oldName, After: name},
+			"character.clear_skin": {Field: "skin", Before: oldSkin, After: skin},
+			"character.clear_cape": {Field: "cape", Before: oldCape, After: cape},
+		}[action])
 	}
 	if err == nil {
 		err = tx.Commit()
@@ -340,6 +346,12 @@ func (a *Server) updateAdminWardrobe(w http.ResponseWriter, r *http.Request) {
 		_, err = tx.ExecContext(r.Context(), a.s.Bind("UPDATE wardrobe SET display_name=? WHERE user_id=? AND record_id=?"), body.Name, owner, record)
 	}
 	if err == nil {
+		a.auditChange(r.Context(), "name", name, func() string {
+			if r.Method == http.MethodDelete {
+				return ""
+			}
+			return body.Name
+		}())
 		err = a.s.RecordAdminEvent(r.Context(), tx, u.ID, action, "wardrobe", strconv.FormatInt(owner, 10)+":"+record)
 	}
 	if err == nil {
