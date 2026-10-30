@@ -12,28 +12,31 @@ import (
 	"strings"
 	"sync"
 	"time"
+	_ "time/tzdata"
 
 	"wishingskin/internal/backup"
 	localstorage "wishingskin/internal/storage"
 )
 
 type backupSchedule struct {
-	Enabled       bool   `json:"enabled"`
-	Directory     string `json:"directory"`
-	IntervalHours int    `json:"intervalHours"`
+	Enabled   bool   `json:"enabled"`
+	Directory string `json:"directory"`
+	Time      string `json:"time"`
+	Timezone  string `json:"timezone"`
 }
 type operationStatus struct {
-	ID          string `json:"id"`
-	Kind        string `json:"kind"`
-	State       string `json:"state"`
-	StartedAt   int64  `json:"startedAt"`
-	FinishedAt  int64  `json:"finishedAt"`
-	Total       int    `json:"total"`
-	Completed   int    `json:"completed"`
-	Failed      int    `json:"failed"`
-	Bytes       int64  `json:"bytes"`
-	Destination string `json:"destination,omitempty"`
-	Message     string `json:"message,omitempty"`
+	ID            string `json:"id"`
+	Kind          string `json:"kind"`
+	State         string `json:"state"`
+	StartedAt     int64  `json:"startedAt"`
+	FinishedAt    int64  `json:"finishedAt"`
+	Total         int    `json:"total"`
+	Completed     int    `json:"completed"`
+	Failed        int    `json:"failed"`
+	Bytes         int64  `json:"bytes"`
+	Destination   string `json:"destination,omitempty"`
+	Message       string `json:"message,omitempty"`
+	ScheduledSlot string `json:"scheduledSlot,omitempty"`
 }
 type orphanFile struct {
 	Hash  string `json:"hash"`
@@ -57,12 +60,18 @@ func (a *Server) adminOperations(w http.ResponseWriter, r *http.Request) {
 	if _, ok := a.adminRead(w, r); !ok {
 		return
 	}
-	schedule := backupSchedule{IntervalHours: 24}
+	schedule := backupSchedule{}
 	cdn := cdnSettings{MaxAge: 60}
 	job := operationStatus{}
 	if _, err := a.readSetting(r.Context(), "backup_schedule", &schedule); err != nil {
 		failure(w, 503, "暂时无法读取备份设置")
 		return
+	}
+	// Old interval schedules need an explicit fixed-time selection before re-enabling.
+	if schedule.Time == "" || schedule.Timezone == "" {
+		schedule.Enabled = false
+		schedule.Time = "03:00"
+		schedule.Timezone = "Asia/Shanghai"
 	}
 	if _, err := a.readSetting(r.Context(), "cdn_config", &cdn); err != nil {
 		failure(w, 503, "暂时无法读取 CDN 设置")
@@ -114,8 +123,8 @@ func (a *Server) updateOperations(w http.ResponseWriter, r *http.Request) {
 	}
 	body.Backup.Directory = strings.TrimSpace(body.Backup.Directory)
 	body.CDN.BaseURL = strings.TrimRight(strings.TrimSpace(body.CDN.BaseURL), "/")
-	if body.Backup.IntervalHours < 1 || body.Backup.IntervalHours > 168 || body.Backup.Directory != "" && !independentBackupDirectory(a.cfg.TextureDir, body.Backup.Directory) || body.Backup.Enabled && body.Backup.Directory == "" {
-		failure(w, 400, "备份目录须为独立且已存在的绝对路径，间隔为 1–168 小时")
+	if !validBackupTime(body.Backup) || body.Backup.Directory != "" && !independentBackupDirectory(a.cfg.TextureDir, body.Backup.Directory) || body.Backup.Enabled && body.Backup.Directory == "" {
+		failure(w, 400, "请设置每日备份时间、有效时区和独立且已存在的绝对目录")
 		return
 	}
 	if body.CDN.MaxAge < 1 || body.CDN.MaxAge > 60 || body.CDN.Enabled && (!validOIDCIssuer(body.CDN.BaseURL) || len(a.cfg.SettingsKey) != 32) {
@@ -227,8 +236,8 @@ func (a *Server) persistOperation(ctx context.Context, job operationStatus) erro
 	}
 	defer tx.Rollback()
 	err = a.putSetting(ctx, tx, "storage_operation", job)
-	if err == nil && job.Kind == "backup" && job.State == "running" {
-		err = a.putSetting(ctx, tx, "backup_last_attempt", job.StartedAt)
+	if err == nil && job.Kind == "backup" && job.State == "running" && job.ScheduledSlot != "" {
+		err = a.putSetting(ctx, tx, "backup_last_scheduled_slot", job.ScheduledSlot)
 	}
 	if err == nil {
 		err = tx.Commit()
@@ -278,14 +287,14 @@ func (a *Server) startOperation(w http.ResponseWriter, r *http.Request) {
 	a.ops.mu.Lock()
 	ctx := a.ops.ctx
 	a.ops.mu.Unlock()
-	job, err := a.launchOperation(ctx, kind, body.Hashes, body.DeleteRemote, false)
+	job, err := a.launchOperation(ctx, kind, body.Hashes, body.DeleteRemote, time.Time{})
 	if err != nil {
 		failure(w, 409, "任务未开始，请检查存储启用状态、备份目录或正在执行的任务")
 		return
 	}
 	respond(w, 202, job)
 }
-func (a *Server) launchOperation(ctx context.Context, kind string, hashes []string, deleteRemote, scheduled bool) (operationStatus, error) {
+func (a *Server) launchOperation(ctx context.Context, kind string, hashes []string, deleteRemote bool, scheduledAt time.Time) (operationStatus, error) {
 	a.ops.mu.Lock()
 	if a.ops.running {
 		a.ops.mu.Unlock()
@@ -320,17 +329,19 @@ func (a *Server) launchOperation(ctx context.Context, kind string, hashes []stri
 			return operationStatus{}, errors.New("backup directory invalid")
 		}
 	}
-	if scheduled {
-		var last int64
-		_, err = a.readSetting(ctx, "backup_last_attempt", &last)
-		if err != nil || !schedule.Enabled || time.Now().Unix()-last < int64(schedule.IntervalHours)*3600 {
+	slot := ""
+	if !scheduledAt.IsZero() {
+		var last string
+		_, err = a.readSetting(ctx, "backup_last_scheduled_slot", &last)
+		slot = backupSlot(schedule, scheduledAt)
+		if err != nil || slot == "" || slot == last {
 			release()
 			reset()
 			return operationStatus{}, errors.New("backup not due")
 		}
 	}
 	id, err := randomUUID()
-	job := operationStatus{ID: id, Kind: kind, State: "running", StartedAt: time.Now().Unix()}
+	job := operationStatus{ID: id, Kind: kind, State: "running", StartedAt: time.Now().Unix(), ScheduledSlot: slot}
 	if err == nil {
 		err = a.persistOperation(ctx, job)
 	}
@@ -570,9 +581,9 @@ func (a *Server) runScheduledBackup(ctx context.Context, now time.Time) {
 	if err != nil || !schedule.Enabled {
 		return
 	}
-	var last int64
-	_, err = a.readSetting(ctx, "backup_last_attempt", &last)
-	if err != nil || now.Unix()-last < int64(schedule.IntervalHours)*3600 {
+	var last string
+	_, err = a.readSetting(ctx, "backup_last_scheduled_slot", &last)
+	if slot := backupSlot(schedule, now); err != nil || slot == "" || slot == last {
 		return
 	}
 	a.ops.mu.Lock()
@@ -582,11 +593,34 @@ func (a *Server) runScheduledBackup(ctx context.Context, now time.Time) {
 		return
 	}
 	// launchOperation holds the cross-process lease; a second process rechecks
-	// the timestamp while holding the same lease before starting another backup.
-	_, err = a.launchOperation(ctx, "backup", nil, false, true)
+	// the daily slot while holding the same lease before starting another backup.
+	_, err = a.launchOperation(ctx, "backup", nil, false, now)
 	if err != nil {
 		return
 	}
 }
 
 func (a *Server) WaitBackground() { a.ops.jobs.Wait(); a.communityRuntime.jobs.Wait() }
+
+func validBackupTime(schedule backupSchedule) bool {
+	clock, err := time.Parse("15:04", schedule.Time)
+	if err != nil || clock.Format("15:04") != schedule.Time || schedule.Timezone == "" || schedule.Timezone == "Local" {
+		return false
+	}
+	_, err = time.LoadLocation(schedule.Timezone)
+	return err == nil
+}
+
+// A local calendar day is one slot, including days with repeated or skipped hours.
+// A late startup catches up only today's slot; manual backups never consume it.
+func backupSlot(schedule backupSchedule, now time.Time) string {
+	if !schedule.Enabled || !validBackupTime(schedule) {
+		return ""
+	}
+	location, _ := time.LoadLocation(schedule.Timezone)
+	local := now.In(location)
+	if local.Format("15:04") < schedule.Time {
+		return ""
+	}
+	return schedule.Timezone + "/" + local.Format("2006-01-02")
+}

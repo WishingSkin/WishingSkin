@@ -144,7 +144,7 @@ func TestStorageOperationsBothDatabases(t *testing.T) {
 				t.Fatal("sync was not idempotent")
 			}
 			destination := t.TempDir()
-			body := map[string]any{"backup": backupSchedule{Directory: destination, IntervalHours: 24}, "cdn": cdnSettings{MaxAge: 60}}
+			body := map[string]any{"backup": backupSchedule{Directory: destination, Time: "03:00", Timezone: "UTC"}, "cdn": cdnSettings{MaxAge: 60}}
 			webStatus(t, f.call(3, "PATCH", "/api/admin/operations", body), 204)
 			webStatus(t, f.call(3, "POST", "/api/admin/operations/backup", map[string]any{}), 202)
 			job = operationResult(t, f)
@@ -159,22 +159,30 @@ func TestStorageOperationsBothDatabases(t *testing.T) {
 			if json.Unmarshal(data, &m) != nil || len(m.Files) != 1 {
 				t.Fatal("incomplete backup")
 			}
-			// Disabled schedule does not launch a backup; enabled but not due does not duplicate it.
-			f.app.runScheduledBackup(context.Background(), time.Now())
+			// Manual backups do not consume the daily scheduled slot.
+			now := time.Date(2026, 10, 30, 3, 0, 0, 0, time.UTC)
+			f.app.runScheduledBackup(context.Background(), now)
 			if after := operationResult(t, f); after.ID != job.ID {
 				t.Fatal("disabled schedule ran")
 			}
-			body["backup"] = backupSchedule{Enabled: true, Directory: destination, IntervalHours: 24}
+			body["backup"] = backupSchedule{Enabled: true, Directory: destination, Time: "03:00", Timezone: "UTC"}
 			webStatus(t, f.call(3, "PATCH", "/api/admin/operations", body), 204)
-			f.app.runScheduledBackup(context.Background(), time.Now())
+			f.app.runScheduledBackup(context.Background(), now.Add(-time.Minute))
 			if after := operationResult(t, f); after.ID != job.ID {
-				t.Fatal("schedule ignored interval")
+				t.Fatal("schedule ran before fixed time")
 			}
-			f.exec("UPDATE settings SET value='0' WHERE setting_key='backup_last_attempt'")
-			f.app.runScheduledBackup(context.Background(), time.Now())
+			f.app.runScheduledBackup(context.Background(), now)
 			after := operationResult(t, f)
 			if after.ID == job.ID || after.State != "completed" {
-				t.Fatal("due backup did not complete")
+				t.Fatal("due backup did not complete after manual backup")
+			}
+			f.app.runScheduledBackup(context.Background(), now.Add(time.Minute))
+			if duplicate := operationResult(t, f); duplicate.ID != after.ID {
+				t.Fatal("scheduled backup duplicated within day")
+			}
+			f.app.runScheduledBackup(context.Background(), now.AddDate(0, 0, 1))
+			if next := operationResult(t, f); next.ID == after.ID || next.State != "completed" {
+				t.Fatal("next daily backup did not complete")
 			}
 			stale := operationStatus{ID: "interrupted", Kind: "sync", State: "running"}
 			if err := f.app.persistOperation(context.Background(), stale); err != nil {
@@ -184,9 +192,46 @@ func TestStorageOperationsBothDatabases(t *testing.T) {
 			if recovered := operationResult(t, f); recovered.State != "failed" || recovered.FinishedAt == 0 {
 				t.Fatal("interrupted job remains running")
 			}
-			body["backup"] = backupSchedule{Enabled: true, Directory: f.app.cfg.TextureDir, IntervalHours: 24}
+			body["backup"] = backupSchedule{Enabled: true, Directory: f.app.cfg.TextureDir, Time: "03:00", Timezone: "UTC"}
 			webStatus(t, f.call(3, "PATCH", "/api/admin/operations", body), 400)
 		})
+	}
+}
+
+func TestDailyBackupTimezones(t *testing.T) {
+	schedule := backupSchedule{Enabled: true, Time: "03:00", Timezone: "Asia/Shanghai"}
+	for _, tc := range []struct{ utc, want string }{
+		{"2026-10-29T18:59:00Z", ""},
+		{"2026-10-29T19:00:00Z", "Asia/Shanghai/2026-10-30"},
+		{"2026-10-30T15:59:00Z", "Asia/Shanghai/2026-10-30"},
+		{"2026-10-30T16:00:00Z", ""},
+	} {
+		now, _ := time.Parse(time.RFC3339, tc.utc)
+		if got := backupSlot(schedule, now); got != tc.want {
+			t.Fatalf("%s: got %q, want %q", tc.utc, got, tc.want)
+		}
+	}
+	schedule.Timezone, schedule.Time = "America/Los_Angeles", "01:30"
+	first, _ := time.Parse(time.RFC3339, "2026-11-01T08:30:00Z")
+	repeated := first.Add(time.Hour)
+	if backupSlot(schedule, first) == "" || backupSlot(schedule, first) != backupSlot(schedule, repeated) {
+		t.Fatal("repeated DST hour must use the same daily slot")
+	}
+	schedule.Time = "02:30"
+	skipped, _ := time.Parse(time.RFC3339, "2026-03-08T10:00:00Z")
+	if backupSlot(schedule, skipped) == "" {
+		t.Fatal("skipped DST time must catch up after the clock advances")
+	}
+	for _, invalid := range []backupSchedule{
+		{Time: "3:00", Timezone: "UTC"},
+		{Time: "24:00", Timezone: "UTC"},
+		{Time: "03:00", Timezone: "Unknown/Zone"},
+		{Time: "03:00", Timezone: "Local"},
+		{},
+	} {
+		if validBackupTime(invalid) {
+			t.Fatal("invalid or legacy schedule accepted")
+		}
 	}
 }
 
@@ -195,7 +240,7 @@ func TestCDNBoundariesBothDatabases(t *testing.T) {
 		t.Run(dialect, func(t *testing.T) {
 			f := newManagementApp(t, dialect)
 			record := uploadedRecord(t, f.upload(1, testPNG(t, 64, 64), map[string]string{"isPublic": "true"}))
-			body := map[string]any{"backup": backupSchedule{IntervalHours: 24}, "cdn": cdnSettings{Enabled: true, BaseURL: "https://cdn.example.test", MaxAge: 60}}
+			body := map[string]any{"backup": backupSchedule{Time: "03:00", Timezone: "UTC"}, "cdn": cdnSettings{Enabled: true, BaseURL: "https://cdn.example.test", MaxAge: 60}}
 			webStatus(t, f.call(3, "PATCH", "/api/admin/operations", body), 204)
 			w := f.call(0, "GET", "/textures/"+record.FileHash, nil)
 			webStatus(t, w, 307)
