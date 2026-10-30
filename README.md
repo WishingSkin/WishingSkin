@@ -2,7 +2,7 @@
 
 面向服主自部署的开源 Minecraft 皮肤站。采用 Go 模块化单体与 Vue 3 / TypeScript / Vite，前端静态资源由后端提供，支持 MySQL 8 与 PostgreSQL。
 
-当前程序使用 schema 18。支持本地账号、邮箱验证与找回、TOTP、角色与材质管理、衣柜和公开库、标签分类、可选上传审核、Yggdrasil 外置登录、浅深主题和个性化设置。新账号默认使用递增 ID，可切换为 10 位随机数字；已有 ID 保持不变。
+当前程序使用 schema 19。支持本地账号、邮箱验证与找回、TOTP、角色与材质管理、衣柜和公开库、标签分类、可选上传审核、Yggdrasil 外置登录、浅深主题和个性化设置。新账号默认使用递增 ID，可切换为 10 位随机数字；已有 ID 保持不变。
 
 新皮肤接受 64×64、64×32、128×128、128×64 PNG，单个文件最大 8 MiB。披风使用独立尺寸规则，既有和迁入材质不按新上传规则重新校验。
 
@@ -19,6 +19,7 @@ Blessing Skin 迁移支持固定的 BS 6.0.2 与传统 yggdrasil-api 5.2.1 来�
 - [BS 来源契约](docs/bs-source-contract.md)
 - [账号与存储接入](docs/integrations.md)
 - [社区插件 SDK](docs/community-plugin-sdk.md)
+- [界面与首页设置](docs/interface-customization.md)
 - [手动验收清单](docs/manual-acceptance.md)
 - [功能矩阵与后续候选](docs/feature-matrix.md)
 - [项目边界](docs/project-brief.md)

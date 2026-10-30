@@ -1,6 +1,6 @@
 # Blessing Skin 迁移手册
 
-本手册用于把已核对的 Blessing Skin 6.0.2 数据迁入一套全新的 WishingSkin schema 18 实例。固定来源包括官方传统 `yggdrasil-api 5.2.1`，以及按树摘要固定的归档联合版 `5.2.2-0.2.5`，详见[来源契约](bs-source-contract.md)。其他版本、远程文件系统、未知插件和 BS 写入 API 不在本流程内。导入报告会保持 `partial`，这表示迁移范围受限，不表示可以直接切换生产。
+本手册用于把已核对的 Blessing Skin 6.0.2 数据迁入一套全新的 WishingSkin schema 19 实例。固定来源包括官方传统 `yggdrasil-api 5.2.1`，以及按树摘要固定的归档联合版 `5.2.2-0.2.5`，详见[来源契约](bs-source-contract.md)。其他版本、远程文件系统、未知插件和 BS 写入 API 不在本流程内。导入报告会保持 `partial`，这表示迁移范围受限，不表示可以直接切换生产。
 
 ## 迁移前的保护
 

@@ -1,6 +1,6 @@
 # 生产自部署手册
 
-本文面向第一次部署 WishingSkin 的运维人员。当前程序使用 schema 18。示例不包含真实密码、token、Client Secret 或 SMTP 凭据。部署前请为数据库、材质目录、备份目录和设置密钥安排持久化存储。
+本文面向第一次部署 WishingSkin 的运维人员。当前程序使用 schema 19。示例不包含真实密码、token、Client Secret 或 SMTP 凭据。部署前请为数据库、材质目录、备份目录和设置密钥安排持久化存储。
 
 ## 运行边界
 
