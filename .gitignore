@@ -12,3 +12,19 @@
 .env.*
 !.env.example
 *.log
+
+# Local browser captures and generated Python bytecode
+.playwright-mcp/
+__pycache__/
+*.py[cod]
+
+# Local handoff, development setup and acceptance records
+/HANDOFF.md
+/start-local-preview.cmd
+/docs/development.md
+/docs/*validation.md
+/docs/local-acceptance-*.md
+/docs/game-acceptance-progress.md
+/docs/remaining-features.md
+/docs/plans/
+/docs/superpowers/
