@@ -24,8 +24,10 @@ func (a *Server) setRegistration(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	var body struct {
-		Mode         string    `json:"mode"`
-		EmailDomains *[]string `json:"emailDomains"`
+		RandomUserIDs       *bool     `json:"randomUserIds"`
+		Mode                string    `json:"mode"`
+		EmailDomains        *[]string `json:"emailDomains"`
+		BlockedEmailDomains *[]string `json:"blockedEmailDomains"`
 	}
 	if !decode(w, r, &body) {
 		return
@@ -34,16 +36,15 @@ func (a *Server) setRegistration(w http.ResponseWriter, r *http.Request) {
 		failure(w, 400, "注册模式无效")
 		return
 	}
-	domains := []string{}
-	var err error
-	if body.EmailDomains == nil {
-		domains, err = a.registrationEmailDomains(r.Context(), a.s.DB)
-	} else {
-		domains, err = normalizeEmailDomains(*body.EmailDomains)
-	}
-	if err != nil {
-		failure(w, 400, "注册邮箱域名格式无效")
-		return
+	for _, list := range []*[]string{body.EmailDomains, body.BlockedEmailDomains} {
+		if list != nil {
+			normalized, err := normalizeEmailDomains(*list)
+			if err != nil {
+				failure(w, 400, "注册邮箱域名格式无效")
+				return
+			}
+			*list = normalized
+		}
 	}
 	services, serviceErr := a.services(r.Context())
 	if serviceErr != nil {
@@ -59,9 +60,15 @@ func (a *Server) setRegistration(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	defer tx.Rollback()
-	_, err = tx.ExecContext(r.Context(), a.s.Bind("UPDATE settings SET value=? WHERE setting_key='registration_mode'"), body.Mode)
-	if err == nil {
-		err = a.putSetting(r.Context(), tx, "registration_email_domains", domains)
+	_, err := tx.ExecContext(r.Context(), a.s.Bind("UPDATE settings SET value=? WHERE setting_key='registration_mode'"), body.Mode)
+	if err == nil && body.EmailDomains != nil {
+		err = a.putSetting(r.Context(), tx, "registration_email_domains", *body.EmailDomains)
+	}
+	if err == nil && body.BlockedEmailDomains != nil {
+		err = a.putSetting(r.Context(), tx, "registration_blocked_domains", *body.BlockedEmailDomains)
+	}
+	if err == nil && body.RandomUserIDs != nil {
+		err = a.putSetting(r.Context(), tx, "random_user_ids", *body.RandomUserIDs)
 	}
 	if err == nil && body.Mode == "invitation" {
 		err = a.putSetting(r.Context(), tx, "official_invitation", invitationOptions{Enabled: true, Required: true})

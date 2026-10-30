@@ -13,11 +13,15 @@ import (
 )
 
 func (a *Server) registerOIDC() {
+	a.mux.HandleFunc("GET /api/admin/oidc/providers", a.adminOIDCProviders)
+	a.mux.HandleFunc("PATCH /api/admin/oidc/providers", a.updateOIDCProviders)
 	a.mux.HandleFunc("GET /api/admin/oidc", a.adminOIDC)
 	a.mux.HandleFunc("PATCH /api/admin/oidc", a.updateOIDC)
 	a.mux.HandleFunc("POST /api/auth/oidc/start", a.startOIDC)
 	a.mux.HandleFunc("GET /api/auth/oidc/callback", a.callbackOIDC)
 	a.mux.HandleFunc("GET /api/auth/oidc/pending", a.pendingOIDC)
+	a.mux.HandleFunc("GET /api/auth/oidc/confirmation", a.oidcConfirmationInfo)
+	a.mux.HandleFunc("POST /api/auth/oidc/confirmation", a.confirmOIDC)
 	a.mux.HandleFunc("GET /api/account/oidc", a.accountOIDC)
 	a.mux.HandleFunc("DELETE /api/account/oidc", a.unlinkOIDC)
 }
@@ -63,6 +67,7 @@ func (a *Server) startOIDC(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	var body struct {
+		Provider string
 		Link     bool
 		Password string
 		Next     string
@@ -70,13 +75,13 @@ func (a *Server) startOIDC(w http.ResponseWriter, r *http.Request) {
 	if !decode(w, r, &body) {
 		return
 	}
-	cfg, err := a.oidcSettings(r.Context())
+	cfg, err := a.oidcSettingsFor(r.Context(), body.Provider)
 	if err != nil || !cfg.Enabled {
 		failure(w, 503, "OIDC 登录尚未启用")
 		return
 	}
-	flow := oidcFlow{Purpose: "authorize", ConfigHash: oidcFingerprint(cfg), Next: "/user"}
-	if (body.Next == "/user" || strings.HasPrefix(body.Next, "/user/")) && !strings.ContainsAny(body.Next, "\\\r\n") && len(body.Next) < 1024 {
+	flow := oidcFlow{ProviderID: cfg.ID, Purpose: "authorize", ConfigHash: oidcFingerprint(cfg), Next: "/user"}
+	if (body.Next == "/user" || strings.HasPrefix(body.Next, "/user/")) && !strings.ContainsAny(body.Next, "\\\r\n") && len(body.Next) < 4096 {
 		flow.Next = body.Next
 	}
 	if body.Link {
@@ -135,6 +140,7 @@ func (a *Server) startOIDC(w http.ResponseWriter, r *http.Request) {
 
 func (a *Server) oidcFailure(w http.ResponseWriter, r *http.Request, code string) {
 	a.oidcCookie(w, "ws_oidc_browser", "", -1)
+	a.oidcCookie(w, "ws_oidc_confirm", "", -1)
 	path := "/login"
 	if _, _, err := a.current(r); err == nil {
 		path = "/user/account/profile"
@@ -162,7 +168,7 @@ func (a *Server) callbackOIDC(w http.ResponseWriter, r *http.Request) {
 		a.oidcFailure(w, r, "cancelled")
 		return
 	}
-	cfg, err := a.oidcSettings(ctx)
+	cfg, err := a.oidcSettingsFor(ctx, flow.ProviderID)
 	if err != nil || !cfg.Enabled || oidcFingerprint(cfg) != flow.ConfigHash {
 		a.oidcFailure(w, r, "expired")
 		return
@@ -189,8 +195,45 @@ func (a *Server) callbackOIDC(w http.ResponseWriter, r *http.Request) {
 	}
 	flow.Issuer = cfg.Issuer
 	flow.Subject = id.Subject
+	var idClaims struct {
+		Name              string `json:"name"`
+		PreferredUsername string `json:"preferred_username"`
+		Email             string `json:"email"`
+		EmailVerified     bool   `json:"email_verified"`
+	}
+	_ = id.Claims(&idClaims)
+	info, err := provider.UserInfo(ctx, oauth2.StaticTokenSource(token))
+	if err != nil || info.Subject != id.Subject {
+		a.oidcFailure(w, r, "failed")
+		return
+	}
+	var profile struct {
+		Name              string `json:"name"`
+		PreferredUsername string `json:"preferred_username"`
+		EmailVerified     *bool  `json:"email_verified"`
+	}
+	if err := info.Claims(&profile); err != nil {
+		a.oidcFailure(w, r, "failed")
+		return
+	}
+	flow.Name = profile.Name
+	if flow.Name == "" {
+		flow.Name = idClaims.Name
+	}
+	flow.Username = profile.PreferredUsername
+	if flow.Username == "" {
+		flow.Username = idClaims.PreferredUsername
+	}
+	flow.Email = info.Email
+	if flow.Email == "" {
+		flow.Email = idClaims.Email
+	}
+	flow.EmailVerified = idClaims.EmailVerified
+	if profile.EmailVerified != nil {
+		flow.EmailVerified = *profile.EmailVerified
+	}
 	if flow.UserID > 0 {
-		a.finishOIDCLink(w, r, flow)
+		a.beginOIDCConfirmation(w, r, flow, "confirm_link")
 		return
 	}
 	// A login flow cannot replace a session opened in another tab.
@@ -206,13 +249,7 @@ func (a *Server) callbackOIDC(w http.ResponseWriter, r *http.Request) {
 			a.oidcFailure(w, r, "registration")
 			return
 		}
-		info, err := provider.UserInfo(ctx, oauth2.StaticTokenSource(token))
-		if err != nil || info.Subject != id.Subject {
-			a.oidcFailure(w, r, "failed")
-			return
-		}
 		flow.Purpose = "signup"
-		flow.Email = info.Email
 		flow.Nonce = ""
 		flow.Verifier = ""
 		flow.BrowserHash = ""
@@ -237,40 +274,8 @@ func (a *Server) callbackOIDC(w http.ResponseWriter, r *http.Request) {
 		a.oidcFailure(w, r, "account")
 		return
 	}
-	session, err := secret()
-	if err != nil {
-		a.oidcFailure(w, r, "failed")
-		return
-	}
-	tx, err := a.s.DB.BeginTx(ctx, &sql.TxOptions{Isolation: sql.LevelReadCommitted})
-	if err != nil {
-		a.oidcFailure(w, r, "failed")
-		return
-	}
-	defer tx.Rollback()
-	err = a.lockOIDCConfiguration(ctx, tx, flow.ConfigHash)
-	if err == nil {
-		err = a.lockAuthenticatedUser(ctx, tx, u)
-	}
-	if err == nil {
-		var linked int
-		err = tx.QueryRowContext(ctx, a.s.Bind("SELECT COUNT(*) FROM oidc_identities WHERE identity_key=? AND user_id=?"), oidcIdentityKey(flow.Issuer, flow.Subject), u.ID).Scan(&linked)
-		if err == nil && linked != 1 {
-			err = errCredentials
-		}
-	}
-	if err == nil {
-		_, err = tx.ExecContext(ctx, a.s.Bind("INSERT INTO web_sessions(token_hash,user_id,expires_at) VALUES(?,?,?)"), tokenHash(session), u.ID, time.Now().Add(24*time.Hour).Unix())
-	}
-	if err == nil {
-		err = tx.Commit()
-	}
-	if err != nil {
-		a.oidcFailure(w, r, "account")
-		return
-	}
-	a.oidcCookie(w, "ws_session", session, 86400)
-	http.Redirect(w, r, a.cfg.PublicURL+flow.Next, http.StatusSeeOther)
+	flow.UserID = u.ID
+	a.beginOIDCConfirmation(w, r, flow, "confirm_login")
 }
 
 func (a *Server) oidcUser(ctx context.Context, id int64) (User, error) {
@@ -285,50 +290,6 @@ func (a *Server) oidcUser(ctx context.Context, id int64) (User, error) {
 	return u, err
 }
 
-func (a *Server) finishOIDCLink(w http.ResponseWriter, r *http.Request, flow oidcFlow) {
-	u, token, err := a.current(r)
-	if err != nil || u.ID != flow.UserID || tokenHash(token) != flow.SessionHash {
-		a.oidcFailure(w, r, "session")
-		return
-	}
-	u.credentialHash = flow.CredentialHash
-	tx, err := a.s.DB.BeginTx(r.Context(), &sql.TxOptions{Isolation: sql.LevelReadCommitted})
-	if err != nil {
-		a.oidcFailure(w, r, "failed")
-		return
-	}
-	defer tx.Rollback()
-	err = a.lockOIDCConfiguration(r.Context(), tx, flow.ConfigHash)
-	if err == nil {
-		err = a.lockAuthenticatedUser(r.Context(), tx, u)
-	}
-	if err == nil {
-		var active int
-		err = tx.QueryRowContext(r.Context(), a.s.Bind("SELECT COUNT(*) FROM web_sessions WHERE token_hash=? AND user_id=? AND expires_at>?"), flow.SessionHash, u.ID, time.Now().Unix()).Scan(&active)
-		if err == nil && active != 1 {
-			err = errCredentials
-		}
-	}
-	if err == nil {
-		err = a.insertOIDCIdentity(r.Context(), tx, u.ID, flow)
-	}
-	if uniqueViolation(err) {
-		a.oidcFailure(w, r, "linked")
-		return
-	}
-	if err == nil {
-		err = a.s.RecordAdminEvent(r.Context(), tx, u.ID, "oidc.link", "account", "oidc")
-	}
-	if err == nil {
-		err = tx.Commit()
-	}
-	if err != nil {
-		a.oidcFailure(w, r, "failed")
-		return
-	}
-	http.Redirect(w, r, a.cfg.PublicURL+"/user/account/profile?oidcLinked=1", http.StatusSeeOther)
-}
-
 func (a *Server) accountOIDC(w http.ResponseWriter, r *http.Request) {
 	u, _, err := a.current(r)
 	if err != nil {
@@ -340,13 +301,24 @@ func (a *Server) accountOIDC(w http.ResponseWriter, r *http.Request) {
 		failure(w, 503, "无法读取 OIDC 设置，请检查设置密钥")
 		return
 	}
-	var linked int
-	err = a.s.DB.QueryRowContext(r.Context(), a.s.Bind("SELECT COUNT(*) FROM oidc_identities WHERE user_id=? AND issuer_key=?"), u.ID, tokenHash(cfg.Issuer)).Scan(&linked)
+	values, err := a.oidcConfigurations(r.Context())
 	if err != nil {
 		failure(w, 503, "暂时无法读取绑定状态")
 		return
 	}
-	respond(w, 200, map[string]any{"enabled": cfg.Enabled, "name": cfg.Name, "linked": linked > 0})
+	enabled, err := a.storedPluginEnabled(r.Context(), "wishingskin.oidc")
+	items := []map[string]any{}
+	for _, v := range values {
+		var linked int
+		err = a.s.DB.QueryRowContext(r.Context(), a.s.Bind("SELECT COUNT(*) FROM oidc_identities WHERE user_id=? AND issuer_key=?"), u.ID, tokenHash(v.Issuer)).Scan(&linked)
+		if err != nil {
+			failure(w, 503, "暂时无法读取绑定状态")
+			return
+		}
+		items = append(items, map[string]any{"id": v.ID, "name": v.Name, "enabled": v.Enabled && enabled, "linked": linked > 0})
+	}
+	result := map[string]any{"enabled": items[0]["enabled"], "linked": items[0]["linked"], "providers": items, "name": cfg.Name}
+	respond(w, 200, result)
 }
 
 func (a *Server) unlinkOIDC(w http.ResponseWriter, r *http.Request) {
@@ -362,7 +334,10 @@ func (a *Server) unlinkOIDC(w http.ResponseWriter, r *http.Request) {
 		failure(w, 429, "操作过于频繁，请稍后重试")
 		return
 	}
-	var body struct{ Password string }
+	var body struct {
+		Password string
+		Provider string
+	}
 	if !decode(w, r, &body) {
 		return
 	}
@@ -371,7 +346,7 @@ func (a *Server) unlinkOIDC(w http.ResponseWriter, r *http.Request) {
 		a.authError(w, err)
 		return
 	}
-	cfg, err := a.oidcSettings(r.Context())
+	cfg, err := a.oidcSettingsFor(r.Context(), body.Provider)
 	if err != nil {
 		failure(w, 503, "无法读取 OIDC 设置，请检查设置密钥")
 		return

@@ -20,10 +20,10 @@ import (
 )
 
 type oidcProviderFixture struct {
-	server                                  *httptest.Server
-	nonce, challenge, subject, email, fault string
-	pkceChecked                             bool
-	afterToken                              func()
+	server                                                  *httptest.Server
+	nonce, challenge, subject, email, name, username, fault string
+	pkceChecked                                             bool
+	afterToken                                              func()
 }
 
 func newOIDCProviderFixture(t *testing.T) *oidcProviderFixture {
@@ -32,7 +32,7 @@ func newOIDCProviderFixture(t *testing.T) *oidcProviderFixture {
 	if err != nil {
 		t.Fatal(err)
 	}
-	f := &oidcProviderFixture{subject: "local-subject", email: "new@example.test"}
+	f := &oidcProviderFixture{subject: "local-subject", email: "new@example.test", name: "Local Player", username: "local-player"}
 	f.server = httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		w.Header().Set("Content-Type", "application/json")
 		switch r.URL.Path {
@@ -72,7 +72,7 @@ func newOIDCProviderFixture(t *testing.T) *oidcProviderFixture {
 			token, _ := signed.CompactSerialize()
 			_ = json.NewEncoder(w).Encode(map[string]any{"access_token": "synthetic-access", "token_type": "Bearer", "expires_in": 60, "id_token": token})
 		case "/me":
-			_ = json.NewEncoder(w).Encode(map[string]any{"sub": f.subject, "email": f.email, "email_verified": true})
+			_ = json.NewEncoder(w).Encode(map[string]any{"sub": f.subject, "name": f.name, "preferred_username": f.username, "email": f.email, "email_verified": true})
 		default:
 			w.WriteHeader(404)
 		}
@@ -81,11 +81,15 @@ func newOIDCProviderFixture(t *testing.T) *oidcProviderFixture {
 	return f
 }
 
-func startOIDCTest(t *testing.T, f *managementApp, p *oidcProviderFixture, user int) (*url.URL, *http.Cookie) {
+func startOIDCTest(t *testing.T, f *managementApp, p *oidcProviderFixture, user int, provider ...string) (*url.URL, *http.Cookie) {
 	t.Helper()
 	// Independent authorization scenarios must not consume each other's IP quota.
 	f.app.loginLimit.entries = map[string]bucket{}
-	w := f.call(user, "POST", "/api/auth/oidc/start", map[string]any{"link": user > 0, "password": "Local123!", "next": "/user/materials"})
+	id := ""
+	if len(provider) > 0 {
+		id = provider[0]
+	}
+	w := f.call(user, "POST", "/api/auth/oidc/start", map[string]any{"provider": id, "link": user > 0, "password": "Local123!", "next": "/user/materials"})
 	webStatus(t, w, 200)
 	var result struct{ URL string }
 	if err := json.Unmarshal(w.Body.Bytes(), &result); err != nil {
@@ -110,6 +114,39 @@ func startOIDCTest(t *testing.T, f *managementApp, p *oidcProviderFixture, user 
 }
 
 func callbackOIDCTest(f *managementApp, u *url.URL, browser *http.Cookie, user int) *httptest.ResponseRecorder {
+	w := callbackOIDCRawTest(f, u, browser, user)
+	if !strings.Contains(w.Header().Get("Location"), "oidcConfirm=1") {
+		return w
+	}
+	var confirmation *http.Cookie
+	for _, cookie := range w.Result().Cookies() {
+		if cookie.Name == "ws_oidc_confirm" {
+			confirmation = cookie
+		}
+	}
+	if confirmation == nil {
+		f.t.Fatal("missing OIDC confirmation cookie")
+	}
+	confirmed := oidcConfirmationRequest(f, user, confirmation, "POST", `{"action":"confirm"}`)
+	webStatus(f.t, confirmed, 200)
+	var result struct {
+		Next string `json:"next"`
+	}
+	if err := json.Unmarshal(confirmed.Body.Bytes(), &result); err != nil || result.Next == "" {
+		f.t.Fatal("OIDC confirmation omitted its next path", err)
+	}
+	final := httptest.NewRecorder()
+	for _, response := range []*httptest.ResponseRecorder{w, confirmed} {
+		for _, cookie := range response.Result().Cookies() {
+			final.Header().Add("Set-Cookie", cookie.String())
+		}
+	}
+	final.Code = http.StatusSeeOther
+	final.Header().Set("Location", "http://example.test"+result.Next)
+	return final
+}
+
+func callbackOIDCRawTest(f *managementApp, u *url.URL, browser *http.Cookie, user int) *httptest.ResponseRecorder {
 	r := httptest.NewRequest("GET", "http://example.test/api/auth/oidc/callback?state="+url.QueryEscape(u.Query().Get("state"))+"&code=good", nil)
 	if browser != nil {
 		r.AddCookie(browser)
@@ -120,6 +157,187 @@ func callbackOIDCTest(f *managementApp, u *url.URL, browser *http.Cookie, user i
 	w := httptest.NewRecorder()
 	f.app.ServeHTTP(w, r)
 	return w
+}
+
+func oidcConfirmationRequest(f *managementApp, user int, confirmation *http.Cookie, method, body string) *httptest.ResponseRecorder {
+	r := httptest.NewRequest(method, "http://example.test/api/auth/oidc/confirmation", strings.NewReader(body))
+	r.Header.Set("Origin", "http://example.test")
+	r.Header.Set("Content-Type", "application/json")
+	r.AddCookie(confirmation)
+	if user > 0 {
+		session := fmt.Sprintf("%064d", user)
+		r.AddCookie(&http.Cookie{Name: "ws_session", Value: session})
+		r.Header.Set("X-CSRF-Token", csrf(session))
+	}
+	w := httptest.NewRecorder()
+	f.app.ServeHTTP(w, r)
+	return w
+}
+
+func TestMultipleOIDCProvidersBothDatabases(t *testing.T) {
+	for _, dialect := range []string{"mysql", "postgres"} {
+		t.Run(dialect, func(t *testing.T) {
+			f := newManagementApp(t, dialect)
+			first, second := newOIDCProviderFixture(t), newOIDCProviderFixture(t)
+			hash, err := credential.Hash("Local123!")
+			if err != nil {
+				t.Fatal(err)
+			}
+			f.exec("UPDATE users SET password_hash=?", hash)
+			providers := []map[string]any{
+				{"id": "", "enabled": true, "name": "First", "issuer": first.server.URL, "clientId": "test-client", "clientSecret": "synthetic-first"},
+				{"id": "second", "enabled": true, "name": "Second", "issuer": second.server.URL, "clientId": "test-client", "clientSecret": "synthetic-second"},
+			}
+			w := f.call(3, "PATCH", "/api/admin/oidc/providers", map[string]any{"providers": providers})
+			totpStatusOnly(t, w, 200)
+			if strings.Contains(w.Body.String(), "synthetic-") {
+				t.Fatal("provider secret leaked")
+			}
+			for _, scenario := range []struct {
+				p    *oidcProviderFixture
+				id   string
+				user int
+			}{{first, "", 1}, {second, "second", 2}} {
+				u, cookie := startOIDCTest(t, f, scenario.p, scenario.user, scenario.id)
+				w = callbackOIDCTest(f, u, cookie, scenario.user)
+				if !strings.Contains(w.Header().Get("Location"), "oidcLinked=1") {
+					t.Fatal("provider link failed")
+				}
+				u, cookie = startOIDCTest(t, f, scenario.p, 0, scenario.id)
+				w = callbackOIDCTest(f, u, cookie, 0)
+				if w.Header().Get("Location") != "http://example.test/user/materials" {
+					t.Fatal("provider login failed")
+				}
+				for _, c := range w.Result().Cookies() {
+					if c.Name == "ws_session" {
+						var uid int
+						err = f.db.DB.QueryRow(f.db.Bind("SELECT user_id FROM web_sessions WHERE token_hash=?"), tokenHash(c.Value)).Scan(&uid)
+						if err != nil || uid != scenario.user {
+							t.Fatal("provider identity crossed")
+						}
+					}
+				}
+			}
+			u, cookie := startOIDCTest(t, f, second, 0, "second")
+			providers[1]["enabled"] = false
+			totpStatusOnly(t, f.call(3, "PATCH", "/api/admin/oidc/providers", map[string]any{"providers": providers}), 200)
+			w = callbackOIDCTest(f, u, cookie, 0)
+			if !strings.Contains(w.Header().Get("Location"), "oidcError=") {
+				t.Fatal("disabled provider flow survived")
+			}
+		})
+	}
+}
+
+func TestOIDCConfirmationBothDatabases(t *testing.T) {
+	for _, dialect := range []string{"mysql", "postgres"} {
+		t.Run(dialect, func(t *testing.T) {
+			f := newManagementApp(t, dialect)
+			p := newOIDCProviderFixture(t)
+			hash, err := credential.Hash("Local123!")
+			if err != nil {
+				t.Fatal(err)
+			}
+			f.exec("UPDATE users SET password_hash=?", hash)
+			webStatus(t, f.call(3, "PATCH", "/api/admin/oidc", map[string]any{"enabled": true, "name": "Test Identity", "issuer": p.server.URL, "clientId": "test-client", "clientSecret": "synthetic"}), 200)
+			p.email = "provider@example.test"
+
+			u, browser := startOIDCTest(t, f, p, 3)
+			w := callbackOIDCRawTest(f, u, browser, 3)
+			if !strings.Contains(w.Header().Get("Location"), "oidcConfirm=1") {
+				t.Fatal("link callback skipped the confirmation page", w.Header().Get("Location"))
+			}
+			var confirmation *http.Cookie
+			for _, cookie := range w.Result().Cookies() {
+				if cookie.Name == "ws_oidc_confirm" {
+					confirmation = cookie
+				}
+			}
+			if confirmation == nil {
+				t.Fatal("missing link confirmation cookie")
+			}
+			var linked int
+			_ = f.db.DB.QueryRow("SELECT COUNT(*) FROM oidc_identities").Scan(&linked)
+			if linked != 0 {
+				t.Fatal("identity was linked before confirmation")
+			}
+			info := oidcConfirmationRequest(f, 3, confirmation, "GET", "")
+			webStatus(t, info, 200)
+			if strings.Contains(info.Body.String(), p.subject) || !strings.Contains(info.Body.String(), p.email) || !strings.Contains(info.Body.String(), p.name) || !strings.Contains(info.Body.String(), p.username) || !strings.Contains(info.Body.String(), "3@example.test") {
+				t.Fatal("confirmation did not expose only the human-readable provider account details", info.Body.String())
+			}
+			confirmed := oidcConfirmationRequest(f, 3, confirmation, "POST", `{"action":"confirm"}`)
+			webStatus(t, confirmed, 200)
+			_ = f.db.DB.QueryRow("SELECT COUNT(*) FROM oidc_identities WHERE user_id=3").Scan(&linked)
+			if linked != 1 {
+				t.Fatal("confirmed identity was not linked")
+			}
+			webStatus(t, oidcConfirmationRequest(f, 3, confirmation, "POST", `{"action":"confirm"}`), 401)
+
+			u, browser = startOIDCTest(t, f, p, 0)
+			w = callbackOIDCRawTest(f, u, browser, 0)
+			if !strings.Contains(w.Header().Get("Location"), "oidcConfirm=1") {
+				t.Fatal("login callback skipped the confirmation page", w.Header().Get("Location"))
+			}
+			confirmation = nil
+			for _, cookie := range w.Result().Cookies() {
+				if cookie.Name == "ws_oidc_confirm" {
+					confirmation = cookie
+				}
+				if cookie.Name == "ws_session" && cookie.MaxAge > 0 {
+					t.Fatal("local session was created before confirmation")
+				}
+			}
+			if confirmation == nil {
+				t.Fatal("missing login confirmation cookie")
+			}
+			info = oidcConfirmationRequest(f, 0, confirmation, "GET", "")
+			webStatus(t, info, 200)
+			if !strings.Contains(info.Body.String(), `"purpose":"login"`) || !strings.Contains(info.Body.String(), p.email) {
+				t.Fatal("login confirmation omitted provider account details", info.Body.String())
+			}
+			confirmed = oidcConfirmationRequest(f, 0, confirmation, "POST", `{"action":"confirm"}`)
+			webStatus(t, confirmed, 200)
+			var result struct {
+				Next string `json:"next"`
+			}
+			if err := json.Unmarshal(confirmed.Body.Bytes(), &result); err != nil || result.Next != "/user/materials" {
+				t.Fatal("confirmed login returned the wrong destination", result.Next, err)
+			}
+			var sessionCreated bool
+			for _, cookie := range confirmed.Result().Cookies() {
+				if cookie.Name == "ws_session" && cookie.MaxAge > 0 {
+					sessionCreated = true
+				}
+			}
+			if !sessionCreated {
+				t.Fatal("confirmed login did not create a local session")
+			}
+
+			u, browser = startOIDCTest(t, f, p, 0)
+			w = callbackOIDCRawTest(f, u, browser, 0)
+			confirmation = nil
+			for _, cookie := range w.Result().Cookies() {
+				if cookie.Name == "ws_oidc_confirm" {
+					confirmation = cookie
+				}
+			}
+			if confirmation == nil {
+				t.Fatal("missing cancel confirmation cookie")
+			}
+			cancelled := oidcConfirmationRequest(f, 0, confirmation, "POST", `{"action":"cancel"}`)
+			webStatus(t, cancelled, 200)
+			if !strings.Contains(cancelled.Body.String(), `"next":"/login"`) {
+				t.Fatal("cancel did not return to local sign-in", cancelled.Body.String())
+			}
+			for _, cookie := range cancelled.Result().Cookies() {
+				if cookie.Name == "ws_session" && cookie.MaxAge > 0 {
+					t.Fatal("cancelled OIDC login created a local session")
+				}
+			}
+			webStatus(t, oidcConfirmationRequest(f, 0, confirmation, "POST", `{"action":"confirm"}`), 401)
+		})
+	}
 }
 
 func TestOIDCBothDatabases(t *testing.T) {
@@ -158,9 +376,16 @@ func TestOIDCBothDatabases(t *testing.T) {
 			if w = callbackOIDCTest(f, u, nil, 3); !strings.HasSuffix(w.Header().Get("Location"), "oidcError=expired") {
 				t.Fatal("missing browser binding accepted")
 			}
+			// Linking is explicit from the current local session. The upstream
+			// email may differ from the local account email.
+			p.email = "logto@example.test"
 			w = callbackOIDCTest(f, u, cookie, 3)
 			if !strings.Contains(w.Header().Get("Location"), "oidcLinked=1") || !p.pkceChecked {
 				t.Fatal("link failed", w.Header().Get("Location"))
+			}
+			var linkedEmailCount int
+			if err := f.db.DB.QueryRow("SELECT COUNT(*) FROM oidc_identities WHERE user_id=3").Scan(&linkedEmailCount); err != nil || linkedEmailCount != 1 {
+				t.Fatal("different-email OIDC identity was not stored on the local account", err)
 			}
 			if w = callbackOIDCTest(f, u, cookie, 3); !strings.HasSuffix(w.Header().Get("Location"), "oidcError=expired") {
 				t.Fatal("state replay accepted")
@@ -218,8 +443,16 @@ func TestOIDCRegistrationRulesBothDatabases(t *testing.T) {
 		t.Run(dialect, func(t *testing.T) {
 			f, mailbox := accessApp(t, dialect)
 			f.app.cfg.OIDC = OIDCSettings{Enabled: true, Name: "Test", Issuer: "https://issuer.example.test", ClientID: "client", ClientSecret: "synthetic"}
+			provider := f.app.cfg.OIDC
+			provider.ID = "secondary"
+			sealed, err := f.app.sealOIDC([]OIDCSettings{provider}, "providers")
+			if err != nil {
+				t.Fatal(err)
+			}
+			encoded, _ := json.Marshal(sealed)
+			f.exec("INSERT INTO settings(setting_key,value) VALUES('oidc_providers',?)", string(encoded))
 			pending := strings.Repeat("f", 64)
-			flow := oidcFlow{Purpose: "signup", ConfigHash: oidcFingerprint(f.app.cfg.OIDC), Issuer: f.app.cfg.OIDC.Issuer, Subject: "new-subject"}
+			flow := oidcFlow{ProviderID: provider.ID, Purpose: "signup", ConfigHash: oidcFingerprint(provider), Issuer: provider.Issuer, Subject: "new-subject"}
 			if err := f.app.saveOIDCFlow(context.Background(), pending, flow); err != nil {
 				t.Fatal(err)
 			}
@@ -248,6 +481,9 @@ func TestOIDCRegistrationRulesBothDatabases(t *testing.T) {
 			f.exec("INSERT INTO settings(setting_key,value) VALUES('registration_email_domains',?)", `["allowed.test"]`)
 			webStatus(t, register(), 400)
 			f.exec("UPDATE settings SET value='[]' WHERE setting_key='registration_email_domains'")
+			f.exec("INSERT INTO settings(setting_key,value) VALUES('registration_blocked_domains',?)", `["example.test"]`)
+			webStatus(t, register(), 400)
+			f.exec("UPDATE settings SET value='[]' WHERE setting_key='registration_blocked_domains'")
 			f.exec("UPDATE settings SET value='invitation' WHERE setting_key='registration_mode'")
 			webStatus(t, register(), 400)
 			invite := strings.Repeat("i", 64)

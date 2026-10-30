@@ -92,7 +92,27 @@ func (a *Server) site(w http.ResponseWriter, r *http.Request) {
 		failure(w, 503, "暂时无法读取注册设置")
 		return
 	}
+	blockedDomains, err := a.registrationBlockedEmailDomains(r.Context(), a.s.DB)
+	if err != nil {
+		failure(w, 503, "暂时无法读取注册设置")
+		return
+	}
 	oidcConfig, err := a.oidcSettings(r.Context())
+	if err != nil {
+		failure(w, 503, "暂时无法读取站点设置")
+		return
+	}
+	randomIDs, err := randomUserIDs(r.Context(), a.s.DB)
+	if err != nil {
+		failure(w, 503, "暂时无法读取注册设置")
+		return
+	}
+	content, err := readContentPolicy(r.Context(), a.s.DB)
+	if err != nil {
+		failure(w, 503, "暂时无法读取内容设置")
+		return
+	}
+	providers, err := a.publicOIDCProviders(r.Context())
 	if err != nil {
 		failure(w, 503, "暂时无法读取站点设置")
 		return
@@ -106,7 +126,7 @@ func (a *Server) site(w http.ResponseWriter, r *http.Request) {
 	if loginImage != "" {
 		loginImageURL = "/api/login/image?v=" + tokenHash(loginImage)[:16]
 	}
-	respond(w, 200, map[string]any{"appearance": custom, "homepage": publicHomepage(homepage), "loginImageUrl": loginImageURL, "oidc": map[string]any{"enabled": oidcConfig.Enabled, "name": oidcConfig.Name}, "noticeFormat": brand.NoticeFormat, "noticeHtml": renderNotice(brand.Notice, brand.NoticeFormat), "name": brand.Name, "tagline": brand.Tagline, "footer": brand.Footer, "notice": brand.Notice, "registration": mode, "emailDomains": domains, "mailEnabled": services.Mail != nil, "turnstileSiteKey": services.SiteKey, "points": points})
+	respond(w, 200, map[string]any{"contentPolicy": content, "appearance": custom, "homepage": publicHomepage(homepage), "loginImageUrl": loginImageURL, "oidcProviders": providers, "oidc": map[string]any{"enabled": oidcConfig.Enabled, "name": oidcConfig.Name}, "noticeFormat": brand.NoticeFormat, "noticeHtml": renderNotice(brand.Notice, brand.NoticeFormat), "name": brand.Name, "tagline": brand.Tagline, "footer": brand.Footer, "notice": brand.Notice, "registration": mode, "randomUserIds": randomIDs, "emailDomains": domains, "blockedEmailDomains": blockedDomains, "mailEnabled": services.Mail != nil, "turnstileSiteKey": services.SiteKey, "points": points})
 }
 
 func validEmail(value string) bool {
@@ -140,8 +160,16 @@ func normalizeEmailDomains(domains []string) ([]string, error) {
 }
 
 func (a *Server) registrationEmailDomains(ctx context.Context, reader settingReader) ([]string, error) {
+	return a.registrationDomainList(ctx, reader, "registration_email_domains")
+}
+
+func (a *Server) registrationBlockedEmailDomains(ctx context.Context, reader settingReader) ([]string, error) {
+	return a.registrationDomainList(ctx, reader, "registration_blocked_domains")
+}
+
+func (a *Server) registrationDomainList(ctx context.Context, reader settingReader, key string) ([]string, error) {
 	var raw string
-	err := reader.QueryRowContext(ctx, "SELECT value FROM settings WHERE setting_key='registration_email_domains'").Scan(&raw)
+	err := reader.QueryRowContext(ctx, a.s.Bind("SELECT value FROM settings WHERE setting_key=?"), key).Scan(&raw)
 	if errors.Is(err, sql.ErrNoRows) {
 		return []string{}, nil
 	}
@@ -156,16 +184,25 @@ func (a *Server) registrationEmailDomains(ctx context.Context, reader settingRea
 }
 
 func (a *Server) registrationEmailAllowed(ctx context.Context, reader settingReader, email string) (bool, error) {
+	parts := strings.Split(strings.ToLower(email), "@")
+	if len(parts) != 2 {
+		return false, nil
+	}
+	blocked, err := a.registrationBlockedEmailDomains(ctx, reader)
+	if err != nil {
+		return false, err
+	}
+	for _, domain := range blocked {
+		if parts[1] == domain {
+			return false, nil
+		}
+	}
 	domains, err := a.registrationEmailDomains(ctx, reader)
 	if err != nil {
 		return false, err
 	}
 	if len(domains) == 0 {
 		return true, nil
-	}
-	parts := strings.Split(strings.ToLower(email), "@")
-	if len(parts) != 2 {
-		return false, nil
 	}
 	for _, domain := range domains {
 		if parts[1] == domain {
@@ -325,11 +362,6 @@ func (a *Server) register(w http.ResponseWriter, r *http.Request) {
 		failure(w, 503, "暂时无法注册")
 		return
 	}
-	id, err := randomID()
-	if err != nil {
-		failure(w, 503, "暂时无法注册")
-		return
-	}
 	tx, err := a.s.DB.BeginTx(r.Context(), &sql.TxOptions{Isolation: sql.LevelReadCommitted})
 	if err != nil {
 		failure(w, 503, "暂时无法注册")
@@ -342,6 +374,15 @@ func (a *Server) register(w http.ResponseWriter, r *http.Request) {
 	}
 	if mode != "open" && mode != "invitation" {
 		failure(w, 403, "注册当前已关闭")
+		return
+	}
+	allowed, err = a.registrationEmailAllowed(r.Context(), tx, body.Email)
+	if err != nil {
+		failure(w, 503, "暂时无法读取注册设置")
+		return
+	}
+	if !allowed {
+		failure(w, 400, "该邮箱域名不在注册允许范围内")
 		return
 	}
 	options, err := a.invitationOptions(r.Context(), tx, mode)
@@ -369,11 +410,16 @@ func (a *Server) register(w http.ResponseWriter, r *http.Request) {
 	var signup oidcFlow
 	if body.OIDC {
 		signup, err = a.readOIDCFlow(r.Context(), tx, signupCookie.Value, "signup", true)
-		config, configErr := a.oidcSettings(r.Context())
+		config, configErr := a.oidcSettingsFor(r.Context(), signup.ProviderID)
 		if err != nil || configErr != nil || !config.Enabled || signup.ConfigHash != oidcFingerprint(config) {
 			failure(w, 400, "OIDC 注册已失效，请重新登录")
 			return
 		}
+	}
+	id, err := a.allocateUserID(r.Context(), tx)
+	if err != nil {
+		failure(w, 503, "暂时无法分配用户 ID")
+		return
 	}
 	_, err = tx.ExecContext(r.Context(), a.s.Bind("INSERT INTO users(id,email,email_key,nickname,password_hash,password_method,password_salt) VALUES(?,?,?,?,?,'ARGON2ID','')"), id, body.Email, strings.ToLower(body.Email), body.Nickname, hash)
 	if uniqueViolation(err) {
@@ -597,7 +643,7 @@ func (a *Server) resetPassword(w http.ResponseWriter, r *http.Request) {
 }
 
 func (a *Server) revokeAccountCredentials(ctx context.Context, tx *sql.Tx, id int64) error {
-	for _, table := range []string{"web_sessions", "game_tokens", "account_tokens"} {
+	for _, table := range []string{"web_sessions", "game_tokens", "account_tokens", "oauth_codes", "oauth_tokens"} {
 		if _, err := tx.ExecContext(ctx, a.s.Bind("DELETE FROM "+table+" WHERE user_id=?"), id); err != nil {
 			return err
 		}

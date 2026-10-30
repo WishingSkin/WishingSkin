@@ -15,6 +15,7 @@ import (
 )
 
 type OIDCSettings struct {
+	ID           string `json:"id,omitempty"`
 	Enabled      bool   `json:"enabled"`
 	Name         string `json:"name"`
 	Issuer       string `json:"issuer"`
@@ -87,11 +88,7 @@ func (a *Server) oidcConfiguration(ctx context.Context) (OIDCSettings, error) {
 }
 
 func (a *Server) oidcSettings(ctx context.Context) (OIDCSettings, error) {
-	value, err := a.oidcConfiguration(ctx)
-	if err == nil {
-		value.Enabled, err = a.storedPluginEnabled(ctx, "wishingskin.oidc")
-	}
-	return value, err
+	return a.oidcSettingsFor(ctx, "")
 }
 
 func oidcFingerprint(value OIDCSettings) string {
@@ -100,7 +97,7 @@ func oidcFingerprint(value OIDCSettings) string {
 }
 func oidcIdentityKey(issuer, subject string) string { return tokenHash(issuer + "\x00" + subject) }
 func (a *Server) oidcView(value OIDCSettings) map[string]any {
-	return map[string]any{"enabled": value.Enabled, "name": value.Name, "issuer": value.Issuer, "clientId": value.ClientID, "secretConfigured": value.ClientSecret != "", "redirectUri": a.cfg.PublicURL + "/api/auth/oidc/callback"}
+	return map[string]any{"id": value.ID, "enabled": value.Enabled, "name": value.Name, "issuer": value.Issuer, "clientId": value.ClientID, "secretConfigured": value.ClientSecret != "", "redirectUri": a.cfg.PublicURL + "/api/auth/oidc/callback"}
 }
 
 func (a *Server) adminOIDC(w http.ResponseWriter, r *http.Request) {

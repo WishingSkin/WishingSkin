@@ -10,6 +10,7 @@ import (
 )
 
 type oidcFlow struct {
+	ProviderID     string
 	Purpose        string
 	BrowserHash    string
 	Nonce          string
@@ -21,7 +22,10 @@ type oidcFlow struct {
 	Next           string
 	Issuer         string
 	Subject        string
+	Name           string
+	Username       string
 	Email          string
+	EmailVerified  bool
 }
 
 func (a *Server) oidcCookie(w http.ResponseWriter, name, value string, age int) {
@@ -64,11 +68,20 @@ func (a *Server) lockOIDCConfiguration(ctx context.Context, tx *sql.Tx, fingerpr
 	if err := tx.QueryRowContext(ctx, "SELECT value FROM settings WHERE setting_key='registration_mode' FOR UPDATE").Scan(&mode); err != nil {
 		return err
 	}
-	value, err := a.oidcSettings(ctx)
-	if err == nil && (!value.Enabled || oidcFingerprint(value) != fingerprint) {
-		err = errCredentials
+	values, err := a.oidcConfigurations(ctx)
+	if err != nil {
+		return err
 	}
-	return err
+	enabled, err := a.storedPluginEnabled(ctx, "wishingskin.oidc")
+	if err != nil {
+		return err
+	}
+	for _, v := range values {
+		if enabled && v.Enabled && oidcFingerprint(v) == fingerprint {
+			return nil
+		}
+	}
+	return errCredentials
 }
 
 func (a *Server) readOIDCFlow(ctx context.Context, reader settingReader, token, purpose string, lock bool) (oidcFlow, error) {
@@ -116,7 +129,7 @@ func (a *Server) pendingOIDC(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	flow, err := a.readOIDCFlow(r.Context(), a.s.DB, c.Value, "signup", false)
-	cfg, configErr := a.oidcSettings(r.Context())
+	cfg, configErr := a.oidcSettingsFor(r.Context(), flow.ProviderID)
 	if err != nil || configErr != nil || !cfg.Enabled || flow.ConfigHash != oidcFingerprint(cfg) {
 		failure(w, 400, "OIDC 注册已失效，请重新登录")
 		return
