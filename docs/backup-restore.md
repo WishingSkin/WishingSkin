@@ -1,10 +1,10 @@
-# 本机备份与隔离恢复
+# 本地备份、隔离恢复与版本规则
 
-备份命令面向停写后的 WishingSkin，不读取或执行 SQL dump，也不能替代 BS 迁移快照。当前格式为 1，要求数据库 schema 与当前程序完全一致（当前为 15）；没有自动跨版本恢复或 schema 降级。schema 14 或更早的旧备份需要先用匹配的旧程序恢复到独立目标，再用新程序执行 `migrate`；不能直接交给 schema 15 程序恢复。
+备份命令面向停写后的 WishingSkin，不读取或执行 SQL dump，也不能替代 BS 迁移快照。当前格式为 1，要求数据库 schema 与当前程序完全一致（当前为 18）；没有自动跨版本恢复或 schema 降级。旧 schema 备份需要先用匹配版本恢复到独立目标，再用新程序执行 `migrate`；不能直接交给 schema 18 程序恢复。
 
 ## 保存范围
 
-目录包含完成清单 `manifest.json`、15 张业务表的 JSONL 和 `textures/`。账号及密码哈希/盐、角色 UUID 与绑定、材质归属/描述/公开及下架状态、衣柜别名、账号验证状态、站点设置与签名私钥、迁移状态、管理审计、举报、余额和积分流水均保留；另含独立的 `legacy_reports` 旧举报历史及其孤立编号、原时间文本和长正文，以及 `user_profiles` 中的头像来源、上传头像和跟随角色设置。昵称保存在账号表中，Logo、主题、公告格式与官方模块配置随站点设置保留。整数按十进制字符串保存，避免大余额或历史编号精度损失；NULL 保持 NULL。
+目录包含完成清单 `manifest.json`、21 张业务表的 JSONL 和 `textures/`。账号及密码哈希/盐、角色 UUID 与绑定、材质归属/描述/公开及下架状态、审核元数据、衣柜别名、账号验证状态、加密的 TOTP 密钥与恢复码摘要、OIDC/外部身份绑定、OAuth2 客户端、站点设置与签名私钥、迁移状态、管理审计、举报、余额和积分流水均保留；另含独立的 `legacy_reports` 旧举报历史及其孤立编号、原时间文本和长正文，以及 `user_profiles` 中的头像来源、上传头像和跟随角色设置。昵称保存在账号表中，Logo、主题、公告格式与官方模块配置随站点设置保留。整数按十进制字符串保存，避免大余额或历史编号精度损失；NULL 保持 NULL。
 
 OIDC 身份绑定和加密配置、首页区块与背景、公告历史进入备份。网页会话、游戏令牌、加入记录、邮件验证/找回链接、邀请码和 OIDC 短期授权状态不进入备份，恢复后全部无效。用户重新登录；尚未完成验证的账号需要重发验证邮件。原库中的这些凭据不会因导出而被撤销。迁移 `pending` 阻止备份，`partial` 原样保留，恢复不把部分迁移标为完成。
 
@@ -14,24 +14,42 @@ OIDC 身份绑定和加密配置、首页区块与背景、公告历史进入备
 
 恢复完成后、启动服务前，将对应的原密钥安全放到目标配置路径。存在服务配置密文但缺少密钥时，程序拒绝启动；错误的 32 字节密钥无法解密配置，`/readyz` 和相关配置接口返回 503，不会静默回退到环境配置。丢失密钥意味着无法恢复这些服务秘密。数据库设置表还包含签名私钥，整个备份属于敏感数据，必须放入受控目录；备份格式不加密，摘要也不提供来源认证。Windows 的 `0600` 不能代替 NTFS ACL。
 
+## 新版 Compose 的持久化目录
+
+PostgreSQL 和 MySQL Compose 均把数据库、材质和 `/data/backups` 放在独立命名卷中。后台定时备份可把 `/data/backups` 设为目标目录；该卷会在容器重建时保留，但仍与应用在同一 Docker 主机。按灾备要求定期将备份副本移到独立主机或离线介质，并保护备份与 32 字节设置密钥。更新 Compose 文件不会删除已有卷；不要对本项目运行 `docker compose down -v`。
+
 ## 操作顺序
 
 先停止本站所有服务实例、迁移器及其他业务写入；`--offline` 是操作人员的停写确认，程序不会远程协调停机。数据库使用只读、可重复读事务导出，文件复制期间仍须保持停写和目录不变。目标父目录必须存在，备份目录必须是全新路径，且与源材质目录互不包含。
 
 ```powershell
-# 已配置原站 WS_DATABASE_DRIVER / WS_DATABASE_DSN / WS_TEXTURE_DIR，并停止所有写入。
-./bin/wishingskin.exe backup --offline --directory backups/site-20261023
+# 已配置当前版本的 WS_DATABASE_DRIVER / WS_DATABASE_DSN / WS_TEXTURE_DIR，
+# 并停止所有应用实例、定时写入及迁移器。目标父目录必须已经存在。
+New-Item -ItemType Directory -Force backups | Out-Null
+./bin/wishingskin.exe backup --offline --directory backups/site-20261029
 
-# 配置另一套空数据库；材质目录选择尚不存在、独立的新路径。
+# 配置另一套空数据库；数据库先创建，材质目录选择尚不存在、独立的新路径。
 $env:WS_DATABASE_DSN='connection-to-isolated-empty-target'
 $env:WS_TEXTURE_DIR='data/restored-textures'
+New-Item -ItemType Directory -Force data | Out-Null
 ./bin/wishingskin.exe migrate
-./bin/wishingskin.exe restore --offline --directory backups/site-20261023
+./bin/wishingskin.exe restore --offline --directory backups/site-20261029
 ```
 
-`backup` / `restore` 不自动升级数据库；先用对应版本的 `migrate` 初始化空目标。已有账号、会话、邀请码、业务记录或非默认设置均阻止恢复；仅允许初始化自带的角色上限 1、邮箱验证注册（或旧版默认关闭注册）和关闭全零积分规则。恢复不覆盖任何已有材质目录，即使该目录为空。源备份与目标材质目录必须独立。
+`backup` / `restore` 不自动升级数据库；先用对应版本的 `migrate` 初始化空目标。已有账号、会话、邀请码、业务记录或非默认设置均阻止恢复；仅允许初始化自带的角色上限 1、邮箱验证注册（或旧版默认关闭注册）和关闭全零积分规则。恢复不覆盖任何已有材质目录，即使该目录为空。源备份、目标数据库和目标材质目录必须独立。当前备份恢复严格要求 schema 18 与当前程序一致。
 
 恢复先检查清单版本、允许的表清单、行结构、行数、摘要及材质库存，然后复制文件、在一个数据库事务中写入全部业务表。文件名只接受受限 hash，表与列由程序固定，不执行清单中的 SQL。复制及入库时再次校验摘要，发生变更或 SQL 错误会回滚业务事务。
+
+## Compose 停写备份
+
+在部署目录执行。先停止应用，再通过一次性容器运行同一版本的 CLI；数据库容器保持运行。目标父目录 `/data/backups` 已由 Compose 持久化。
+
+```powershell
+docker compose --env-file .env -f deploy/compose.postgres.yaml stop app
+docker compose --env-file .env -f deploy/compose.postgres.yaml run --rm --no-deps app backup --offline --directory /data/backups/site-20261029
+```
+
+MySQL 部署将 Compose 文件名改为 `deploy/compose.mysql.yaml`。操作结束后才启动应用。`backup` 命令会拒绝覆盖已存在的目标目录；每次使用新目录名。此处的命名卷不是异地备份，需另外复制至独立故障域。
 
 ## 中断与切换
 

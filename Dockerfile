@@ -15,7 +15,7 @@ COPY --from=frontend /src/web/dist ./web/dist
 RUN CGO_ENABLED=0 go build -trimpath -o /wishingskin ./cmd/wishingskin
 
 FROM alpine:3.22
-RUN apk add --no-cache ca-certificates && mkdir -p /data/textures && chown -R 65532:65532 /data
+RUN apk add --no-cache ca-certificates && mkdir -p /data/textures /data/backups && chown -R 65532:65532 /data
 COPY --from=backend /wishingskin /usr/local/bin/wishingskin
 COPY LICENSE /usr/share/licenses/wishingskin/LICENSE
 COPY THIRD_PARTY_NOTICES.md /usr/share/licenses/wishingskin/THIRD_PARTY_NOTICES.md

@@ -1,6 +1,6 @@
 # BS 来源契约与本地迁移样本
 
-当前迁入用户（含余额及权限）、角色、材质及 Yggdrasil 签名私钥；新导出的 v2 快照还保留材质上传者、简短描述、衣柜关系/别名、明确的邮箱验证状态、纯文本品牌及独立只读举报历史。成功导入的报告仍为 `partial`，不能据此判断整个 BS 站点已迁完，也不能据此切换真实站点。OAuth、其他运营配置及额外插件数据不自动迁入；旧 Web 会话和游戏令牌明确不继承，用户需要重新登录。收藏数由衣柜关系计算，不复制可能已失真的 `likes` 缓存。当前本地验收见[首版总览](v1-local-validation.md)。
+当前迁入用户（含余额及权限）、角色、材质及 Yggdrasil 签名私钥；新导出的 v2 快照还保留材质上传者、简短描述、衣柜关系/别名、明确的邮箱验证状态、纯文本品牌及独立只读举报历史。成功导入的报告仍为 `partial`，不能据此判断整个 BS 站点已迁完，也不能据此切换真实站点。OAuth、其他运营配置及额外插件数据不自动迁入；旧 Web 会话和游戏令牌明确不继承，用户需要重新登录。收藏数由衣柜关系计算，不复制可能已失真的 `likes` 缓存。当前本地验收见[手动验收清单](manual-acceptance.md)。
 
 2026-10-23 补充积分迁移决定：保留余额，新站积分关闭，不自动转换 BS 的随机奖励、存储费用或退款。新 v2 快照新增 `score_rules`，仅记录固定核心 14 项非秘密积分配置，以核心默认值叠加实际数据库覆盖值；核对报告保存原规则，管理员按新规则重配。旧快照无该字段时明确报告原规则不可用，原指纹不变。完整新站备份与 BS 快照用途不同，操作见[备份恢复说明](backup-restore.md)。
 
@@ -58,7 +58,7 @@
 
 v2 用户新增可选 `verified`。新只读导出直接读取固定核心 `users.verified`，不是 0/1 或缺失列时拒绝；旧 v1/v2 快照缺字段时报告 `unknown`，不修改旧任务指纹。只有明确已验证的账号才写入 `account_states(email_verified=true, verification_required=false)`；未验证或未知的旧账号继续按原迁移兼容方式登录，不设置新的验证门槛。报告分别计数已验证、未验证和未知，不包含邮箱。此字段不能补入已提交的旧任务；需要重新导出并迁入独立空目标。
 
-衣柜字段依据固定核心的 [CreateCloset](https://github.com/bs-community/blessing-skin-server/blob/b737a65f5f5fce1f897f8603db74fd970437b351/database/migrations/2019_03_14_174727_create_closet.php) 和 [User::closet](https://github.com/bs-community/blessing-skin-server/blob/b737a65f5f5fce1f897f8603db74fd970437b351/app/Models/User.php)；描述字段依据固定插件仓库的 [texture-description callbacks](https://github.com/bs-community/blessing-skin-plugins/blob/de016f4cbb43df7bd6d46193d5625693f8c79b3f/plugins/texture-description/callbacks.php)。验证与限制见[关系迁移记录](relationship-migration-validation.md)。
+衣柜字段依据固定核心的 [CreateCloset](https://github.com/bs-community/blessing-skin-server/blob/b737a65f5f5fce1f897f8603db74fd970437b351/database/migrations/2019_03_14_174727_create_closet.php) 和 [User::closet](https://github.com/bs-community/blessing-skin-server/blob/b737a65f5f5fce1f897f8603db74fd970437b351/app/Models/User.php)；描述字段依据固定插件仓库的 [texture-description callbacks](https://github.com/bs-community/blessing-skin-plugins/blob/de016f4cbb43df7bd6d46193d5625693f8c79b3f/plugins/texture-description/callbacks.php)。验证与限制见[手动验收清单](manual-acceptance.md)。
 
 ## 品牌与举报历史
 
@@ -90,7 +90,7 @@ snapshot 含密码哈希、站点盐和签名私钥，属于敏感备份。只�
 4. 用户、材质、衣柜、角色、签名和 `partial` 状态在同一数据库事务提交。数据库失败时业务行回滚，已完成的本任务材质保留供重试；重试会校验并复用这些文件。
 5. 相同任务再次运行只验证现存副本并返回 `already_imported=true`，不重复插入。其他快照不能借用该任务恢复。
 
-当前故障测试覆盖文件阶段实际终止导入进程、材质发布后及业务事务末段入库失败后的重试；两库大样本恢复结果与普通导入逐表/逐文件摘要相同，见[恢复核对](migration-recovery-validation.md)。检查点用于文件恢复，业务单事务提交，不是多批数据库提交。断电导致文件系统或数据库自身损坏、目录清单首次写入时的撕裂、外部进程篡改目标和跨主机恢复尚未演练；损坏的清单会停止导入，工具不会猜测归属后清除目录。业务写入开放后的数据合并、反向迁移和无损回滚也不在本轮范围。
+当前故障测试覆盖文件阶段实际终止导入进程、材质发布后及业务事务末段入库失败后的重试；两库大样本恢复结果与普通导入逐表/逐文件摘要相同，见[手动验收清单](manual-acceptance.md)。检查点用于文件恢复，业务单事务提交，不是多批数据库提交。断电导致文件系统或数据库自身损坏、目录清单首次写入时的撕裂、外部进程篡改目标和跨主机恢复尚未演练；损坏的清单会停止导入，工具不会猜测归属后清除目录。业务写入开放后的数据合并、反向迁移和无损回滚也不在本轮范围。
 
 ## 可重复的本地样本
 
@@ -114,4 +114,4 @@ go test ./internal/bsmigration -count=1
 
 2026-10-22 本地运行结果：MySQL 8 与 PostgreSQL 的普通导入、注入失败后恢复、同任务重复导入、不同任务拒绝，以及两库结果一致均通过；MySQL 只读源导出、未知插件登记和源数据未改也通过。单元测试覆盖重复 UUID、邮箱规范化冲突、缺文件、未知密码、路径、错误引用、PNG、签名、目标目录保护及敏感信息不进入报告。
 
-以上 2026-10-22 结果对应当时的最小链路；后续衣柜、权限/邮箱、积分核对、品牌与历史已补齐声明契约的本地测试，证据见[首版总览](v1-local-validation.md)。原 PHP 站点运行、真实完整 BS 数据、额外插件、真实站点恢复和生产切换仍未验收，整体状态保持 `partial`。
+以上 2026-10-22 结果对应当时的最小链路；后续衣柜、权限/邮箱、积分核对、品牌与历史已补齐声明契约的本地测试，证据见[手动验收清单](manual-acceptance.md)。原 PHP 站点运行、真实完整 BS 数据、额外插件、真实站点恢复和生产切换仍未验收，整体状态保持 `partial`。

@@ -19,6 +19,7 @@ services:
       WS_SMTP_TLS: ${WS_SMTP_TLS:-starttls}
     volumes:
       - textures:/data/textures
+      - backups:/data/backups
     depends_on:
       postgres:
         condition: service_healthy
@@ -37,4 +38,5 @@ services:
       retries: 20
 volumes:
   textures:
+  backups:
   postgres:
