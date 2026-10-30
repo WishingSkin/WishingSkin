@@ -47,6 +47,10 @@ func (a *Server) homepageBackgroundImage(w http.ResponseWriter, r *http.Request)
 }
 
 func serveSettingsJPEG(w http.ResponseWriter, r *http.Request, value string) {
+	serveSettingsImage(w, r, value)
+}
+
+func serveSettingsImage(w http.ResponseWriter, r *http.Request, value string) {
 	if value == "" {
 		http.NotFound(w, r)
 		return
@@ -60,7 +64,11 @@ func serveSettingsJPEG(w http.ResponseWriter, r *http.Request, value string) {
 	etag := `"` + tokenHash(value) + `"`
 	w.Header().Set("ETag", etag)
 	w.Header().Set("Cache-Control", "public, max-age=0, must-revalidate")
-	w.Header().Set("Content-Type", "image/jpeg")
+	contentType := "image/jpeg"
+	if strings.HasPrefix(value, "data:image/png;base64,") {
+		contentType = "image/png"
+	}
+	w.Header().Set("Content-Type", contentType)
 	w.Header().Set("X-Content-Type-Options", "nosniff")
 	if r.Header.Get("If-None-Match") == etag {
 		w.WriteHeader(304)

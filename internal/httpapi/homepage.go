@@ -9,17 +9,20 @@ import (
 	"net/url"
 	"regexp"
 	"strings"
+	"unicode"
 	"unicode/utf8"
 )
 
 type homepageFeature struct {
-	Icon  string `json:"icon,omitempty"`
-	Title string `json:"title"`
-	Body  string `json:"body"`
-	Href  string `json:"href"`
+	Icon      string `json:"icon,omitempty"`
+	IconImage string `json:"iconImage,omitempty"`
+	Title     string `json:"title"`
+	Body      string `json:"body"`
+	Href      string `json:"href"`
 }
 
 type homepageBlock struct {
+	IconImage   string            `json:"iconImage,omitempty"`
 	ID          string            `json:"id"`
 	Kind        string            `json:"kind"`
 	Enabled     bool              `json:"enabled"`
@@ -87,6 +90,23 @@ func (a *Server) updateHomepage(w http.ResponseWriter, r *http.Request) {
 	default:
 		failure(w, 429, "图片处理繁忙，请稍后重试")
 		return
+	}
+	for i := range body.Blocks {
+		block := &body.Blocks[i]
+		var err error
+		block.IconImage, err = normalizeHomepageIcon(block.IconImage)
+		if err == nil {
+			for j := range block.Features {
+				block.Features[j].IconImage, err = normalizeHomepageIcon(block.Features[j].IconImage)
+				if err != nil {
+					break
+				}
+			}
+		}
+		if err != nil {
+			failure(w, 400, err.Error())
+			return
+		}
 	}
 	current, err := a.homepage(r.Context())
 	if err != nil {
@@ -182,6 +202,30 @@ func validHomepageHref(value string) error {
 		return errors.New("首页链接必须是站内路径或 HTTPS 地址")
 	}
 	return nil
+}
+
+func normalizeHomepageIcon(value string) (string, error) {
+	if value == "" {
+		return "", nil
+	}
+	if strings.HasPrefix(value, "data:") {
+		image, err := normalizedLogoImage(value)
+		if err != nil {
+			return "", errors.New("图标图片须为不超过 512 KiB、2048×2048 的 PNG 或 JPEG")
+		}
+		return image, nil
+	}
+	u, err := url.Parse(value)
+	if err != nil || len(value) > 2048 || strings.Contains(value, "\\") || strings.IndexFunc(value, func(r rune) bool { return unicode.IsSpace(r) || unicode.IsControl(r) }) >= 0 {
+		return "", errors.New("图标地址须为 HTTPS URL 或站内资源路径，不支持本机文件路径")
+	}
+	if u.User != nil || u.Opaque != "" || strings.Contains(u.Path, "\\") || strings.HasPrefix(u.Path, "//") {
+		return "", errors.New("图标地址须为 HTTPS URL 或站内资源路径，不支持本机文件路径")
+	}
+	if u.Scheme == "https" && u.Hostname() != "" || u.Scheme == "" && u.Host == "" && strings.HasPrefix(u.Path, "/") {
+		return value, nil
+	}
+	return "", errors.New("图标地址须为 HTTPS URL 或站内资源路径，不支持本机文件路径")
 }
 
 func unmarshalSetting(raw string, target any) error {

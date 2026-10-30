@@ -15,8 +15,8 @@ func TestSurfaceEffectsBothDatabases(t *testing.T) {
 				webStatus(t, f.call(3, "PATCH", "/api/admin/appearance", body), 200)
 				w := f.call(0, "GET", "/api/site", nil)
 				webStatus(t, w, 200)
-				var site struct{ Appearance map[string]string }
-				if err := json.Unmarshal(w.Body.Bytes(), &site); err != nil || site.Appearance["surfaceEffect"] != effect {
+				var site struct{ Appearance appearance }
+				if err := json.Unmarshal(w.Body.Bytes(), &site); err != nil || site.Appearance.SurfaceEffect != effect {
 					t.Fatal("surface effect did not roundtrip", effect, err)
 				}
 			}
@@ -24,10 +24,7 @@ func TestSurfaceEffectsBothDatabases(t *testing.T) {
 			// Old clients and saved settings retain opaque surfaces by default.
 			webStatus(t, f.call(3, "PATCH", "/api/admin/appearance", map[string]string{"accent": "blue", "defaultTheme": "system"}), 200)
 			value, err := f.app.appearance(t.Context())
-			data, _ := json.Marshal(value)
-			var saved map[string]string
-			_ = json.Unmarshal(data, &saved)
-			if err != nil || saved["surfaceEffect"] != "solid" {
+			if err != nil || value.SurfaceEffect != "solid" {
 				t.Fatal("missing default surface effect", err)
 			}
 		})

@@ -5,6 +5,7 @@ import (
 	"encoding/base64"
 	"encoding/json"
 	"image"
+	"image/color"
 	"image/png"
 	"net/http"
 	"net/http/httptest"
@@ -30,7 +31,13 @@ func TestLoginImageBothDatabases(t *testing.T) {
 				t.Fatal("default login image is not empty")
 			}
 			webStatus(t, f.call(0, "GET", "/api/login/image", nil), 404)
-			body := map[string]string{"image": "data:image/png;base64," + base64.StdEncoding.EncodeToString(testPNG(t, 2048, 1024))}
+			transparent := image.NewNRGBA(image.Rect(0, 0, 2048, 1024))
+			transparent.SetNRGBA(0, 0, color.NRGBA{R: 20, G: 40, B: 80, A: 64})
+			var transparentData bytes.Buffer
+			if err := png.Encode(&transparentData, transparent); err != nil {
+				t.Fatal(err)
+			}
+			body := map[string]string{"image": "data:image/png;base64," + base64.StdEncoding.EncodeToString(transparentData.Bytes())}
 			for _, user := range []int{0, 1} {
 				status := 403
 				if user == 0 {
@@ -49,8 +56,8 @@ func TestLoginImageBothDatabases(t *testing.T) {
 			webStatus(t, w, 403)
 			webStatus(t, f.call(3, "PATCH", "/api/admin/login-image", body), 200)
 			saved := read()
-			if !strings.HasPrefix(saved, "data:image/jpeg;base64,") {
-				t.Fatal("image was not re-encoded")
+			if !strings.HasPrefix(saved, "data:image/png;base64,") {
+				t.Fatal("transparent PNG was not preserved")
 			}
 			w = f.call(0, "GET", "/api/site", nil)
 			webStatus(t, w, 200)
@@ -61,8 +68,16 @@ func TestLoginImageBothDatabases(t *testing.T) {
 			w = f.call(0, "GET", site.LoginImageURL, nil)
 			webStatus(t, w, 200)
 			cfg, format, err := image.DecodeConfig(bytes.NewReader(w.Body.Bytes()))
-			if err != nil || format != "jpeg" || cfg.Width != 1920 || cfg.Height != 960 || w.Header().Get("X-Content-Type-Options") != "nosniff" || w.Header().Get("Cache-Control") != "public, max-age=0, must-revalidate" {
+			if err != nil || format != "png" || cfg.Width != 1920 || cfg.Height != 960 || w.Header().Get("Content-Type") != "image/png" || w.Header().Get("X-Content-Type-Options") != "nosniff" || w.Header().Get("Cache-Control") != "public, max-age=0, must-revalidate" {
 				t.Fatal("invalid public image or headers", err, cfg)
+			}
+			decoded, err := png.Decode(bytes.NewReader(w.Body.Bytes()))
+			if err != nil {
+				t.Fatal(err)
+			}
+			_, _, _, alpha := decoded.At(0, 0).RGBA()
+			if alpha == 65535 {
+				t.Fatal("transparent pixel became opaque")
 			}
 			etag := w.Header().Get("ETag")
 			if etag == "" {

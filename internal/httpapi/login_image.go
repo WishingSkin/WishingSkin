@@ -1,7 +1,14 @@
 package httpapi
 
 import (
+	"bytes"
 	"context"
+	"encoding/base64"
+	"errors"
+	"image"
+	"image/color"
+	"image/jpeg"
+	"image/png"
 	"net/http"
 	"strings"
 )
@@ -49,9 +56,10 @@ func (a *Server) updateLoginImage(w http.ResponseWriter, r *http.Request) {
 		failure(w, 503, "暂时无法读取登录页图片")
 		return
 	}
-	// Use the same bounded decoding as homepage images; preserve unchanged JPEGs.
+	// Login artwork keeps PNG alpha. Homepage backgrounds intentionally flatten
+	// transparency to JPEG, so they use a separate normalizer.
 	if body.Image != current {
-		body.Image, err = normalizeHomepageBackground(body.Image)
+		body.Image, err = normalizeLoginImage(body.Image)
 	}
 	if err != nil {
 		failure(w, 400, strings.NewReplacer("首页背景图片", "登录页图片", "首页背景", "登录页图片").Replace(err.Error()))
@@ -82,5 +90,64 @@ func (a *Server) loginImageFile(w http.ResponseWriter, r *http.Request) {
 		failure(w, 503, "暂时无法读取登录页图片")
 		return
 	}
-	serveSettingsJPEG(w, r, value)
+	serveSettingsImage(w, r, value)
+}
+
+func normalizeLoginImage(value string) (string, error) {
+	if value == "" {
+		return "", nil
+	}
+	prefix, raw, ok := strings.Cut(value, ",")
+	if !ok || (prefix != "data:image/png;base64" && prefix != "data:image/jpeg;base64") || len(raw) > 2796204 {
+		return "", errors.New("登录页图片须为不超过 2 MiB、4096×4096 的 PNG 或 JPEG")
+	}
+	data, err := base64.StdEncoding.DecodeString(raw)
+	if err != nil || len(data) > 2<<20 {
+		return "", errors.New("登录页图片文件过大或格式无效")
+	}
+	cfg, format, err := image.DecodeConfig(bytes.NewReader(data))
+	if err != nil || (format != "png" && format != "jpeg") || cfg.Width < 1 || cfg.Height < 1 || cfg.Width > 4096 || cfg.Height > 4096 {
+		return "", errors.New("登录页图片尺寸或格式无效")
+	}
+	source, _, err := image.Decode(bytes.NewReader(data))
+	if err != nil {
+		return "", errors.New("登录页图片数据无效")
+	}
+	width, height := cfg.Width, cfg.Height
+	if width > 1920 {
+		height = max(1, height*1920/width)
+		width = 1920
+	}
+	if height > 1920 {
+		width = max(1, width*1920/height)
+		height = 1920
+	}
+	var out bytes.Buffer
+	if format == "png" {
+		result := image.NewNRGBA(image.Rect(0, 0, width, height))
+		bounds := source.Bounds()
+		for y := 0; y < height; y++ {
+			for x := 0; x < width; x++ {
+				result.Set(x, y, source.At(bounds.Min.X+x*bounds.Dx()/width, bounds.Min.Y+y*bounds.Dy()/height))
+			}
+		}
+		if err := png.Encode(&out, result); err != nil {
+			return "", err
+		}
+		if out.Len() > 2<<20 { return "", errors.New("登录页图片编码后超过 2 MiB") }
+		return "data:image/png;base64," + base64.StdEncoding.EncodeToString(out.Bytes()), nil
+	}
+	result := image.NewRGBA(image.Rect(0, 0, width, height))
+	bounds := source.Bounds()
+	for y := 0; y < height; y++ {
+		for x := 0; x < width; x++ {
+			r, g, b, alpha := source.At(bounds.Min.X+x*bounds.Dx()/width, bounds.Min.Y+y*bounds.Dy()/height).RGBA()
+			result.SetRGBA(x, y, color.RGBA{uint8((r + 65535 - alpha) >> 8), uint8((g + 65535 - alpha) >> 8), uint8((b + 65535 - alpha) >> 8), 255})
+		}
+	}
+	if err := jpeg.Encode(&out, result, &jpeg.Options{Quality: 85}); err != nil {
+		return "", err
+	}
+	if out.Len() > 2<<20 { return "", errors.New("登录页图片编码后超过 2 MiB") }
+	return "data:image/jpeg;base64," + base64.StdEncoding.EncodeToString(out.Bytes()), nil
 }

@@ -23,10 +23,11 @@ import (
 )
 
 type appearance struct {
-	LogoImage     string `json:"logoImage"`
-	Accent        string `json:"accent"`
-	DefaultTheme  string `json:"defaultTheme"`
-	SurfaceEffect string `json:"surfaceEffect"`
+	LogoImage     string             `json:"logoImage"`
+	Accent        string             `json:"accent"`
+	DefaultTheme  string             `json:"defaultTheme"`
+	SurfaceEffect string             `json:"surfaceEffect"`
+	Advanced      advancedAppearance `json:"advanced"`
 }
 
 func (a *Server) readSetting(ctx context.Context, key string, target any) (bool, error) {
@@ -57,6 +58,7 @@ func (a *Server) putSetting(ctx context.Context, tx *sql.Tx, key string, value a
 func (a *Server) appearance(ctx context.Context) (appearance, error) {
 	value := appearance{Accent: "blue", DefaultTheme: "system", SurfaceEffect: "solid"}
 	_, err := a.readSetting(ctx, "site_appearance", &value)
+	value.Advanced.localizeLegacyCopy()
 	return value, err
 }
 
@@ -187,7 +189,7 @@ func (a *Server) updateAppearance(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	var body appearance
-	if !decodeLimit(w, r, &body, 710000) {
+	if !decodeLimit(w, r, &body, 4<<20) {
 		return
 	}
 	if body.SurfaceEffect == "" {
@@ -197,8 +199,13 @@ func (a *Server) updateAppearance(w http.ResponseWriter, r *http.Request) {
 		failure(w, 400, "面板效果无效")
 		return
 	}
-	if (body.Accent != "blue" && body.Accent != "green" && body.Accent != "violet") || (body.DefaultTheme != "light" && body.DefaultTheme != "dark" && body.DefaultTheme != "system") {
+	if !validAccent(body.Accent) || (body.DefaultTheme != "light" && body.DefaultTheme != "dark" && body.DefaultTheme != "system") {
 		failure(w, 400, "个性化设置无效")
+		return
+	}
+	body.Advanced.localizeLegacyCopy()
+	if err := body.Advanced.validate(); err != nil {
+		failure(w, 400, err.Error())
 		return
 	}
 	if body.LogoImage != "" {
@@ -256,4 +263,12 @@ func copyFace(skin image.Image) image.Image {
 	draw.Draw(face, face.Bounds(), skin, image.Pt(8*scale, 8*scale), draw.Src)
 	draw.Draw(face, face.Bounds(), skin, image.Pt(40*scale, 8*scale), draw.Over)
 	return face
+}
+
+func validAccent(value string) bool {
+	switch value {
+	case "blue", "green", "violet", "rose", "orange", "teal", "gray":
+		return true
+	}
+	return false
 }

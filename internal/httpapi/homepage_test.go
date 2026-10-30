@@ -1,10 +1,48 @@
 package httpapi
 
 import (
+	"bytes"
+	"encoding/base64"
 	"encoding/json"
+	"image"
+	"image/color"
+	"image/png"
 	"strings"
 	"testing"
 )
+
+func TestHomepageIconNormalization(t *testing.T) {
+	img := image.NewNRGBA(image.Rect(0, 0, 32, 16))
+	img.Set(16, 8, color.NRGBA{R: 80, G: 120, B: 200, A: 90})
+	var encoded bytes.Buffer
+	if err := png.Encode(&encoded, img); err != nil {
+		t.Fatal(err)
+	}
+	value, err := normalizeHomepageIcon("data:image/png;base64," + base64.StdEncoding.EncodeToString(encoded.Bytes()))
+	if err != nil {
+		t.Fatal(err)
+	}
+	raw, err := base64.StdEncoding.DecodeString(strings.TrimPrefix(value, "data:image/png;base64,"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	decoded, err := png.Decode(bytes.NewReader(raw))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if decoded.Bounds().Dx() != 64 {
+		t.Fatal("icon dimensions not normalized")
+	}
+	_, _, _, alpha := decoded.At(32, 32).RGBA()
+	if alpha == 0 || alpha == 65535 {
+		t.Fatal("icon alpha lost")
+	}
+	for _, value := range []string{"data:image/svg+xml;base64,PHN2Zz4=", "data:image/png;base64,bad", "/%2fexample.test/icon.png", "/%5cexample.test/icon.png", "/icon\n.png"} {
+		if _, err := normalizeHomepageIcon(value); err == nil {
+			t.Fatal("unsafe icon accepted")
+		}
+	}
+}
 
 func TestHomepageSettingsBothDatabases(t *testing.T) {
 	for _, dialect := range []string{"mysql", "postgres"} {
@@ -52,6 +90,24 @@ func TestHomepageSettingsBothDatabases(t *testing.T) {
 			var action, target string
 			if err := f.db.DB.QueryRow("SELECT action,target_id FROM admin_events WHERE action='settings.homepage'").Scan(&action, &target); err != nil || target != "homepage" {
 				t.Fatalf("homepage audit: %v %s %s", err, action, target)
+			}
+		})
+	}
+}
+
+func TestHomepageIconAddressesBothDatabases(t *testing.T) {
+	for _, dialect := range []string{"mysql", "postgres"} {
+		t.Run(dialect, func(t *testing.T) {
+			f := newManagementApp(t, dialect)
+			for _, address := range []string{"javascript:alert(1)", "//example.test/icon.png", `C:\icons\logo.png`, "/\\example.test/icon.png", "http://example.test/icon.png", "https://user:secret@example.test/icon.png"} {
+				body := map[string]any{"blocks": []any{map[string]any{"id": "intro", "kind": "intro", "iconImage": address}}}
+				webStatus(t, f.call(3, "PATCH", "/api/admin/homepage", body), 400)
+			}
+			body := map[string]any{"blocks": []any{map[string]any{"id": "intro", "kind": "intro", "enabled": true, "iconImage": "https://example.test/brand.png"}, map[string]any{"id": "cards", "kind": "features", "enabled": true, "features": []any{map[string]any{"title": "Card", "iconImage": "/assets/card.png"}}}}}
+			webStatus(t, f.call(3, "PATCH", "/api/admin/homepage", body), 200)
+			w := f.call(0, "GET", "/api/site", nil)
+			if !strings.Contains(w.Body.String(), "https://example.test/brand.png") || !strings.Contains(w.Body.String(), "/assets/card.png") {
+				t.Fatal("homepage icon addresses not retained")
 			}
 		})
 	}
