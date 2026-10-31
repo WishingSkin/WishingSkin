@@ -197,7 +197,7 @@ func oauthEnglish(r *http.Request) bool {
 
 func (a *Server) oauthAuthorize(w http.ResponseWriter, r *http.Request) {
 	w.Header().Set("Cache-Control", "no-store")
-	w.Header().Set("Referrer-Policy", "no-referrer")
+	w.Header().Set("Referrer-Policy", "same-origin")
 	w.Header().Set("Content-Security-Policy", "default-src 'none'; style-src 'unsafe-inline'; form-action 'self'; frame-ancestors 'none'; base-uri 'none'")
 	enabled, err := a.storedPluginEnabled(r.Context(), "wishingskin.oauth2")
 	if err != nil || !enabled {
@@ -218,6 +218,12 @@ func (a *Server) oauthAuthorize(w http.ResponseWriter, r *http.Request) {
 		failure(w, 400, "授权请求无效")
 		return
 	}
+	destination, _ := url.Parse(redirect)
+	if destination == nil || strings.ContainsAny(destination.Host, ";'\"\\ \t\r\n") {
+		failure(w, 400, "回调地址无效")
+		return
+	}
+	w.Header().Set("Content-Security-Policy", "default-src 'none'; style-src 'unsafe-inline'; form-action 'self' "+destination.Scheme+"://"+destination.Host+"; frame-ancestors 'none'; base-uri 'none'")
 	u, token, err := a.current(r)
 	if err != nil {
 		next := "/user/oauth/authorize?" + q.Encode()
@@ -244,7 +250,6 @@ func (a *Server) oauthAuthorize(w http.ResponseWriter, r *http.Request) {
 	if !a.validWriteRequest(w, r, token) {
 		return
 	}
-	destination, _ := url.Parse(redirect)
 	result := destination.Query()
 	result.Set("state", q.Get("state"))
 	if r.PostForm.Get("decision") != "allow" {

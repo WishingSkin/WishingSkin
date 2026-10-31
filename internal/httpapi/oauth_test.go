@@ -38,6 +38,12 @@ func TestOAuthPKCEBothDatabases(t *testing.T) {
 			if consent.Code != 200 || !strings.Contains(consent.Body.String(), "Authorize Example") || !strings.Contains(consent.Body.String(), "lang=\"en\"") {
 				t.Fatal("English consent did not render")
 			}
+			if consent.Header().Get("Referrer-Policy") != "same-origin" {
+				t.Fatal("consent must preserve the origin for same-origin form submissions")
+			}
+			if !strings.Contains(consent.Header().Get("Content-Security-Policy"), "form-action 'self' https://app.example;") {
+				t.Fatal("consent must allow the registered callback origin after form submission")
+			}
 			webStatus(t, f.call(1, "GET", "/oauth/authorize?"+q.Encode()+"&redirect_uri=https://evil.example", nil), 400) // Reject ambiguous repeated parameters.
 			submit := func(path string, form url.Values, account int) *httptest.ResponseRecorder {
 				r := httptest.NewRequest("POST", "http://example.test"+path, strings.NewReader(form.Encode()))
