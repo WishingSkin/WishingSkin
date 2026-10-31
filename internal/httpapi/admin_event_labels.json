@@ -1,0 +1,244 @@
+{
+  "actions": {
+    "user.verify_email": {
+      "zh-CN": "完成邮箱验证",
+      "en": "Verify email"
+    },
+    "administrator.initialize": {
+      "zh-CN": "创建首个管理员",
+      "en": "Create first administrator"
+    },
+    "user.ban": {
+      "zh-CN": "封禁用户",
+      "en": "Ban user"
+    },
+    "user.unban": {
+      "zh-CN": "解封用户",
+      "en": "Unban user"
+    },
+    "user.promote": {
+      "zh-CN": "设为管理员",
+      "en": "Make administrator"
+    },
+    "user.demote": {
+      "zh-CN": "设为普通用户",
+      "en": "Make regular user"
+    },
+    "settings.character_limit": {
+      "zh-CN": "修改角色上限",
+      "en": "Change character limit"
+    },
+    "registration.closed": {
+      "zh-CN": "关闭注册",
+      "en": "Closed"
+    },
+    "registration.open": {
+      "zh-CN": "开放注册",
+      "en": "Open registration"
+    },
+    "registration.invitation": {
+      "zh-CN": "启用邀请码注册",
+      "en": "Enable invitation registration"
+    },
+    "invitation.create": {
+      "zh-CN": "生成邀请码",
+      "en": "Generate invitation code"
+    },
+    "texture.disable": {
+      "zh-CN": "下架整份图片",
+      "en": "Disable image"
+    },
+    "settings.homepage": {
+      "zh-CN": "修改首页区块",
+      "en": "Update homepage blocks"
+    },
+    "settings.content": {
+      "zh-CN": "修改分类与审核",
+      "en": "Update categories and review policy"
+    },
+    "settings.operations": {
+      "zh-CN": "修改备份与 CDN",
+      "en": "Update backup and CDN settings"
+    },
+    "settings.connectors": {
+      "zh-CN": "修改外部账号连接器",
+      "en": "Update external account connectors"
+    },
+    "texture.review.approved": {
+      "zh-CN": "通过材质",
+      "en": "Approve texture"
+    },
+    "texture.review.rejected": {
+      "zh-CN": "拒绝材质",
+      "en": "Reject texture"
+    },
+    "storage.backup": {
+      "zh-CN": "执行备份",
+      "en": "Run backup"
+    },
+    "storage.sync": {
+      "zh-CN": "同步材质",
+      "en": "Sync textures"
+    },
+    "storage.gc": {
+      "zh-CN": "回收存储",
+      "en": "Reclaim storage"
+    },
+    "oauth.client": {
+      "zh-CN": "修改授权应用",
+      "en": "Update OAuth application"
+    },
+    "plugin.configure": {
+      "zh-CN": "修改插件配置",
+      "en": "Update plugin settings"
+    },
+    "settings.branding": {
+      "zh-CN": "修改品牌与公告",
+      "en": "Change branding and notice"
+    },
+    "settings.points": {
+      "zh-CN": "修改积分规则",
+      "en": "Change points rules"
+    },
+    "settings.appearance": {
+      "zh-CN": "修改个性化设置",
+      "en": "Update appearance"
+    },
+    "settings.services": {
+      "zh-CN": "修改邮件与验证设置",
+      "en": "Update email and verification"
+    },
+    "plugin.invitations": {
+      "zh-CN": "修改邀请码插件",
+      "en": "Update invitation plugin"
+    },
+    "settings.login_image": {
+      "zh-CN": "修改登录页图片",
+      "en": "Change sign-in image"
+    },
+    "settings.oidc": {
+      "zh-CN": "修改 OIDC 登录设置",
+      "en": "Change OIDC sign-in settings"
+    },
+    "plugin.enable": {
+      "zh-CN": "启用插件",
+      "en": "Enable plugin"
+    },
+    "plugin.disable": {
+      "zh-CN": "停用插件",
+      "en": "Disable plugin"
+    },
+    "plugin.task.run": {
+      "zh-CN": "运行插件任务",
+      "en": "Run plugin task"
+    },
+    "character.rename": {
+      "zh-CN": "修改角色名",
+      "en": "Rename character"
+    },
+    "character.clear_skin": {
+      "zh-CN": "解除皮肤绑定",
+      "en": "Remove skin"
+    },
+    "character.clear_cape": {
+      "zh-CN": "解除披风绑定",
+      "en": "Remove cape"
+    },
+    "character.delete": {
+      "zh-CN": "删除角色",
+      "en": "Delete character"
+    },
+    "wardrobe.rename": {
+      "zh-CN": "修改收藏名称",
+      "en": "Rename collection"
+    },
+    "wardrobe.remove": {
+      "zh-CN": "移出用户衣柜",
+      "en": "Remove from user wardrobe"
+    },
+    "report.dismiss": {
+      "zh-CN": "驳回举报",
+      "en": "Dismiss report"
+    },
+    "report.disable": {
+      "zh-CN": "举报处置：下架图片",
+      "en": "Report action: disable image"
+    },
+    "report.ban": {
+      "zh-CN": "举报处置：封禁上传者",
+      "en": "Report action: ban uploader"
+    }
+  },
+  "targets": {
+    "user": {
+      "zh-CN": "用户",
+      "en": "User"
+    },
+    "site": {
+      "zh-CN": "站点",
+      "en": "Site"
+    },
+    "invitation": {
+      "zh-CN": "邀请码",
+      "en": "Invitation code"
+    },
+    "texture": {
+      "zh-CN": "图片",
+      "en": "Image"
+    },
+    "character": {
+      "zh-CN": "角色",
+      "en": "Character"
+    },
+    "wardrobe": {
+      "zh-CN": "衣柜",
+      "en": "Wardrobe"
+    },
+    "report": {
+      "zh-CN": "举报",
+      "en": "Report"
+    }
+  },
+  "settings": {
+    "registration": {
+      "zh-CN": "注册模式",
+      "en": "Registration mode"
+    },
+    "character_limit": {
+      "zh-CN": "角色数量上限",
+      "en": "Character limit"
+    },
+    "branding": {
+      "zh-CN": "品牌与公告",
+      "en": "Branding and notice"
+    },
+    "points": {
+      "zh-CN": "积分与签到",
+      "en": "Points & check-in"
+    },
+    "appearance": {
+      "zh-CN": "个性化",
+      "en": "Appearance"
+    },
+    "services": {
+      "zh-CN": "邮件与验证",
+      "en": "Email & verification"
+    },
+    "invitations": {
+      "zh-CN": "邀请码插件",
+      "en": "Invitation plugin"
+    },
+    "login_image": {
+      "zh-CN": "登录页图片",
+      "en": "Sign-in image"
+    },
+    "oidc": {
+      "zh-CN": "OIDC 登录",
+      "en": "OIDC sign-in"
+    },
+    "wishingskin.oidc": {
+      "zh-CN": "OIDC 登录",
+      "en": "OIDC sign-in"
+    }
+  }
+}

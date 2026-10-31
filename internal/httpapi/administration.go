@@ -282,11 +282,33 @@ func adminEventFilter(w http.ResponseWriter, r *http.Request) (string, []any, bo
 	if query == "" {
 		return "", nil, true
 	}
-	where := " WHERE POSITION(? IN action)>0 OR POSITION(? IN target_type)>0 OR POSITION(? IN target_id)>0"
-	args := []any{query, query, query}
+	identifierOnly := strings.HasPrefix(query, "#")
+	query = strings.ToLower(strings.TrimSpace(strings.TrimPrefix(query, "#")))
+	if query == "" {
+		return " WHERE 1=0", nil, true
+	}
+	where := " WHERE POSITION(? IN LOWER(target_id))>0"
+	args := []any{query}
 	if id, err := strconv.ParseInt(query, 10, 64); err == nil {
 		where += " OR actor_id=?"
 		args = append(args, id)
+	}
+	if !identifierOnly {
+		where += " OR POSITION(? IN LOWER(action))>0 OR POSITION(? IN LOWER(target_type))>0"
+		args = append(args, query, query)
+		for _, group := range []struct{ name, column string }{{"actions", "action"}, {"targets", "target_type"}, {"settings", "target_id"}} {
+			for _, key := range adminEventLabelMatches(group.name, query) {
+				if group.name == "settings" {
+					where += " OR (target_type='site' AND target_id=?)"
+				} else {
+					where += " OR " + group.column + "=?"
+				}
+				args = append(args, key)
+			}
+		}
+		if strings.Contains("本机初始化", query) || strings.Contains("local initialization", query) {
+			where += " OR actor_id=0"
+		}
 	}
 	return where, args, true
 }

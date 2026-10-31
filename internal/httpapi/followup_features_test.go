@@ -3,6 +3,7 @@ package httpapi
 import (
 	"encoding/csv"
 	"encoding/json"
+	"net/url"
 	"strings"
 	"testing"
 )
@@ -94,11 +95,52 @@ func TestSearchAndAuditExportBothDatabases(t *testing.T) {
 			if err := json.Unmarshal(f.call(1, "GET", "/api/wardrobe?q=needle", nil).Body.Bytes(), &wardrobe); err != nil || len(wardrobe.Textures) != 1 || wardrobe.Textures[0].DisplayName != "Wardrobe needle" {
 				t.Fatal("wardrobe search", err)
 			}
+			for _, path := range []string{"/api/textures", "/api/wardrobe", "/api/library"} {
+				response := f.call(1, "GET", path+"?q="+record.FileHash, nil)
+				webStatus(t, response, 200)
+				var result struct{ Textures []textureRecord }
+				if err := json.Unmarshal(response.Body.Bytes(), &result); err != nil || len(result.Textures) != 0 {
+					t.Fatalf("ordinary resource search must use names, not hashes: %s", path)
+				}
+			}
+			response := f.call(3, "GET", "/api/admin/textures?q="+record.FileHash, nil)
+			webStatus(t, response, 200)
+			if !strings.Contains(response.Body.String(), record.FileHash) {
+				t.Fatal("administrator hash search omitted the resource")
+			}
+			webStatus(t, f.call(3, "PATCH", "/api/admin/users/2", map[string]bool{"isAdmin": true}), 204)
+			for _, query := range []string{"设为管理员", "设为管理", "MAKE ADMINISTRATOR", "user.promote"} {
+				response := f.call(3, "GET", "/api/admin/events?q="+url.QueryEscape(query), nil)
+				webStatus(t, response, 200)
+				var result struct{ Events []adminEvent }
+				if err := json.Unmarshal(response.Body.Bytes(), &result); err != nil || len(result.Events) != 1 || result.Events[0].Action != "user.promote" {
+					t.Fatalf("displayed action search %q: %s", query, response.Body)
+				}
+				export := f.call(3, "GET", "/api/admin/events/export?q="+url.QueryEscape(query), nil)
+				webStatus(t, export, 200)
+				rows, err := csv.NewReader(strings.NewReader(strings.TrimPrefix(export.Body.String(), "\ufeff"))).ReadAll()
+				if err != nil || len(rows) != 2 || rows[1][2] != "user.promote" {
+					t.Fatalf("displayed action CSV search %q: %s", query, export.Body)
+				}
+			}
+			for _, query := range []string{"#2", "#3", "用户"} {
+				response := f.call(3, "GET", "/api/admin/events?q="+url.QueryEscape(query), nil)
+				webStatus(t, response, 200)
+				if !strings.Contains(response.Body.String(), "user.promote") {
+					t.Fatalf("displayed identifier or target search %q: %s", query, response.Body)
+				}
+			}
+			response = f.call(3, "GET", "/api/admin/events?q=%23", nil)
+			webStatus(t, response, 200)
+			var empty struct{ Total int }
+			if err := json.Unmarshal(response.Body.Bytes(), &empty); err != nil || empty.Total != 0 {
+				t.Fatal("a bare identifier prefix should not return every event")
+			}
 			webStatus(t, f.call(3, "PATCH", "/api/admin/registration", map[string]string{"mode": "closed"}), 204)
 			if response := f.call(3, "GET", "/api/admin/events?q=registration", nil); response.Code != 200 || !strings.Contains(response.Body.String(), "registration.closed") {
 				t.Fatalf("event search: %d %s", response.Code, response.Body)
 			}
-			response := f.call(3, "GET", "/api/admin/events/export?q=registration", nil)
+			response = f.call(3, "GET", "/api/admin/events/export?q=registration", nil)
 			if response.Code != 200 || !strings.Contains(response.Header().Get("Content-Type"), "text/csv") {
 				t.Fatalf("event export: %d %s", response.Code, response.Body)
 			}

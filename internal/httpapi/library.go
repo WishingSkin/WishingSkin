@@ -187,8 +187,8 @@ func (a *Server) wardrobe(w http.ResponseWriter, r *http.Request) {
 			failure(w, 400, "搜索内容不能超过 255 个字符")
 			return
 		}
-		where += " AND (POSITION(? IN c.display_name)>0 OR POSITION(? IN r.name)>0 OR POSITION(? IN r.file_hash)>0)"
-		args = append(args, query, query, strings.ToLower(query))
+		where += " AND (POSITION(? IN c.display_name)>0 OR POSITION(? IN r.name)>0)"
+		args = append(args, query, query)
 	}
 	page, size, paginated, ok := texturePagination(w, r)
 	if !ok {
