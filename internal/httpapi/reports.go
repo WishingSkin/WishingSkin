@@ -77,11 +77,11 @@ func (a *Server) listReports(w http.ResponseWriter, r *http.Request, admin bool)
 			return
 		}
 		id, _ := strconv.ParseInt(query, 10, 64)
-		where += " AND (POSITION(? IN p.texture_name)>0 OR POSITION(? IN p.reason)>0 OR POSITION(? IN r.file_hash)>0"
-		args = append(args, query, query, strings.ToLower(query))
+		where += " AND (POSITION(? IN p.texture_name)>0 OR POSITION(? IN p.reason)>0"
+		args = append(args, query, query)
 		if admin {
-			where += " OR p.reporter_id=? OR r.owner_id=? OR POSITION(? IN LOWER(reporter.email))>0 OR POSITION(? IN LOWER(COALESCE(owner.email,'')))>0"
-			args = append(args, id, id, strings.ToLower(query), strings.ToLower(query))
+			where += " OR POSITION(? IN r.file_hash)>0 OR p.reporter_id=? OR r.owner_id=? OR POSITION(? IN LOWER(reporter.email))>0 OR POSITION(? IN LOWER(COALESCE(owner.email,'')))>0"
+			args = append(args, strings.ToLower(query), id, id, strings.ToLower(query), strings.ToLower(query))
 		}
 		where += ")"
 	}

@@ -6,11 +6,12 @@ import ModelThumbnail from './ModelThumbnail.vue'
 import AppModal from './AppModal.vue'
 import ApplyTextureDialog from './ApplyTextureDialog.vue'
 import ReportForm from './ReportForm.vue'
+import ResourceFilters from './ResourceFilters.vue'
 import type { LibraryRecord } from '../textureTypes'
 import { t } from '../i18n'
 
 const props = defineProps<{ mode: 'library' | 'wardrobe'; csrfToken: string; wardrobe: LibraryRecord[]; wardrobeBusy: boolean; wardrobeError: string }>()
-const emit = defineEmits<{ changed: []; refresh: []; wear: [texture: LibraryRecord]; login: []; expired: [] }>()
+const emit = defineEmits<{ changed: []; refresh: []; wear: [texture: LibraryRecord]; login: []; upload: []; expired: [] }>()
 const records = ref<LibraryRecord[]>([])
 const loading = ref(false)
 const loadError = feedbackRef('error')
@@ -106,19 +107,15 @@ onBeforeUnmount(() => { active = false; request?.abort(); lifetime.abort() })
 
 <template>
   <section class="texture-browser">
-    <div class="page-heading"><div><h1>{{ mode === 'library' ? t('公开库') : t('我的衣柜') }}<span class="heading-pixel" aria-hidden="true"></span></h1></div><button type="button" class="secondary-button" :disabled="pending || busy" @click="load">{{ pending ? t('正在刷新…') : t('刷新列表') }}</button></div>
-    <form v-if="mode === 'library'" class="library-filters panel" role="search" @submit.prevent="search"><label class="binding-field"><span>{{ t('分类') }}</span><input v-model="category" maxlength="32" /></label><label class="binding-field"><span>{{ t('标签') }}</span><input v-model="tag" maxlength="24" /></label>
-      <label class="binding-field library-search"><span>{{ t("材质名称") }}</span><input v-model="query" maxlength="255" :placeholder="t('搜索材质名称')" /></label>
-      <label class="binding-field"><span>{{ t("类型") }}</span><select v-model="kind" @change="search"><option value="">{{ t("全部材质") }}</option><option value="skin">{{ t("皮肤") }}</option><option value="cape">{{ t("披风") }}</option></select></label>
-      <label class="binding-field"><span>{{ t("排序") }}</span><select v-model="sort" @change="search"><option value="name">{{ t("名称升序") }}</option><option value="name-desc">{{ t("名称降序") }}</option><option value="collections">{{ t("收藏最多") }}</option></select></label>
-      <button class="primary-button" type="submit" :disabled="pending">{{ t("搜索") }}</button>
-      <p v-if="owner" class="owner-filter">{{ t("上传者：") }}{{ ownerName || t('这位上传者') }} <button type="button" class="text-button" @click="owner = ''; ownerName = ''; search()">{{ t("查看所有上传者") }}</button></p>
-    </form>
-    <form v-else class="library-filters panel" role="search" @submit.prevent="search">
-      <label class="binding-field library-search"><span>{{ t('搜索我的衣柜') }}</span><input v-model="query" maxlength="255" :placeholder="t('收藏名、材质名称或图片哈希')" /></label>
-      <label class="binding-field"><span>{{ t('类型') }}</span><select v-model="kind" @change="search"><option value="">{{ t('全部材质') }}</option><option value="skin">{{ t('皮肤') }}</option><option value="cape">{{ t('披风') }}</option></select></label>
-      <button class="primary-button" type="submit" :disabled="pending">{{ t('搜索') }}</button>
-    </form>
+    <div class="page-heading"><div><h1>{{ mode === 'library' ? t('公开库') : t('我的衣柜') }}<span class="heading-pixel" aria-hidden="true"></span></h1></div><div class="page-heading-actions"><button v-if="mode === 'library'" type="button" class="primary-button" @click="emit('upload')">{{ t('上传材质') }}</button><button type="button" class="secondary-button" :disabled="pending || busy" @click="load">{{ pending ? t('正在刷新…') : t('刷新列表') }}</button></div></div>
+    <ResourceFilters v-model:query="query" v-model:kind="kind" :label="mode === 'library' ? '搜索公开库' : '搜索我的衣柜'" :placeholder="mode === 'library' ? '搜索材质名称' : '收藏名或材质名称'" :busy="pending" @search="search">
+      <template v-if="mode === 'library'" #extra>
+        <label class="binding-field"><span>{{ t('分类') }}</span><input v-model="category" maxlength="32" /></label>
+        <label class="binding-field"><span>{{ t('标签') }}</span><input v-model="tag" maxlength="24" /></label>
+        <label class="binding-field"><span>{{ t('排序') }}</span><select v-model="sort" @change="search"><option value="name">{{ t('名称升序') }}</option><option value="name-desc">{{ t('名称降序') }}</option><option value="collections">{{ t('收藏最多') }}</option></select></label>
+      </template>
+      <template #summary><p v-if="owner" class="owner-filter">{{ t('上传者：') }}{{ ownerName || t('这位上传者') }} <button type="button" class="text-button" @click="owner = ''; ownerName = ''; search()">{{ t('查看所有上传者') }}</button></p></template>
+    </ResourceFilters>
 
     <div class="materials-workspace browse-list-layout">
       <section class="material-library panel" :aria-label="mode === 'library' ? t('公开材质列表') : t('收藏列表')" :aria-busy="pending">

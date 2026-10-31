@@ -81,7 +81,7 @@ func (a *Server) startOIDC(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	flow := oidcFlow{ProviderID: cfg.ID, Purpose: "authorize", ConfigHash: oidcFingerprint(cfg), Next: "/user"}
-	if (body.Next == "/user" || strings.HasPrefix(body.Next, "/user/")) && !strings.ContainsAny(body.Next, "\\\r\n") && len(body.Next) < 4096 {
+	if (body.Next == "/user" || strings.HasPrefix(body.Next, "/user/") || body.Next == "/admin" || strings.HasPrefix(body.Next, "/admin/")) && !strings.ContainsAny(body.Next, "\\\r\n") && len(body.Next) < 4096 {
 		flow.Next = body.Next
 	}
 	if body.Link {

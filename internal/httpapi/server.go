@@ -200,7 +200,7 @@ func isSPAPath(path string) bool {
 	if strings.HasSuffix(path, ".json") {
 		return false
 	}
-	return path == "/" || path == "/login" || path == "/library" || path == "/user" || strings.HasPrefix(path, "/user/") || path == "/admin"
+	return path == "/" || path == "/login" || path == "/library" || path == "/user" || strings.HasPrefix(path, "/user/") || path == "/admin" || strings.HasPrefix(path, "/admin/")
 }
 
 func (a *Server) serveAssetOrSPA(w http.ResponseWriter, r *http.Request) {

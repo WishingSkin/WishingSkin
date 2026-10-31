@@ -11,7 +11,7 @@ func TestServeAssetOrSPAUsesIndexWithoutRedirect(t *testing.T) {
 	a := &Server{cfg: Config{Assets: fstest.MapFS{
 		"index.html": {Data: []byte("<!doctype html><title>WishingSkin</title>")},
 	}}}
-	for _, path := range []string{"/", "/login", "/user/account"} {
+	for _, path := range []string{"/", "/login", "/user/account", "/user/resources", "/user/resources/upload", "/admin/users", "/admin/resources", "/admin/events", "/admin/settings/appearance", "/admin/plugins/wishingskin.oidc"} {
 		t.Run(path, func(t *testing.T) {
 			w := httptest.NewRecorder()
 			r := httptest.NewRequest(http.MethodGet, "http://example.test"+path, nil)

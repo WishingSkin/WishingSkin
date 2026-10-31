@@ -19,6 +19,8 @@ import AppModal from './components/AppModal.vue'
 import TexturePicker from './components/TexturePicker.vue'
 import ApplyTextureDialog from './components/ApplyTextureDialog.vue'
 import TextureBrowser from './components/TextureBrowser.vue'
+import ResourceFilters from './components/ResourceFilters.vue'
+import { adminRoute, canonicalWorkspaceURL, isProtectedPath, navigationRegion, normalizePath, resourcePath } from './workspaceRoutes'
 import AccountAccess from './components/AccountAccess.vue'
 import RegistrationSettings from './components/RegistrationSettings.vue'
 import Administration from './components/Administration.vue'
@@ -61,13 +63,14 @@ const passwordBusy = ref(false)
 const passwordError = feedbackRef('error')
 const logoutBusy = ref(false)
 const logoutError = feedbackRef('error')
-type Page = 'characters' | 'materials' | 'wardrobe' | 'library' | 'account' | 'administration'
+type Page = 'characters' | 'resources' | 'wardrobe' | 'library' | 'account' | 'administration'
 const page = ref<Page>('characters')
 type AccountTab = 'dashboard' | 'profile' | 'points' | 'integration' | 'reports'
 const accountTab = ref<AccountTab>('dashboard')
 const publicHome = ref(true)
 const publicLibraryOpen = ref(false)
-const materialTab = ref<'skin' | 'cape' | 'upload'>('skin')
+const materialTab = ref<'browse' | 'upload'>('browse')
+const materialKind = ref('')
 const routePath = ref(window.location.pathname || '/')
 const pendingNext = ref<string | null>(null)
 const materialSearch = ref('')
@@ -86,7 +89,7 @@ const texturePicker = ref<'skin' | 'cape'>()
 const applyingTexture = ref<TextureRecord>()
 const texturePage = ref(1), textureTotal = ref(0), wardrobeTotal = ref(0)
 const selectedTextureId = ref('')
-const visibleTextures = computed(() => textures.value.filter(texture => texture.kind === materialTab.value))
+const visibleTextures = computed(() => textures.value.filter(texture => !materialKind.value || texture.kind === materialKind.value))
 const selectedTexture = computed(() => visibleTextures.value.find(texture => texture.id === selectedTextureId.value))
 const materialFallback = ref('')
 const editingTextureId = ref('')
@@ -132,48 +135,50 @@ const verificationBusy = ref(false)
 const verificationMessage = feedbackRef('success')
 const verificationError = feedbackRef('error')
 
-function normalizePath(path: string) {
-  if (!path || path === '') return '/'
-  const normalized = path.replace(/\/+/g, '/')
-  return normalized.length > 1 ? normalized.replace(/\/$/, '') : normalized
-}
 function safeNext(value: string | null) {
   if (!value || !value.startsWith('/') || value.startsWith('//') || value.startsWith('/api/')) return null
   return value
 }
-function isProtectedPath(path: string) { return path === '/user' || path.startsWith('/user/') || path === '/admin' }
 function accountPath(tab: AccountTab) { return tab === 'dashboard' ? '/user/account' : `/user/account/${tab}` }
-function materialPath(tab: 'skin' | 'cape' | 'upload') { return `/user/materials?tab=${tab}` }
-function openMaterialTab(tab: 'skin' | 'cape' | 'upload') {
-  if (tab === 'upload') uploadKind.value = materialTab.value === 'cape' ? 'cape' : 'skin'
+function materialPath(tab: 'browse' | 'upload') { return resourcePath(tab, materialKind.value) }
+function openMaterialTab(tab: 'browse' | 'upload') {
+  if (tab === 'upload') uploadKind.value = materialKind.value === 'cape' ? 'cape' : 'skin'
   navigate(materialPath(tab))
 }
+function openUpload() { navigate(user.value ? '/user/resources/upload' : '/login?next=/user/resources/upload') }
+const adminView = computed(() => adminRoute(routePath.value))
 function setRouteView(path: string, search = '') {
-  const normalized = normalizePath(path)
-  if (normalized === '/admin' && user.value && !user.value.isAdmin) {
+  const canonical = new URL(canonicalWorkspaceURL(path, search), window.location.origin)
+  const normalized = canonical.pathname
+  if (normalized + canonical.search !== path + search) window.history.replaceState({}, '', normalized + canonical.search + window.location.hash)
+  if ((normalized === '/admin' || normalized.startsWith('/admin/')) && user.value && !user.value.isAdmin) {
     const fallback = '/user'
     if (window.location.pathname !== fallback || window.location.search) window.history.replaceState({}, '', fallback)
     setRouteView(fallback)
     return
   }
-  const params = new URLSearchParams(search)
+  const params = canonical.searchParams
   routePath.value = normalized
   publicHome.value = normalized === '/'
   publicLibraryOpen.value = normalized === '/library' && !user.value
   if (normalized === '/library' && user.value) page.value = 'library'
-  else if (normalized === '/user/materials') page.value = 'materials'
+  else if (normalized === '/user/resources' || normalized === '/user/resources/upload') page.value = 'resources'
   else if (normalized === '/user/wardrobe') page.value = 'wardrobe'
   else if (normalized === '/user/account' || normalized.startsWith('/user/account/')) {
     page.value = 'account'
     const tab = normalized.split('/').pop() as AccountTab
     accountTab.value = ['profile', 'points', 'integration', 'reports'].includes(tab) ? tab : 'dashboard'
-  } else if (normalized === '/admin') page.value = 'administration'
+  } else if (normalized === '/admin' || normalized.startsWith('/admin/')) page.value = 'administration'
   else if (normalized === '/user') page.value = 'characters'
-  if (normalized === '/user/materials') {
-    const tab = params.get('tab')
-    materialTab.value = tab === 'cape' || tab === 'upload' ? tab : 'skin'
+  if (normalized === '/user/resources' || normalized === '/user/resources/upload') {
+    materialTab.value = normalized.endsWith('/upload') ? 'upload' : 'browse'
+    if (materialTab.value === 'browse') {
+      const kind = ['skin', 'cape'].includes(params.get('kind') || '') ? params.get('kind')! : ''
+      if (kind !== materialKind.value) { materialKind.value = kind; if (user.value) void loadTextures() }
+    }
   }
   if (normalized === '/login') {
+    if (params.has('next')) pendingNext.value = safeNext(params.get('next'))
     oidcTOTP.value = params.get('totp') === '1'
     oidcConfirmation.value = params.get('oidcConfirm') === '1'
     if (!oidcTOTP.value) {
@@ -191,17 +196,21 @@ let navigationAnimations: Animation[] = []
 function navigate(path: string, replace = false) {
   const version = ++navigationVersion
   navigationAnimations.forEach(animation => animation.cancel()); navigationAnimations = []
-  const region = document.querySelector<HTMLElement>('.workspace-content, .public-home-page, .login-layout, .public-library-layout, .access-layout')
+  const target = new URL(path, window.location.origin)
+  const destination = new URL(canonicalWorkspaceURL(target.pathname, target.search), window.location.origin)
+  const selector = navigationRegion(routePath.value, destination.pathname)
+  const region = selector ? document.querySelector<HTMLElement>(selector) : null
   const animate = !!region && !window.matchMedia('(prefers-reduced-motion: reduce)').matches
-  const oldAnimation = animate ? region.animate([{ opacity: 1 }, { opacity: 0 }], { duration: 150, easing: 'ease-in' }) : undefined
+  const oldAnimation = animate ? region.animate([{ opacity: 1 }, { opacity: 0 }], { duration: 200, easing: 'ease-in' }) : undefined
   if (oldAnimation) navigationAnimations.push(oldAnimation)
   const change = async () => {
     oldAnimation?.cancel()
     if (version !== navigationVersion) return
     updateRoute(path, replace)
+    readMailLink()
     await nextTick()
     if (animate) {
-      const entering = document.querySelector<HTMLElement>('.workspace-content, .public-home-page, .login-layout, .public-library-layout, .access-layout')?.animate([{ opacity: 0 }, { opacity: 1 }], { duration: 250, easing: 'ease-out' })
+      const entering = document.querySelector<HTMLElement>(selector)?.animate([{ opacity: 0 }, { opacity: 1 }], { duration: 250, easing: 'ease-out' })
       if (entering) { navigationAnimations.push(entering); void entering.finished.then(() => entering.cancel(), () => {}) }
     }
   }
@@ -210,12 +219,13 @@ function navigate(path: string, replace = false) {
 }
 function updateRoute(path: string, replace = false) {
   const url = new URL(path, window.location.origin)
-  const normalized = normalizePath(url.pathname)
-  const next = normalized + url.search
+  const canonical = new URL(canonicalWorkspaceURL(url.pathname, url.search), window.location.origin)
+  const normalized = canonical.pathname
+  const next = normalized + canonical.search
   if (window.location.pathname + window.location.search !== next) {
     window.history[replace ? 'replaceState' : 'pushState']({}, '', next)
   }
-  setRouteView(normalized, url.search)
+  setRouteView(normalized, canonical.search)
 }
 function finishOIDCConfirmation(path: string) { window.location.assign(path) }
 function homepageLink(event: MouseEvent, href: string) {
@@ -360,7 +370,8 @@ function clearSession() {
   wardrobeError.value = ''
   texturesBusy.value = false
   selectedTextureId.value = ''
-  materialTab.value = 'skin'
+  materialTab.value = 'browse'
+  materialKind.value = ''
   materialSearch.value = ''
   materialFallback.value = ''
   editingTextureId.value = ''
@@ -429,7 +440,7 @@ async function loadTextures() {
   texturesBusy.value = true
   textureError.value = ''
   try {
-    const params = new URLSearchParams({ q: materialSearch.value.trim(), kind: materialTab.value === 'upload' ? '' : materialTab.value, page: String(texturePage.value), pageSize: '20' })
+    const params = new URLSearchParams({ q: materialSearch.value.trim(), kind: materialKind.value, page: String(texturePage.value), pageSize: '20' })
     const response = await api(`/api/textures?${params}`, { signal: controller.signal })
     if (version !== sessionVersion || controller.signal.aborted) return
     if (response.status === 401) { clearSession(); loginError.value = '登录已过期，请重新登录。'; return }
@@ -447,6 +458,7 @@ async function loadTextures() {
 }
 
 function searchMaterials() {
+  updateRoute(resourcePath('browse', materialKind.value), true)
   texturePage.value = 1
   selectedTextureId.value = ''
   void loadTextures()
@@ -562,7 +574,7 @@ async function bindTexture(kind: 'skin' | 'cape', recordId: string, model?: stri
 
 async function uploadTexture() {
   const version = sessionVersion
-  actionPage.value = 'materials'
+  actionPage.value = 'resources'
   actionMessage.value = ''
   actionError.value = ''
   if (!uploadFile.value) { actionError.value = '请选择 PNG 文件。'; return }
@@ -580,7 +592,7 @@ async function uploadTexture() {
   if (!ok) return
   const uploaded: TextureRecord = await ok.json()
   if (version !== sessionVersion) return
-  navigate(materialPath(uploaded.kind), true)
+  navigate(resourcePath('browse', uploaded.kind), true)
   actionMessage.value = '材质已上传到我的材质。'
   uploadName.value = ''
   uploadDescription.value = ''
@@ -609,7 +621,7 @@ function editTexture() {
 
 async function saveTexture() {
   if (!editingTextureId.value || !editTextureName.value.trim()) return
-  actionPage.value = 'materials'
+  actionPage.value = 'resources'
   actionError.value = ''
   actionMessage.value = ''
   if (editDescriptionLength.value > 200) { actionError.value = '材质描述不能超过 200 个字符。'; return }
@@ -749,10 +761,7 @@ function modelLabel(model: string) {
   return t('未指定')
 }
 function imageFailed(hash: string) { if (!failedImages.value.includes(hash)) failedImages.value.push(hash) }
-const handlePopState = () => {
-  setRouteView(window.location.pathname, window.location.search)
-  readMailLink()
-}
+const handlePopState = () => navigate(window.location.pathname + window.location.search, true)
 
 let topbarObserver: ResizeObserver | undefined
 onMounted(() => {
@@ -800,7 +809,7 @@ onBeforeUnmount(() => {
 
     <main v-else-if="accessMode" class="access-layout"><AccountAccess :mode="accessMode" :token="linkToken" :site="site" :email="user?.email || email" :dark="dark" @back="navigate('/login'); linkToken = ''" @completed="accessCompleted" /></main>
 
-    <main v-else-if="!user && publicLibraryOpen" class="public-library-layout"><button class="secondary-button public-library-back" type="button" @click="navigate('/')">{{ t("返回主页") }}</button><TextureBrowser mode="library" csrf-token="" :wardrobe="[]" :wardrobe-busy="false" wardrobe-error="" @login="navigate('/login')" /></main>
+    <main v-else-if="!user && publicLibraryOpen" class="public-library-layout"><button class="secondary-button public-library-back" type="button" @click="navigate('/')">{{ t("返回主页") }}</button><TextureBrowser mode="library" csrf-token="" :wardrobe="[]" :wardrobe-busy="false" wardrobe-error="" @login="navigate('/login')" @upload="openUpload" /></main>
     <main v-else-if="publicHome" class="public-home-page"><HomepageContent :homepage="site.homepage" :name="site.name" :tagline="site.tagline" :notice="site.notice" :notice-html="site.noticeHtml" @navigate="homepageLink" /></main>
     <main v-else-if="!user" class="login-layout">
       <section class="welcome-panel" aria-labelledby="welcome-title">
@@ -822,7 +831,7 @@ onBeforeUnmount(() => {
           <button v-if="emailVerificationRequired && !site.manualEmailVerification" class="text-button" type="button" @click="navigate('/login?mode=mail')">{{ t('重新发送验证邮件') }}</button>
           <button class="primary-button login-button" type="submit" :disabled="loginBusy || (captchaRequired && !loginChallengeToken)">{{ loginBusy ? t('正在登录…') : t('登录') }}<span aria-hidden="true"><InterfaceIcon name="arrow">↗</InterfaceIcon></span></button>
         </form>
-        <template v-if="!oidcTOTP"><OIDCSignIn v-for="provider in (site.oidcProviders || (site.oidc?.enabled ? [{ id: '', name: site.oidc.name }] : []))" :key="provider.id" :name="provider.name" :provider="provider.id" /></template>
+        <template v-if="!oidcTOTP"><OIDCSignIn v-for="provider in (site.oidcProviders || (site.oidc?.enabled ? [{ id: '', name: site.oidc.name }] : []))" :key="provider.id" :name="provider.name" :provider="provider.id" :next-path="pendingNext || '/user'" /></template>
         <button class="secondary-button browse-library" type="button" @click="navigate('/library')">{{ t("浏览公开库") }}</button>
         <div class="access-links"><button v-if="site.registration !== 'closed'" class="text-button" type="button" @click="navigate('/login?mode=register')">{{ t('创建账号') }}</button><button class="text-button" type="button" @click="navigate('/login?mode=mail')">{{ t('验证邮箱 / 找回密码') }}</button></div>
         <div v-if="siteError" class="notice" role="alert">{{ t('暂时无法读取站点设置') }} <button class="text-button" type="button" @click="loadSite">{{ t('重试') }}</button></div>
@@ -836,7 +845,7 @@ onBeforeUnmount(() => {
         <div class="sidebar-title">{{ t("我的工作台") }}</div>
         <nav :aria-label="t('工作台导航')" :class="{ 'has-admin': user.isAdmin }">
           <button type="button" class="nav-button" :class="{ active: page === 'characters' }" :aria-current="page === 'characters' ? 'page' : undefined" @click="navigate('/user')"><InterfaceIcon name="characters"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" aria-hidden="true"><rect x="8" y="3" width="8" height="7" rx="1"/><path d="M7 13h10v8H7zM3 13h4v6H3zm14 0h4v6h-4zM12 13v8"/></svg></InterfaceIcon>{{ t("角色管理") }}<span class="nav-count">{{ characters.length }}</span></button>
-          <button type="button" class="nav-button" :class="{ active: page === 'materials' }" :aria-current="page === 'materials' ? 'page' : undefined" @click="navigate('/user/materials')"><InterfaceIcon name="materials"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" aria-hidden="true"><path d="M3 7h18v14H3zM2 3h20v4H2zM9 11h6"/></svg></InterfaceIcon>{{ t("我的材质") }}</button>
+          <button type="button" class="nav-button" :class="{ active: page === 'resources' }" :aria-current="page === 'resources' ? 'page' : undefined" @click="navigate('/user/resources')"><InterfaceIcon name="materials"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" aria-hidden="true"><path d="M3 7h18v14H3zM2 3h20v4H2zM9 11h6"/></svg></InterfaceIcon>{{ t("我的材质") }}</button>
           <button type="button" class="nav-button" :class="{ active: page === 'wardrobe' }" :aria-current="page === 'wardrobe' ? 'page' : undefined" @click="navigate('/user/wardrobe')"><InterfaceIcon name="wardrobe"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" aria-hidden="true"><path d="M4 3h16v18H4zM12 3v18M9 11v3m6-3v3"/></svg></InterfaceIcon>{{ t("我的衣柜") }}<span class="nav-count">{{ wardrobeTotal }}</span></button>
           <button type="button" class="nav-button" :class="{ active: page === 'account' }" :aria-current="page === 'account' ? 'page' : undefined" @click="navigate('/user/account')"><InterfaceIcon name="account"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" aria-hidden="true"><circle cx="12" cy="8" r="4"/><path d="M4 21v-2a8 8 0 0 1 16 0v2"/></svg></InterfaceIcon>{{ t("账号") }}</button>
           <button v-if="user.isAdmin" type="button" class="nav-button" :class="{ active: page === 'administration' }" :aria-current="page === 'administration' ? 'page' : undefined" @click="navigate('/admin')"><InterfaceIcon name="administration"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" aria-hidden="true"><path d="m12 3 8 3v6c0 5-8 9-8 9s-8-4-8-9V6z"/><path d="m8 12 3 3 5-6"/></svg></InterfaceIcon>{{ t('管理后台') }}</button>
@@ -844,13 +853,13 @@ onBeforeUnmount(() => {
       </aside>
 
       <main class="workspace-content">
-        <Administration v-if="page === 'administration' && user.isAdmin" :csrf-token="csrfToken" :user-id="String(user.id)" @expired="expireSession" @updated="loadSite"><template #settings>
-          <SettingsWorkspace :site="site" :csrf-token="csrfToken" @updated="loadSite" @expired="expireSession">
+        <Administration v-if="page === 'administration' && user.isAdmin" :csrf-token="csrfToken" :user-id="String(user.id)" :active-tab="adminView.tab" :plugin-id="adminView.pluginId" @navigate="navigate" @expired="expireSession" @updated="loadSite"><template #settings>
+          <SettingsWorkspace :active-tab="adminView.settingsTab" @navigate="navigate" :site="site" :csrf-token="csrfToken" @updated="loadSite" @expired="expireSession">
           <section class="character-setting" :aria-label="t('角色数量设置')"><form class="inline-form" @submit.prevent="saveCharacterLimit"><label for="character-limit">{{ t("站点每账号角色上限") }}</label><div class="inline-controls"><input id="character-limit" v-model.number="adminCharacterLimit" type="number" min="1" step="1" required :disabled="actionBusy" /><button class="secondary-button" type="submit" :disabled="actionBusy">{{ t("保存设置") }}</button></div><small>{{ t("已有角色会保留；上限降低后，用户暂时不能继续新增角色。") }}</small></form></section>
 
           <RegistrationSettings :site="site" :csrf-token="csrfToken" @updated="loadSite" @expired="expireSession" />
           </SettingsWorkspace></template></Administration>
-        <TextureBrowser v-if="page === 'wardrobe' || page === 'library'" :key="`${user.id}:${page}`" :mode="page" :csrf-token="csrfToken" :wardrobe="wardrobe" :wardrobe-busy="wardrobeBusy" :wardrobe-error="wardrobeError" @refresh="loadWardrobe" @changed="loadWardrobe" @wear="wearCollected" @expired="expireSession" />
+        <TextureBrowser v-if="page === 'wardrobe' || page === 'library'" :key="`${user.id}:${page}`" :mode="page" :csrf-token="csrfToken" :wardrobe="wardrobe" :wardrobe-busy="wardrobeBusy" :wardrobe-error="wardrobeError" @refresh="loadWardrobe" @changed="loadWardrobe" @wear="wearCollected" @upload="openUpload" @expired="expireSession" />
         <template v-if="page === 'characters'">
           <div class="page-heading"><div><h1>{{ t("角色管理") }}<span class="heading-pixel" aria-hidden="true"></span></h1></div><button class="secondary-button" type="button" :disabled="charactersBusy || actionBusy" @click="loadCharacters">{{ charactersBusy ? t('正在刷新…') : t('刷新列表') }}</button></div>
 
@@ -870,7 +879,7 @@ onBeforeUnmount(() => {
                 <div class="management-heading"><div><h3>{{ t("角色设置") }}</h3><p>{{ t("修改角色名称与外观。") }}</p></div><button class="danger-button" type="button" :disabled="actionBusy" @click="deleteCharacter">{{ t("删除角色") }}</button></div>
                 <form class="inline-form rename-form" @submit.prevent="renameCharacter"><label :for="`rename-${selected.id}`">{{ t("角色名") }}</label><div class="inline-controls"><input :id="`rename-${selected.id}`" v-model="renameCharacterName" name="name" autocomplete="off" minlength="3" maxlength="16" pattern="[A-Za-z0-9_]{3,16}" required :disabled="actionBusy" /><button class="secondary-button" type="submit" :disabled="actionBusy || renameCharacterName.trim() === selected.name">{{ t("保存名称") }}</button></div></form>
                 <div class="binding-grid"><div v-for="kind in (['skin', 'cape'] as const)" :key="kind" class="character-texture-actions"><strong>{{ t(kind === 'skin' ? '皮肤' : '披风') }}</strong><button class="secondary-button" type="button" :disabled="actionBusy" @click="texturePicker = kind">{{ t(kind === 'skin' ? '选择皮肤' : '选择披风') }}</button><button class="text-button" type="button" :disabled="actionBusy || !(kind === 'skin' ? selected.skinHash : selected.capeHash)" @click="clearTexture(kind)">{{ t('清除') }}</button></div></div>
-              <div class="material-link"><button class="text-button" type="button" @click="navigate('/user/materials?tab=upload')">{{ t('上传材质') }}</button><button class="text-button" type="button" @click="navigate('/library')">{{ t('浏览公开库') }}</button></div>
+              <div class="material-link"><button class="text-button" type="button" @click="navigate('/user/resources/upload')">{{ t('上传材质') }}</button><button class="text-button" type="button" @click="navigate('/library')">{{ t('浏览公开库') }}</button></div>
               </section>
               <details :key="`sources:${viewerKey}`" class="texture-sources" :open="fallbackViewer === viewerKey">
                 <summary>{{ t("PNG 材质与下载") }}</summary>
@@ -879,32 +888,33 @@ onBeforeUnmount(() => {
                 </div>
               </details>
             </section>
-            <section v-else class="empty-state panel"><span class="empty-character" aria-hidden="true"><InterfaceIcon name="empty-character">♙</InterfaceIcon></span><h2>{{ t("先创建你的角色") }}</h2><p>{{ t("创建后，就可以为它选择皮肤和披风。也可以先上传材质。") }}</p><button class="secondary-button" type="button" @click="navigate('/user/materials?tab=upload')">{{ t("前往上传材质") }}</button></section>
+            <section v-else class="empty-state panel"><span class="empty-character" aria-hidden="true"><InterfaceIcon name="empty-character">♙</InterfaceIcon></span><h2>{{ t("先创建你的角色") }}</h2><p>{{ t("创建后，就可以为它选择皮肤和披风。也可以先上传材质。") }}</p><button class="secondary-button" type="button" @click="navigate('/user/resources/upload')">{{ t("前往上传材质") }}</button></section>
             </div>
           </div>
         </template>
-        <section v-show="page === 'materials'" class="materials-page" aria-labelledby="materials-title">
+        <section v-show="page === 'resources'" class="materials-page" aria-labelledby="materials-title">
           <div class="page-heading"><div><h1 id="materials-title">{{ t("我的材质") }}<span class="heading-pixel" aria-hidden="true"></span></h1></div><button class="secondary-button" type="button" :disabled="texturesBusy || actionBusy" @click="loadTextures">{{ texturesBusy ? t('正在刷新…') : t('刷新列表') }}</button></div>
 
-          <nav class="material-tabs" :aria-label="t('材质分类')">
-            <button v-for="kind in (['skin', 'cape'] as const)" :key="kind" type="button" :class="{ active: materialTab === kind }" :aria-current="materialTab === kind ? 'page' : undefined" @click="openMaterialTab(kind)">{{ kind === 'skin' ? t('皮肤') : t('披风') }}</button>
-            <button type="button" :class="{ active: materialTab === 'upload' }" :aria-current="materialTab === 'upload' ? 'page' : undefined" @click="openMaterialTab('upload')">{{ t("上传材质") }}<span aria-hidden="true">＋</span></button>
+          <nav class="material-tabs" :aria-label="t('材质栏目')">
+            <button type="button" :class="{ active: materialTab === 'browse' }" :aria-current="materialTab === 'browse' ? 'page' : undefined" @click="openMaterialTab('browse')">{{ t('浏览材质') }}</button>
+            <button type="button" :class="{ active: materialTab === 'upload' }" :aria-current="materialTab === 'upload' ? 'page' : undefined" @click="openMaterialTab('upload')">{{ t('上传材质') }}<span aria-hidden="true">＋</span></button>
           </nav>
-          <div v-if="materialTab !== 'upload'" class="materials-workspace browse-list-layout">
-            <section class="material-library panel" :aria-label="materialTab === 'skin' ? t('皮肤列表') : t('披风列表')" :aria-busy="texturesBusy">
-              <form class="library-filters material-search" role="search" @submit.prevent="searchMaterials"><label class="binding-field"><span>{{ t('搜索我的材质') }}</span><input v-model="materialSearch" maxlength="255" :placeholder="t('名称、描述或图片哈希')" :disabled="texturesBusy" /></label><button class="primary-button" type="submit" :disabled="texturesBusy">{{ t('搜索') }}</button></form>
-              <div class="panel-title"><h2>{{ materialTab === 'skin' ? t('皮肤') : t('披风') }}</h2><span>{{ t('{count} 份材质', { count: visibleTextures.length }) }}</span></div>
+          <div data-panel-region="resources">
+          <ResourceFilters v-if="materialTab === 'browse'" v-model:query="materialSearch" v-model:kind="materialKind" label="搜索我的材质" placeholder="名称或描述" :busy="texturesBusy" @search="searchMaterials" />
+          <div v-if="materialTab === 'browse'" class="materials-workspace browse-list-layout">
+            <section class="material-library panel" :aria-label="t('我的材质')" :aria-busy="texturesBusy">
+              <div class="panel-title"><h2>{{ t('我的材质') }}</h2><span>{{ t('{count} 份材质', { count: textureTotal }) }}</span></div>
               <div v-if="texturesBusy" class="empty-state" role="status"><span class="loading-dot"></span><h2>{{ t("正在加载材质…") }}</h2></div>
               <div v-else-if="textureError" class="empty-state" role="alert"><span class="empty-symbol" aria-hidden="true">!</span><h2>{{ t("暂时没有加载出来") }}</h2><button class="secondary-button" type="button" @click="loadTextures">{{ t("重新加载") }}</button></div>
-              <div v-else-if="!visibleTextures.length" class="empty-state"><span class="empty-symbol" aria-hidden="true">＋</span><h2>{{ t(materialTab === 'skin' ? '还没有皮肤' : '还没有披风') }}</h2><p>{{ t("上传一份 PNG 材质，在这里预览和查看。") }}</p><button class="secondary-button" type="button" @click="uploadKind = materialTab as 'skin' | 'cape'; openMaterialTab('upload')">{{ t(materialTab === 'skin' ? '上传皮肤' : '上传披风') }}</button></div>
+              <div v-else-if="!visibleTextures.length" class="empty-state"><span class="empty-symbol" aria-hidden="true">＋</span><h2>{{ t(materialKind === 'skin' ? '还没有皮肤' : materialKind === 'cape' ? '还没有披风' : '还没有材质') }}</h2><p>{{ t("上传一份 PNG 材质，在这里预览和查看。") }}</p><button class="secondary-button" type="button" @click="openMaterialTab('upload')">{{ t('上传材质') }}</button></div>
               <div v-else class="material-cards"><button v-for="texture in visibleTextures" :key="texture.id" class="material-card" :class="{ selected: texture.id === selectedTextureId }" type="button" :aria-pressed="texture.id === selectedTextureId" @click="selectedTextureId = texture.id"><ModelThumbnail v-if="!texture.reviewState || texture.reviewState === 'approved'" class="material-thumbnail" :name="texture.name" :model="texture.kind === 'skin' ? texture.model : 'default'" :skin-hash="texture.kind === 'skin' ? texture.fileHash : ''" :cape-hash="texture.kind === 'cape' ? texture.fileHash : ''" /><span class="material-card-copy"><strong>{{ texture.name }}</strong><span>{{ texture.kind === 'skin' ? modelLabel(texture.model) : t('披风') }}<small>{{ texture.reviewState && texture.reviewState!=='approved' ? t(texture.reviewState==='pending'?'待审核':'已拒绝') : texture.public ? t('公开') : t('未公开') }}</small></span></span></button></div>
             <nav v-if="textureTotal > 20" class="library-pagination"><button type="button" class="secondary-button" :disabled="texturesBusy || texturePage <= 1" @click="texturePage--; loadTextures()">{{ t('上一页') }}</button><span>{{ t('第 {page} / {total} 页', { page: texturePage, total: Math.ceil(textureTotal / 20) }) }}</span><button type="button" class="secondary-button" :disabled="texturesBusy || texturePage * 20 >= textureTotal" @click="texturePage++; loadTextures()">{{ t('下一页') }}</button></nav></section>
             <AppModal v-if="selectedTexture" :title="selectedTexture.name" wide :busy="actionBusy" @close="selectedTextureId = ''"><div class="material-preview">
               <div class="material-preview-heading"><h2 id="material-preview-title">{{ t("材质预览") }}</h2><span>{{ selectedTexture.public ? t('公开') : t('未公开') }}</span></div>
-              <CharacterViewer v-if="page === 'materials' && (!selectedTexture.reviewState || selectedTexture.reviewState === 'approved')" :key="selectedTexture.id" :name="selectedTexture.name" :model="selectedTexture.kind === 'skin' ? selectedTexture.model : 'default'" :skin-hash="selectedTexture.kind === 'skin' ? selectedTexture.fileHash : ''" :cape-hash="selectedTexture.kind === 'cape' ? selectedTexture.fileHash : ''" @fallback="materialFallback = selectedTexture.id" />
+              <CharacterViewer v-if="page === 'resources' && (!selectedTexture.reviewState || selectedTexture.reviewState === 'approved')" :key="selectedTexture.id" :name="selectedTexture.name" :model="selectedTexture.kind === 'skin' ? selectedTexture.model : 'default'" :skin-hash="selectedTexture.kind === 'skin' ? selectedTexture.fileHash : ''" :cape-hash="selectedTexture.kind === 'cape' ? selectedTexture.fileHash : ''" @fallback="materialFallback = selectedTexture.id" />
               <div class="material-description"><h3>{{ selectedTexture.name }}</h3><p v-if="selectedTexture.reviewState && selectedTexture.reviewState!=='approved'" class="password-rule">{{ t(selectedTexture.reviewState==='pending'?'待审核':'已拒绝') }} {{ selectedTexture.reviewReason }}</p><small>{{ selectedTexture.category }} {{ selectedTexture.tags?.join(', ') }}</small><p>{{ selectedTexture.description || t('暂无描述。') }}</p></div>
               <div v-if="selectedTexture.owned" class="material-editing">
-                <form v-if="editingTextureId === selectedTexture.id" class="texture-edit-form" @submit.prevent="saveTexture"><fieldset :disabled="actionBusy"><label class="binding-field"><span>{{ t("材质名称") }}</span><input v-model="editTextureName" maxlength="255" required /></label><label class="binding-field"><span>{{ t('分类') }}</span><select v-model="editTextureCategory"><option value="">{{ t('未分类') }}</option><option v-for="category in site.contentPolicy?.categories || []" :key="category">{{ category }}</option></select></label><label class="binding-field"><span>{{ t('标签，用逗号分隔') }}</span><input v-model="editTextureTags" maxlength="260" /></label><label class="binding-field description-field"><span>{{ t("材质描述") }} <small>{{ editDescriptionLength }}/200</small></span><textarea v-model="editTextureDescription" rows="3"></textarea></label><label class="visibility-choice"><input v-model="editTexturePublic" type="checkbox" /><span><strong>{{ t("公开这份材质") }}</strong><small>{{ t("未公开后保留原收藏和穿戴权限，禁止其他用户新增收藏；已知图片 URL 仍可下载。") }}</small></span></label><div class="texture-edit-actions"><button class="primary-button" type="submit">{{ t("保存资料") }}</button><button class="secondary-button" type="button" @click="editingTextureId = ''">{{ t("取消") }}</button></div></fieldset></form>
+                <form v-if="editingTextureId === selectedTexture.id" class="texture-edit-form" @submit.prevent="saveTexture"><fieldset :disabled="actionBusy"><label class="binding-field"><span>{{ t("材质名称") }}</span><input v-model="editTextureName" maxlength="255" required /></label><label class="binding-field"><span>{{ t('分类') }}</span><select v-model="editTextureCategory"><option value="">{{ t('未分类') }}</option><option v-for="category in site.contentPolicy?.categories || []" :key="category">{{ category }}</option></select></label><label class="binding-field"><span>{{ t('标签') }}</span><input v-model="editTextureTags" maxlength="260" :placeholder="t('用逗号分隔')" /></label><label class="binding-field description-field"><span>{{ t("材质描述") }} <small>{{ editDescriptionLength }}/200</small></span><textarea v-model="editTextureDescription" rows="3"></textarea></label><label class="visibility-choice"><input v-model="editTexturePublic" type="checkbox" /><span><strong>{{ t("公开这份材质") }}</strong><small>{{ t("未公开后保留原收藏和穿戴权限，禁止其他用户新增收藏；已知图片 URL 仍可下载。") }}</small></span></label><div class="texture-edit-actions"><button class="primary-button" type="submit">{{ t("保存资料") }}</button><button class="secondary-button" type="button" @click="editingTextureId = ''">{{ t("取消") }}</button></div></fieldset></form>
                 <div v-else class="texture-edit-actions"><button class="secondary-button" type="button" :disabled="actionBusy" @click="editTexture">{{ t("编辑资料") }}</button><button class="danger-button" type="button" :disabled="actionBusy" @click="deleteTexture">{{ t("删除材质") }}</button></div>
               </div>
               <button v-if="(!selectedTexture.reviewState || selectedTexture.reviewState==='approved') && (selectedTexture.owned || selectedTexture.public)" class="secondary-button material-wear" type="button" :disabled="actionBusy || wardrobeBusy || !!wardrobeError || wardrobe.some(item => item.id === selectedTexture?.id)" @click="collectOwnTexture">{{ wardrobe.some(item => item.id === selectedTexture?.id) ? t('已在衣柜') : t('收藏到衣柜') }}</button>
@@ -917,25 +927,28 @@ onBeforeUnmount(() => {
               <form class="upload-form" @submit.prevent="uploadTexture"><fieldset :disabled="actionBusy">
                 <div class="management-heading"><div><h2 id="upload-title">{{ t("上传材质") }}</h2><p>{{ t("上传后可在皮肤或披风列表中查看。") }}</p></div></div>
                 <div class="upload-controls"><label class="binding-field"><span>{{ t("类型") }}</span><select v-model="uploadKind" :aria-label="t('类型')" @change="uploadModel = 'default'"><option value="skin">{{ t("皮肤") }}</option><option value="cape">{{ t("披风") }}</option></select></label><label v-if="uploadKind === 'skin'" class="binding-field"><span>{{ t("手臂模型") }}</span><select v-model="uploadModel" :aria-label="t('手臂模型')"><option value="default">{{ t("标准手臂") }}</option><option value="slim">{{ t("纤细手臂") }}</option></select></label><label class="binding-field"><span>{{ t("名称") }}</span><input v-model="uploadName" maxlength="255" :placeholder="t('给材质起个名字')" /></label><label class="binding-field"><span>{{ t("PNG 文件") }}</span><input ref="uploadInput" type="file" accept="image/png,.png" @change="uploadFile = ($event.target as HTMLInputElement).files?.[0] || null" /></label></div>
-                <label class="binding-field"><span>{{ t('分类') }}</span><select v-model="uploadCategory"><option value="">{{ t('未分类') }}</option><option v-for="category in site.contentPolicy?.categories || []" :key="category">{{ category }}</option></select></label><label class="binding-field"><span>{{ t('标签，用逗号分隔') }}</span><input v-model="uploadTags" maxlength="260" /></label><label class="binding-field description-field"><span>{{ t("描述") }} <small>{{ descriptionLength }}/200</small></span><textarea v-model="uploadDescription" rows="3" :placeholder="t('简单介绍这份材质（可选）')"></textarea></label>
+                <label class="binding-field"><span>{{ t('分类') }}</span><select v-model="uploadCategory"><option value="">{{ t('未分类') }}</option><option v-for="category in site.contentPolicy?.categories || []" :key="category">{{ category }}</option></select></label><label class="binding-field"><span>{{ t('标签') }}</span><input v-model="uploadTags" maxlength="260" :placeholder="t('用逗号分隔')" /></label><label class="binding-field description-field"><span>{{ t("描述") }} <small>{{ descriptionLength }}/200</small></span><textarea v-model="uploadDescription" rows="3" :placeholder="t('简单介绍这份材质（可选）')"></textarea></label>
                 <label class="visibility-choice"><input v-model="uploadPublic" type="checkbox" /><span><strong>{{ t("公开这份材质") }}</strong><small>{{ t("默认未公开；知道图片 URL 的游戏客户端仍可下载。") }}</small></span></label>
                 <p v-if="site.contentPolicy?.reviewUploads" class="password-rule">{{ t('上传后需要管理员审核，通过后才可下载和穿戴。') }}</p><p v-if="site.points.enabled" class="point-fee">{{ t('每次上传需 {cost} 积分，包括相同图片的新记录；失败不扣费。', { cost: site.points.uploadCost }) }}</p><button class="primary-button" type="submit" :disabled="actionBusy">{{ actionBusy ? t('正在上传…') : t('上传到我的材质') }}</button>
               </fieldset></form>
             </section>
             <aside class="upload-guide panel" aria-labelledby="upload-guide-title"><h2 id="upload-guide-title">{{ t("上传要求") }}</h2><dl><div><dt>{{ t("文件") }}</dt><dd>{{ t("PNG 格式，最大 8 MiB。") }}</dd></div><div><dt>{{ t("皮肤") }}</dt><dd>{{ t("标准尺寸 64×64，兼容 64×32、128×128 和 128×64 像素。") }}</dd></div><div><dt>{{ t("披风") }}</dt><dd>{{ t("宽度为 64–1024 像素且为 64 的倍数，高度为宽度的 1/2。") }}</dd></div></dl><p>{{ t("上传后可在材质详情中应用到角色。") }}</p></aside>
           </div>
+          </div>
         </section>
         <template v-if="page === 'account'">
           <div class="page-heading"><div><h1>{{ t("账号") }}<span class="heading-pixel" aria-hidden="true"></span></h1><p>{{ t("管理个人资料、安全设置和账号相关服务。") }}</p></div></div>
           <nav class="account-tabs admin-navigation" :aria-label="t('账号栏目')"><div class="admin-core-navigation"><span class="admin-group-label">{{ t('账号工作区') }}</span><div><button v-for="item in (['dashboard', 'profile', 'points', 'integration', 'reports'] as const)" :key="item" type="button" class="secondary-button" :class="{ active: accountTab === item }" :aria-current="accountTab === item ? 'page' : undefined" @click="navigate(accountPath(item))">{{ t({ dashboard: '仪表盘', profile: '个人资料与安全', points: '积分', integration: '游戏接入', reports: '我的举报' }[item]) }}</button></div></div></nav>
+          <div data-panel-region="account">
           <section v-if="accountTab === 'dashboard'" class="account-dashboard" :aria-label="t('账号仪表盘')">
-            <div class="account-dashboard-grid"><article class="panel account-summary-card account-summary-primary"><div class="account-profile"><img class="user-avatar large" :src="'/api/avatars/' + user.id + '.png?v=' + avatarVersion" alt="" width="64" height="64" /><div><p class="eyebrow">{{ t('当前账号') }}</p><h2>{{ user.nickname || t('我的账号') }}</h2><p>{{ user.email }}</p></div></div><span class="account-status" :class="{ verified: user.emailVerified }">{{ user.emailVerified ? t('邮箱已验证') : t('邮箱待验证') }}</span></article><article class="panel account-summary-card"><span class="account-card-index">01</span><h2>{{ t('角色') }}</h2><strong>{{ characters.length }} / {{ characterLimit }}</strong><p>{{ t('已创建角色') }}</p><button class="text-button" type="button" @click="navigate('/user')">{{ t('打开角色管理') }} ↗</button></article><article class="panel account-summary-card"><span class="account-card-index">02</span><h2>{{ t('材质与衣柜') }}</h2><strong>{{ textures.length + wardrobe.length }}</strong><p>{{ t('材质与收藏总数') }}</p><button class="text-button" type="button" @click="navigate('/user/materials')">{{ t('打开我的材质') }} ↗</button></article></div>
-            <div class="account-dashboard-columns"><section class="panel account-dashboard-section"><div class="panel-title"><h2>{{ t('快速操作') }}</h2><span>{{ t('常用入口') }}</span></div><div class="account-quick-actions"><button class="secondary-button" type="button" @click="navigate('/user/account/profile')">{{ t('修改个人资料') }}</button><button class="secondary-button" type="button" @click="navigate('/user/materials?tab=upload')">{{ t('上传材质') }}</button><button class="secondary-button" type="button" @click="navigate('/user/wardrobe')">{{ t('打开我的衣柜') }}</button><button class="secondary-button" type="button" @click="navigate('/user/account/reports')">{{ t('查看我的举报') }}</button></div></section><section class="panel account-dashboard-section"><div class="panel-title"><h2>{{ t('账号状态') }}</h2><span>{{ site.name }}</span></div><dl class="account-fields"><div><dt>{{ t('昵称') }}</dt><dd>{{ user.nickname || t('未设置') }}</dd></div><div><dt>{{ t('登录邮箱') }}</dt><dd>{{ user.email }}</dd></div><div><dt>{{ t('账号类型') }}</dt><dd>{{ user.isAdmin ? t('管理员') : t('普通用户') }}</dd></div></dl></section></div>
+            <div class="account-dashboard-grid"><article class="panel account-summary-card account-summary-primary"><div class="account-profile"><img class="user-avatar large" :src="'/api/avatars/' + user.id + '.png?v=' + avatarVersion" alt="" width="64" height="64" /><div><p class="eyebrow">{{ t('当前账号') }}</p><h2>{{ user.nickname || t('我的账号') }}</h2><p>{{ user.email }}</p></div></div><span class="account-status" :class="{ verified: user.emailVerified }">{{ user.emailVerified ? t('邮箱已验证') : t('邮箱待验证') }}</span></article><article class="panel account-summary-card"><span class="account-card-index">01</span><h2>{{ t('角色') }}</h2><strong>{{ characters.length }} / {{ characterLimit }}</strong><p>{{ t('已创建角色') }}</p><button class="text-button" type="button" @click="navigate('/user')">{{ t('打开角色管理') }} ↗</button></article><article class="panel account-summary-card"><span class="account-card-index">02</span><h2>{{ t('材质与衣柜') }}</h2><strong>{{ textures.length + wardrobe.length }}</strong><p>{{ t('材质与收藏总数') }}</p><button class="text-button" type="button" @click="navigate('/user/resources')">{{ t('打开我的材质') }} ↗</button></article></div>
+            <div class="account-dashboard-columns"><section class="panel account-dashboard-section"><div class="panel-title"><h2>{{ t('快速操作') }}</h2><span>{{ t('常用入口') }}</span></div><div class="account-quick-actions"><button class="secondary-button" type="button" @click="navigate('/user/account/profile')">{{ t('修改个人资料') }}</button><button class="secondary-button" type="button" @click="navigate('/user/resources/upload')">{{ t('上传材质') }}</button><button class="secondary-button" type="button" @click="navigate('/user/wardrobe')">{{ t('打开我的衣柜') }}</button><button class="secondary-button" type="button" @click="navigate('/user/account/reports')">{{ t('查看我的举报') }}</button></div></section><section class="panel account-dashboard-section"><div class="panel-title"><h2>{{ t('账号状态') }}</h2><span>{{ site.name }}</span></div><dl class="account-fields"><div><dt>{{ t('昵称') }}</dt><dd>{{ user.nickname || t('未设置') }}</dd></div><div><dt>{{ t('登录邮箱') }}</dt><dd>{{ user.email }}</dd></div><div><dt>{{ t('账号类型') }}</dt><dd>{{ user.isAdmin ? t('管理员') : t('普通用户') }}</dd></div></dl></section></div>
           </section>
           <section v-else-if="accountTab === 'profile'" class="account-panel panel" aria-labelledby="account-title"><div class="account-block account-overview"><div class="account-section-heading"><span>01</span><div><h2>{{ t('个人资料') }}</h2><p>{{ t('头像、昵称和站内身份信息。') }}</p></div></div><div class="account-profile"><img class="user-avatar large" :src="'/api/avatars/' + user.id + '.png?v=' + avatarVersion" alt="" width="64" height="64" /><div><h2 id="account-title">{{ user.nickname || t('我的账号') }}</h2><p>{{ t('已登录 {name}', { name: site.name }) }}</p></div></div><dl class="account-fields"><div><dt>{{ t("昵称") }}</dt><dd>{{ user.nickname || t('未设置') }}</dd></div><div><dt>{{ t("邮箱") }}</dt><dd>{{ user.email }}</dd></div><div><dt>{{ t('邮箱状态') }}</dt><dd>{{ user.emailVerified ? t('已验证') : t('未验证') }}</dd></div></dl></div><div class="account-block account-security"><div class="account-section-heading"><span>02</span><div><h2>{{ t('登录与安全') }}</h2><p>{{ t('更新个人资料、邮箱验证和密码。') }}</p></div></div><ProfileSettings :csrf-token="csrfToken" :characters="characters" @updated="profileUpdated" @expired="expireSession" /><ConnectorAccount :csrf-token="csrfToken" @expired="clearSession" /><OAuthAccount :csrf-token="csrfToken" @expired="clearSession" /><OIDCAccount :csrf-token="csrfToken" @expired="expireSession" /><TOTPSettings :csrf-token="csrfToken" @expired="expireSession" /><section v-if="!user.emailVerified" class="account-password"><h3>{{ t('验证邮箱') }}</h3><button class="secondary-button" type="button" :disabled="verificationBusy || !site.mailEnabled" @click="sendVerificationMail">{{ verificationBusy ? t('正在发送验证邮件…') : t('发送验证邮件') }}</button></section><section class="account-password" aria-labelledby="password-title"><h3 id="password-title">{{ t("修改密码") }}</h3><p>{{ t("修改后会退出所有网页会话并撤销游戏令牌，需要重新登录。") }}</p><form class="password-form" @submit.prevent="changePassword"><fieldset :disabled="passwordBusy"><input type="hidden" name="username" :value="user.email" autocomplete="username" /><label class="binding-field"><span>{{ t("当前密码") }}</span><input v-model="currentPassword" type="password" autocomplete="current-password" required /></label><label class="binding-field"><span>{{ t("新密码") }}</span><input v-model="newPassword" type="password" autocomplete="new-password" required aria-describedby="password-rule" /></label><p id="password-rule" class="password-rule">{{ t("8–128 个字符，须同时包含英文字母、数字和符号；空白不计作符号。") }}</p><label class="binding-field"><span>{{ t("确认新密码") }}</span><input v-model="confirmPassword" type="password" autocomplete="new-password" required /></label><button class="primary-button" type="submit" :disabled="passwordBusy || actionBusy">{{ passwordBusy ? t('正在修改…') : t('修改密码并重新登录') }}</button></fieldset></form></section><div class="account-logout"><div><h3>{{ t("退出当前账号") }}</h3><p>{{ t("下次使用工作台时需要重新登录。") }}</p></div><button class="secondary-button" type="button" :disabled="logoutBusy || passwordBusy || actionBusy || charactersBusy || texturesBusy || wardrobeBusy" @click="logout">{{ logoutBusy ? t('正在退出…') : t('退出登录') }}</button></div></div></section>
           <PointsPanel v-else-if="accountTab === 'points'" :csrf-token="csrfToken" @expired="expireSession" />
           <IntegrationPanel v-else-if="accountTab === 'integration'" />
           <ReportsView v-else-if="accountTab === 'reports'" :csrf-token="csrfToken" @expired="expireSession" />
+          </div>
         </template>
         <SiteFooter :name="site.name" :tagline="site.tagline || t('每一个像素，都是你的模样。')" :footer="site.footer" />
       </main>

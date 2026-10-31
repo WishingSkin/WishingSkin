@@ -69,6 +69,17 @@ func TestReportsAccessAndDuplicateBothDatabases(t *testing.T) {
 			if !strings.Contains(w.Body.String(), "private reason") || strings.Contains(w.Body.String(), "@") || strings.Contains(w.Body.String(), "ownerId") {
 				t.Fatal("own report projection", w.Body)
 			}
+			for _, search := range []struct {
+				user  int
+				path  string
+				total string
+			}{{2, "/api/reports", `"total":0`}, {3, "/api/admin/reports", `"total":1`}} {
+				w = f.call(search.user, "GET", search.path+"?q="+record.FileHash, nil)
+				webStatus(t, w, 200)
+				if !strings.Contains(w.Body.String(), search.total) {
+					t.Fatal("report hash search is reserved for administrators", w.Body)
+				}
+			}
 			webStatus(t, f.call(3, "GET", "/api/admin/reports?status=invalid", nil), 400)
 			webStatus(t, f.call(2, "GET", "/api/reports?page=0", nil), 400)
 			// A retained collection grants access after its record becomes unlisted.

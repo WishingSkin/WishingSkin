@@ -82,6 +82,10 @@ func newOIDCProviderFixture(t *testing.T) *oidcProviderFixture {
 }
 
 func startOIDCTest(t *testing.T, f *managementApp, p *oidcProviderFixture, user int, provider ...string) (*url.URL, *http.Cookie) {
+	return startOIDCTestAt(t, f, p, user, "/user/materials", provider...)
+}
+
+func startOIDCTestAt(t *testing.T, f *managementApp, p *oidcProviderFixture, user int, next string, provider ...string) (*url.URL, *http.Cookie) {
 	t.Helper()
 	// Independent authorization scenarios must not consume each other's IP quota.
 	f.app.loginLimit.entries = map[string]bucket{}
@@ -89,7 +93,7 @@ func startOIDCTest(t *testing.T, f *managementApp, p *oidcProviderFixture, user 
 	if len(provider) > 0 {
 		id = provider[0]
 	}
-	w := f.call(user, "POST", "/api/auth/oidc/start", map[string]any{"provider": id, "link": user > 0, "password": "Local123!", "next": "/user/materials"})
+	w := f.call(user, "POST", "/api/auth/oidc/start", map[string]any{"provider": id, "link": user > 0, "password": "Local123!", "next": next})
 	webStatus(t, w, 200)
 	var result struct{ URL string }
 	if err := json.Unmarshal(w.Body.Bytes(), &result); err != nil {
@@ -274,7 +278,7 @@ func TestOIDCConfirmationBothDatabases(t *testing.T) {
 			}
 			webStatus(t, oidcConfirmationRequest(f, 3, confirmation, "POST", `{"action":"confirm"}`), 401)
 
-			u, browser = startOIDCTest(t, f, p, 0)
+			u, browser = startOIDCTestAt(t, f, p, 0, "/admin/settings/appearance")
 			w = callbackOIDCRawTest(f, u, browser, 0)
 			if !strings.Contains(w.Header().Get("Location"), "oidcConfirm=1") {
 				t.Fatal("login callback skipped the confirmation page", w.Header().Get("Location"))
@@ -301,7 +305,7 @@ func TestOIDCConfirmationBothDatabases(t *testing.T) {
 			var result struct {
 				Next string `json:"next"`
 			}
-			if err := json.Unmarshal(confirmed.Body.Bytes(), &result); err != nil || result.Next != "/user/materials" {
+			if err := json.Unmarshal(confirmed.Body.Bytes(), &result); err != nil || result.Next != "/admin/settings/appearance" {
 				t.Fatal("confirmed login returned the wrong destination", result.Next, err)
 			}
 			var sessionCreated bool

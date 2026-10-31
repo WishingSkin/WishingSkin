@@ -2,12 +2,12 @@
 import { feedbackRef } from '../feedback'
 import { ref } from 'vue'
 import { t } from '../i18n'
-const props = defineProps<{ name: string; provider?: string }>()
+const props = defineProps<{ name: string; provider?: string; nextPath?: string }>()
 const busy = ref(false), error = feedbackRef('error')
 async function start() {
   busy.value = true; error.value = ''
   try {
-    const next = new URLSearchParams(window.location.search).get('next') || '/user'
+    const next = props.nextPath || new URLSearchParams(window.location.search).get('next') || '/user'
     const response = await fetch('/api/auth/oidc/start', { method: 'POST', credentials: 'same-origin', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ next, provider: props.provider || '' }) })
     const data = await response.json()
     if (!response.ok) { error.value = data.error || '无法开始 OIDC 登录'; return }

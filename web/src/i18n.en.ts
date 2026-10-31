@@ -1,5 +1,13 @@
 // Chinese source copy is the fallback when a translation is unavailable.
 export const english: Record<string, string> = {
+  '搜索公开库': 'Search public library',
+  '收藏名或材质名称': 'Collection or resource name',
+  '名称或描述': 'Name or description',
+  '材质名称或原因': 'Resource name or reason',
+  '材质栏目': 'Resource sections',
+  '浏览材质': 'Browse resources',
+  '还没有材质': 'No resources yet',
+  '用逗号分隔': 'Separate with commas',
   "OIDC 提供商": "OIDC provider",
   "OIDC 配置": "OIDC configuration",
   "上传审核": "Upload review",

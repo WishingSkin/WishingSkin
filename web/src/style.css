@@ -164,3 +164,15 @@ h1,h2,h3,h4{color:var(--heading)}
 @media(max-width:800px){.app-shell{--topbar-height:70px}.sidebar{height:auto;max-height:30dvh;overflow:auto}.sidebar nav{overflow-x:auto}.homepage-showcase.has-image{grid-template-columns:1fr}.homepage-showcase{padding:24px}.content-review{padding:20px}.admin-change-row{grid-template-columns:1fr 20px 1fr}.admin-change-row>strong{grid-column:1/-1}}
 @media(max-width:560px){.topbar{gap:10px}.topbar .brand{min-width:0}.topbar .brand-name{font-size:16px}.topbar-actions{gap:8px}.topbar-link{font-size:12px;gap:4px;padding-inline:8px}.topbar-user>span{display:none}.language-select{max-width:70px}.topbar .icon-button{width:32px;height:32px}.review-card{grid-template-columns:72px minmax(0,1fr);padding:14px;gap:14px}.review-card>img{width:72px;height:88px}.review-toolbar h2{width:100%}.homepage-showcase h2{font-size:20px}}
 @media(prefers-reduced-motion:reduce){.modal-motion-enter-active,.modal-motion-leave-active,.toast-motion-enter-active,.toast-motion-leave-active,.toast-motion-move,.notice-popover{transition-duration:1ms;transform:none}.modal-motion-enter-from,.modal-motion-leave-to,.toast-motion-enter-from,.toast-motion-leave-to{transform:none}.modal-motion-enter-active::backdrop,.modal-motion-leave-active::backdrop{animation:none}.primary-button,.secondary-button,.icon-button,.nav-button{transition:background-color 150ms,color 150ms}.primary-button:active,.secondary-button:active,.icon-button:active{transform:none}}
+
+/* Resource forms share one vertical rhythm across upload and editing. */
+.upload-form fieldset,.texture-edit-form fieldset{display:grid;gap:20px}
+.upload-form .management-heading{margin-bottom:0}
+.upload-form .description-field,.texture-edit-form .description-field,.upload-form .visibility-choice,.texture-edit-form .visibility-choice{margin:0}
+
+.page-heading-actions{display:flex;align-items:center;flex-wrap:wrap;gap:12px}
+.resource-filters{display:grid}
+.resource-filter-main,.resource-filter-options{display:flex;align-items:end;flex-wrap:wrap;gap:16px}
+.resource-filters .library-search{flex:1 1 260px;min-width:0}
+.resource-filters .binding-field:not(.library-search){flex:0 0 150px}
+@media(max-width:640px){.resource-filters .library-search{flex-basis:100%}.resource-filters .binding-field:not(.library-search){flex:1 1 calc(50% - 6px);min-width:0}.page-heading-actions{gap:8px}}

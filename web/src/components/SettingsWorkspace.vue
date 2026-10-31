@@ -10,13 +10,14 @@ import OperationsSettings from './OperationsSettings.vue'
 import ServiceSettings from './ServiceSettings.vue'
 import type { SiteAccess } from '../accountTypes'
 import { t } from '../i18n'
+import type { SettingsTab } from '../workspaceRoutes'
 import { saveSettingsSections } from '../settingsDraft'
 import type { SettingsSection } from '../settingsDraft'
-defineProps<{ site: SiteAccess; csrfToken: string }>()
-const emit = defineEmits<{ updated: []; expired: [] }>()
-const tab = ref<'site' | 'appearance' | 'services' | 'operations'>('site')
+const props = defineProps<{ site: SiteAccess; csrfToken: string; activeTab: SettingsTab }>()
+const emit = defineEmits<{ updated: []; expired: []; navigate: [path: string] }>()
+const tab = computed(() => props.activeTab)
 const appearanceVisited = ref(false)
-watch(tab, value => { if (value === 'appearance') appearanceVisited.value = true })
+watch(tab, value => { if (value === 'appearance') appearanceVisited.value = true }, { immediate: true })
 const appearance = ref<SettingsSection & { draft: { advanced: AdvancedAppearance } }>()
 const branding = ref<SettingsSection>()
 const homepage = ref<SettingsSection>()
@@ -43,7 +44,8 @@ onBeforeUnmount(() => window.removeEventListener('beforeunload', beforeUnload))
 const labels = { site: '站点', appearance: '个性化', services: '邮件与验证', operations:'存储与备份' }
 </script>
 <template>
-  <nav class="settings-tabs" :aria-label="t('设置分类')"><button v-for="item in (['site', 'appearance', 'services', 'operations'] as const)" :key="item" class="secondary-button" type="button" :class="{ active: tab === item }" :aria-current="tab === item ? 'page' : undefined" @click="tab = item">{{ t(labels[item]) }}</button></nav>
+  <nav class="settings-tabs" :aria-label="t('设置分类')"><button v-for="item in (['site', 'appearance', 'services', 'operations'] as const)" :key="item" class="secondary-button" type="button" :class="{ active: tab === item }" :aria-current="tab === item ? 'page' : undefined" @click="emit('navigate', `/admin/settings/${item}`)">{{ t(labels[item]) }}</button></nav>
+  <div data-panel-region="settings">
   <div v-show="tab === 'site'"><slot /></div>
   <div v-if="appearanceVisited" v-show="tab === 'appearance'" class="personalization-workspace">
     <fieldset class="personalization-fields" :disabled="saving" @submit.prevent="saveAll">
@@ -61,4 +63,5 @@ const labels = { site: '站点', appearance: '个性化', services: '邮件与�
   </div>
   <OperationsSettings v-if="tab === 'operations'" :csrf-token="csrfToken" @expired="emit('expired')" />
   <ServiceSettings v-if="tab === 'services'" :csrf-token="csrfToken" @updated="emit('updated')" @expired="emit('expired')" />
+  </div>
 </template>
