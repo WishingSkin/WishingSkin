@@ -259,6 +259,7 @@ async function accessCompleted(message: string) {
 const dark = ref(false)
 const avatarVersion = ref(0)
 let themePreference = ''
+let themeTransition: ViewTransition | undefined
 function siteTheme() {
   setInterfaceAppearance(site.value.appearance.advanced)
   applyInterfaceColors(dark.value)
@@ -297,8 +298,22 @@ function applyTheme(value: boolean) {
 }
 
 function toggleTheme() {
-  applyTheme(!dark.value)
-  themePreference = dark.value ? 'dark' : 'light'
+  const nextDark = themePreference ? themePreference !== 'dark' : !dark.value
+  const changeTheme = () => applyTheme(nextDark)
+  themeTransition?.skipTransition()
+  if (document.startViewTransition && !window.matchMedia('(prefers-reduced-motion: reduce)').matches) {
+    document.documentElement.dataset.themeSwitching = ''
+    const transition = document.startViewTransition(changeTheme)
+    themeTransition = transition
+    void transition.ready.catch(() => { /* A newer toggle may skip this transition. */ })
+    const completed = () => {
+      if (themeTransition !== transition) return
+      themeTransition = undefined
+      delete document.documentElement.dataset.themeSwitching
+    }
+    void transition.finished.then(completed, completed)
+  } else changeTheme()
+  themePreference = nextDark ? 'dark' : 'light'
   try { localStorage.setItem('wishingskin-theme', themePreference) } catch { /* Theme still works without storage. */ }
 }
 
