@@ -58,6 +58,12 @@ go run ./testdata/bs/generate.go artifacts/generated-bs-fixture
 
 界面使用简体中文和 English 文案，个性化覆盖按语言分别保存。复用现有模态弹窗、Toast、表单和主题变量。动画需支持 `prefers-reduced-motion`。用户可配置的图片和文字规则见[界面设置](interface-customization.md)。
 
+页面地址由 `web/src/workspaceRoutes.ts` 统一处理。材质浏览和上传分别使用 `/user/resources`、`/user/resources/upload`；旧 `/user/materials?tab=…` 地址会转换到对应页面。后台使用 `/admin/users`、`/admin/resources`、`/admin/events` 等子页，设置分类和插件配置也有独立地址。子页支持刷新、浏览器前进和后退。
+
+同一工作区切换子页时，只对 `data-panel-region` 标记的内容区播放动画，保留标题和导航。公开库、我的材质和衣柜复用 `ResourceFilters`，使用相同的搜索栏和类型筛选。
+
+管理记录的动作、对象和设置名称共用 `internal/httpapi/admin_event_labels.json`。搜索支持中英文名称及带 `#` 的编号，列表和 CSV 导出使用相同筛选。普通用户按材质名称、描述或收藏名搜索；哈希搜索保留在管理页面。
+
 ## 提交范围
 
 提交源码、必要测试资源、用户手册、架构与接口说明。构建产物、浏览器记录、真实数据、凭据、个人工具配置、实施计划和详细验收流水留在本地。新增依赖时同步核对锁文件和[第三方声明](../THIRD_PARTY_NOTICES.md)。
