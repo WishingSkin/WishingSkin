@@ -41,7 +41,7 @@ Invoke-WebRequest http://127.0.0.1:8090/readyz
 
 MySQL 只需替换 Compose 文件名。原生部署则替换服务管理器指向的新二进制并启动；不要在数据库迁移完成前接入代理流量。
 
-验收至少包括管理员登录、普通账号登录、首页和公开库、公开与私有材质、Yggdrasil profile、SMTP/Turnstile 配置读取，以及启用功能对应的 OIDC、TOTP、审核和备份状态。记录 HTTP 状态、数据库 migration 版本和关键页面结果。
+升级后检查管理员和普通账号登录、首页、公开库、材质读取及 Yggdrasil profile。确认已启用服务的配置可读取、备份计划仍正确；按本次版本涉及的功能补查。记录数据库 migration 版本和检查结果。
 
 ## 失败处理与回退
 
@@ -58,4 +58,4 @@ MySQL 只需替换 Compose 文件名。原生部署则替换服务管理器指�
 
 ## 恢复后的密钥与会话
 
-恢复前把原设置密钥放回 `WS_SETTINGS_KEY_FILE` 指定路径；未指定时放在 `<WS_TEXTURE_DIR>/.settings.key`。缺少或错误密钥时，程序会拒绝启动或让 `/readyz` 返回 503，不会静默生成替代密钥。恢复会使网页会话、游戏令牌、邮件验证链接和 OIDC/OAuth2 短期凭据失效，用户需要重新登录或重新发起流程。
+先完成 `restore`，再在启动服务前把原设置密钥放回 `WS_SETTINGS_KEY_FILE` 指定路径；未指定时放在 `<WS_TEXTURE_DIR>/.settings.key`。不要为了提前放置默认路径的密钥而创建目标材质目录，`restore` 要求该目录尚不存在。缺少或错误密钥时，程序会拒绝启动或让 `/readyz` 返回 503。恢复会使网页会话、游戏令牌、邮件验证链接和 OIDC/OAuth2 短期凭据失效，用户需要重新登录或重新发起流程。

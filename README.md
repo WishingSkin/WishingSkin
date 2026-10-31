@@ -10,7 +10,7 @@
 
 官方插件提供邀请码、积分、多 OIDC、本站 OAuth2 授权、AuthMe/HTTP 外部账号连接及 S3 对象存储。社区插件通过 Go SDK 随源码编译，可独立启停和配置，支持路由、事件、内容页及任务。
 
-Blessing Skin 迁移支持固定的 BS 6.0.2 与传统 yggdrasil-api 5.2.1 来源契约。账号、角色实际 UUID、材质及关系等按声明范围迁移，报告保持 partial。已用真实旧站归档完成隔离迁移、双库核对和跨库恢复；其他来源的版本与插件需按契约核对。原 PHP 插件不能原样运行。
+支持从固定版本的 Blessing Skin 6.0.2 迁入账号、角色实际 UUID、材质及关系。支持的插件版本和数据范围见迁移手册。报告使用 partial 标明迁移范围，原 PHP 插件需要重新实现。
 
 运行时只需程序、一个选定数据库、材质目录和设置密钥。前端构建需要 Node.js 与 pnpm，完整构建步骤见部署手册。新安装没有默认管理员，通过本机 create-admin 初始化；从 BS 迁入时不要先创建管理员。生产使用 HTTPS 反向代理并持久化数据库、材质、备份目录和设置密钥。
 
@@ -19,15 +19,11 @@ Blessing Skin 迁移支持固定的 BS 6.0.2 与传统 yggdrasil-api 5.2.1 来�
 - [备份与恢复](docs/backup-restore.md)
 - [Blessing Skin 迁移](docs/migration-runbook.md)
 - [BS 来源契约](docs/bs-source-contract.md)
-- [账号与存储接入](docs/integrations.md)
-- [免费本地接入验收](docs/integration-testing.md)
+- [游戏、账号与存储接入](docs/integrations.md)
 - [社区插件 SDK](docs/community-plugin-sdk.md)
 - [界面与首页设置](docs/interface-customization.md)
-- [手动验收清单](docs/manual-acceptance.md)
-- [功能矩阵与后续候选](docs/feature-matrix.md)
-- [项目边界](docs/project-brief.md)
-- [OpenSpec 规划](openspec/changes/build-wishingskin-v1/proposal.md)
+- [功能与限制](docs/feature-matrix.md)
+- [架构与数据模型](docs/architecture.md)
+- [开发指南](docs/development-guide.md)
 - [MIT 许可证](LICENSE)
 - [第三方依赖与许可证](THIRD_PARTY_NOTICES.md)
-
-已确认的验收范围和待测项目见[手动验收清单](docs/manual-acceptance.md)。

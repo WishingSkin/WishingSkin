@@ -1,12 +1,12 @@
-# BS 来源契约与本地迁移样本
+# BS 来源契约
 
-当前迁入用户（含余额及权限）、角色、材质及 Yggdrasil 签名私钥；新导出的 v2 快照还保留材质上传者、简短描述、衣柜关系/别名、明确的邮箱验证状态、纯文本品牌及独立只读举报历史。成功导入的报告仍为 `partial`，不能据此判断整个 BS 站点已迁完，也不能据此切换真实站点。OAuth、其他运营配置及额外插件数据不自动迁入；旧 Web 会话和游戏令牌明确不继承，用户需要重新登录。收藏数由衣柜关系计算，不复制可能已失真的 `likes` 缓存。当前本地验收见[手动验收清单](manual-acceptance.md)。
+当前迁入用户（含余额及权限）、角色、材质及 Yggdrasil 签名私钥；新导出的 v2 快照还保留材质上传者、简短描述、衣柜关系/别名、明确的邮箱验证状态、纯文本品牌及独立只读举报历史。成功导入的报告仍为 `partial`，用于标明数据迁入范围。OAuth、其他运营配置及额外插件数据不自动迁入；旧 Web 会话和游戏令牌明确不继承，用户需要重新登录。收藏数由衣柜关系计算，不复制可能已失真的 `likes` 缓存。操作步骤见[迁移手册](migration-runbook.md)。
 
-2026-10-23 补充积分迁移决定：保留余额，新站积分关闭，不自动转换 BS 的随机奖励、存储费用或退款。新 v2 快照新增 `score_rules`，仅记录固定核心 14 项非秘密积分配置，以核心默认值叠加实际数据库覆盖值；核对报告保存原规则，管理员按新规则重配。旧快照无该字段时明确报告原规则不可用，原指纹不变。完整新站备份与 BS 快照用途不同，操作见[备份恢复说明](backup-restore.md)。
+积分迁移保留余额，新站积分关闭，不自动转换 BS 的随机奖励、存储费用或退款。新 v2 快照新增 `score_rules`，仅记录固定核心 14 项非秘密积分配置，以核心默认值叠加实际数据库覆盖值；核对报告保存原规则，管理员按新规则重配。旧快照无该字段时明确报告原规则不可用，原指纹不变。完整新站备份与 BS 快照用途不同，操作见[备份恢复说明](backup-restore.md)。
 
 ## 冻结的官方源码
 
-2026-10-22 通过 GitHub API 读取标签及 `master`，固定以下源码。插件来自官方 monorepo 的 `plugins/yggdrasil-api`，不是旧的独立 `bs-community/yggdrasil-api` 仓库。
+迁移契约固定以下源码。插件来自官方 monorepo 的 `plugins/yggdrasil-api`，不是旧的独立 `bs-community/yggdrasil-api` 仓库。
 
 | 来源 | 版本 | 固定 commit |
 | --- | --- | --- |
@@ -18,7 +18,7 @@
 - [核心标签](https://api.github.com/repos/bs-community/blessing-skin-server/git/ref/tags/6.0.2)、[标签对象](https://api.github.com/repos/bs-community/blessing-skin-server/git/tags/b37c2aa753d9cfa53019aaeb9cc6a08de546c406)。
 - [插件固定 commit](https://api.github.com/repos/bs-community/blessing-skin-plugins/commits/de016f4cbb43df7bd6d46193d5625693f8c79b3f)、[插件 package.json](https://github.com/bs-community/blessing-skin-plugins/blob/de016f4cbb43df7bd6d46193d5625693f8c79b3f/plugins/yggdrasil-api/package.json)。
 
-源码契约已核对。已完成合成样本与真实旧站归档的隔离导出、导入和数据核对；未启动原 PHP 站点。源码版本需要操作人员核对实际源文件后提供，导出器不会根据数据库字段推断已安装版本，也不会把任意 BS 6.x 标成 `6.0.2`。
+源码版本需要操作人员核对实际源文件后提供，导出器不会根据数据库字段推断已安装版本，也不会把任意 BS 6.x 标成 `6.0.2`。
 
 ## 已核对的字段与行为
 
@@ -73,7 +73,7 @@
 
 v2 用户新增可选 `verified`。新只读导出直接读取固定核心 `users.verified`，不是 0/1 或缺失列时拒绝；旧 v1/v2 快照缺字段时报告 `unknown`，不修改旧任务指纹。只有明确已验证的账号才写入 `account_states(email_verified=true, verification_required=false)`；未验证或未知的旧账号继续按原迁移兼容方式登录，不设置新的验证门槛。报告分别计数已验证、未验证和未知，不包含邮箱。此字段不能补入已提交的旧任务；需要重新导出并迁入独立空目标。
 
-衣柜字段依据固定核心的 [CreateCloset](https://github.com/bs-community/blessing-skin-server/blob/b737a65f5f5fce1f897f8603db74fd970437b351/database/migrations/2019_03_14_174727_create_closet.php) 和 [User::closet](https://github.com/bs-community/blessing-skin-server/blob/b737a65f5f5fce1f897f8603db74fd970437b351/app/Models/User.php)；描述字段依据固定插件仓库的 [texture-description callbacks](https://github.com/bs-community/blessing-skin-plugins/blob/de016f4cbb43df7bd6d46193d5625693f8c79b3f/plugins/texture-description/callbacks.php)。验证与限制见[手动验收清单](manual-acceptance.md)。
+衣柜字段依据固定核心的 [CreateCloset](https://github.com/bs-community/blessing-skin-server/blob/b737a65f5f5fce1f897f8603db74fd970437b351/database/migrations/2019_03_14_174727_create_closet.php) 和 [User::closet](https://github.com/bs-community/blessing-skin-server/blob/b737a65f5f5fce1f897f8603db74fd970437b351/app/Models/User.php)；描述字段依据固定插件仓库的 [texture-description callbacks](https://github.com/bs-community/blessing-skin-plugins/blob/de016f4cbb43df7bd6d46193d5625693f8c79b3f/plugins/texture-description/callbacks.php)。
 
 ## 品牌与举报历史
 
@@ -93,9 +93,9 @@ schema 9 的 `legacy_reports` 没有指向当前对象的外键。管理员通�
 
 规范化 snapshot JSON 的结构定义在 `internal/bsmigration/snapshot.go`，读取 v1/v2，新导出使用 v2。`Load` 拒绝未知 JSON 字段、尾随内容和大于 64 MiB 的文件；离线 `Preflight` 不连接数据库，只读 snapshot 和材质目录。缺少必要身份、错误引用、规范化冲突、未知密码方法/编码、无效密钥及文件问题都会写入 `blockers` 并返回错误。
 
-snapshot 含密码哈希、站点盐和签名私钥，属于敏感备份。只把脱敏 `Report` 用于日志；不要打印 snapshot。报告中的 `signature=true` 表示私钥通过格式及强度预检查，`files` 表示通过离线校验的文件数，二者均不能代替原站运行或 Minecraft 客户端验收。
+snapshot 含密码哈希、站点盐和签名私钥，属于敏感备份。只把脱敏 `Report` 用于日志；不要打印 snapshot。报告中的 `signature=true` 表示私钥通过格式及强度预检查，`files` 表示通过离线校验的文件数，使用前还需核对报告中的数据缺口。
 
-`Import` 要求已初始化的空业务目标库，以及与源目录互不包含的独立目标目录。用户、角色、材质、衣柜、审计、举报、积分流水及会话/令牌表任一存在业务数据时，不允许开启新迁移。预置 `character_limit=1`、`registration_mode=closed` 和完全匹配默认关闭全零的积分规则属于初始化状态；其他设置或非默认配置仍会阻止导入。导入和恢复期间必须关闭应用业务写入；工具不协调原站停写或分布式双写。
+`Import` 要求已初始化的空业务目标库，以及与源目录互不包含的独立目标目录。用户、角色、材质、衣柜、审计、举报、积分流水及会话/令牌表任一存在业务数据时，不允许开启新迁移。预置角色上限 1、默认注册设置、关闭全零的积分规则和默认首页区块属于初始化状态；其他设置或非默认配置仍会阻止导入。导入和恢复期间必须关闭应用业务写入；工具不协调原站停写或分布式双写。
 
 恢复使用相同 snapshot 的 SHA-256 指纹：
 
@@ -105,30 +105,8 @@ snapshot 含密码哈希、站点盐和签名私钥，属于敏感备份。只�
 4. 用户、材质、衣柜、角色、签名和 `partial` 状态在同一数据库事务提交。数据库失败时业务行回滚，已完成的本任务材质保留供重试；重试会校验并复用这些文件。
 5. 相同任务再次运行只验证现存副本并返回 `already_imported=true`，不重复插入。其他快照不能借用该任务恢复。
 
-当前故障测试覆盖文件阶段实际终止导入进程、材质发布后及业务事务末段入库失败后的重试；两库大样本恢复结果与普通导入逐表/逐文件摘要相同，见[手动验收清单](manual-acceptance.md)。检查点用于文件恢复，业务单事务提交，不是多批数据库提交。断电导致文件系统或数据库自身损坏、目录清单首次写入时的撕裂、外部进程篡改目标和跨主机恢复尚未演练；损坏的清单会停止导入，工具不会猜测归属后清除目录。业务写入开放后的数据合并、反向迁移和无损回滚也不在迁移支持范围。
+检查点用于文件恢复，业务数据在单个事务提交。损坏或不匹配的清单会停止导入；保留现场并核对归属。迁移不提供开放写入后的数据合并、反向迁移或无损回滚。
 
-## 可重复的本地样本
+## 开发样本
 
-`testdata/bs/snapshot.json` 与无扩展名 PNG 为合成样本，没有生产数据。样本账号 `Fixture@Example.invalid` 的密码是 `password`，角色 `FixturePlayer` 的实际 UUID 是 `12345678123442348234123456789abc`，特意不同于按名字推导的离线 UUID；材质为 64×64 slim 皮肤，未公开，积分 42。
-
-仓库中的 snapshot 不含私钥，直接预检查会因缺钥阻止导入。测试运行时动态生成 4096 位 RSA；要手动试验，可从仓库根目录生成独立的临时样本：
-
-```powershell
-go run ./testdata/bs/generate.go <不存在的本地临时目录>
-```
-
-输出包含带测试私钥的 `snapshot.json`、PNG 和 `source.sql`。`source.sql` 只是可选的本地合成源库种子，只有测试场景需要的字段；它不是官方完整 schema，也不是生产备份。仅可由操作人员导入新建的空本地源库，再使用只读导出器读取。迁移器本身从不执行该 SQL 文件。
-
-单元测试运行：
-
-```powershell
-go test ./internal/bsmigration -count=1
-```
-
-双库集成测试使用 `WS_TEST_MYSQL_DSN` / `WS_TEST_POSTGRES_DSN`；未配置时明确跳过对应测试。配置后，测试会在该本地服务器创建随机 `ws_bs_*` MySQL 库或 PostgreSQL schema，并且只删除自己创建的空间，不清理其他测试或运营数据。
-
-2026-10-22 本地运行结果：MySQL 8 与 PostgreSQL 的普通导入、注入失败后恢复、同任务重复导入、不同任务拒绝，以及两库结果一致均通过；MySQL 只读源导出、未知插件登记和源数据未改也通过。单元测试覆盖重复 UUID、邮箱规范化冲突、缺文件、未知密码、路径、错误引用、PNG、签名、目标目录保护及敏感信息不进入报告。
-
-以上 2026-10-22 结果对应当时的最小链路；后续衣柜、权限/邮箱、积分核对、品牌与历史已补齐声明契约的本地测试。2026-10-30 已用真实旧站归档完成隔离导出、MySQL / PostgreSQL 导入与幂等重跑、双向跨库备份恢复，并核对实际角色的 Yggdrasil 签名、UUID、材质 URL 与 HTTP 文件字节。来源为一个已核对的归档，不代表任意 BS 版本或插件都兼容。
-
-实际旧密码输入、Minecraft 客户端、原 PHP 站点运行、未适配插件和生产切换仍待验收，整体状态保持 `partial`。已确认与待测范围见[手动验收清单](manual-acceptance.md)。
+`testdata/bs` 提供合成快照、PNG 和样本生成器，供迁移、备份及 HTTP 测试使用。仓库快照不含私钥，手动预检查前需生成独立样本。生成与双库测试方法见[开发指南](development-guide.md)。

@@ -1,17 +1,14 @@
 # Third-Party Notices / 第三方软件声明
 
-本文件记录 WishingSkin 所用第三方组件的版本、来源与许可。项目根目录的 MIT 许可证只适用于 WishingSkin 自有代码，不替换或覆盖第三方许可。以下许可原文保留各自的版权声明和条件；中文说明用于交付说明，不改写许可条款。
+本文件记录 WishingSkin 所用第三方组件的版本、来源与许可。项目的 MIT 许可证适用于自有代码；第三方组件保留各自的版权声明和许可条件。下文许可原文保持不变。
 
-## 范围与核对方法
+## 范围
 
-核对依据为当前 `go.mod`、`go.sum`、`web/package.json`、`web/pnpm-lock.yaml`、本地 Go 模块缓存与 `web/node_modules`。通过 `go list -deps ./cmd/wishingskin` 核对 Windows 和 `GOOS=linux GOARCH=amd64 CGO_ENABLED=0` 的非测试依赖，二者得到相同的三十五个外部模块；`golang.org/x/term` 用于本机管理员交互输入。此清单是包依赖层面的覆盖清单，不表示每个包中的每个函数都通过链接器保留。Go 标准库按当前构建工具链 1.26.10 收录，另保留依赖源码内可见的附加许可声明。
+应用依赖依据 `go.mod`、`go.sum`、`web/package.json` 和 `web/pnpm-lock.yaml` 列出。Go 部分包含35个外部模块及 Go 1.26.10 标准库的许可和附加来源声明；模块归档可通过表中的源码地址或 `go mod download` 获取，并用 `go.sum` 校验。
 
-前端通过 `pnpm licenses list --prod --json` 和 `pnpm licenses list --json` 核对已安装包，并核对 JavaScript 入口与导入关系。`--prod` 包含 Vue 的编译器、TypeScript peer 和 skinview3d 带入的类型依赖，不能直接视为浏览器运行时清单。当前源码使用 Vue 的预编译组件；`vue` 的 bundler 入口为 `vue.runtime.esm-bundler.js`。3D 预览通过动态导入 skinview3d 使用 three 和 skinview-utils。构建工具和类型定义另列清单；许可清单不证明最终渲染效果或浏览器兼容性。
+浏览器使用 Vue 预编译组件，以及通过动态导入加载的 skinview3d、skinview-utils 和 three。编译器、构建工具和类型定义另列清单。模块内附加许可也予以保留，不按链接器是否留下具体函数删减声明。
 
-此文件不是法律审查意见，也不是容器操作系统的完整 SBOM。最终镜像基于 Alpine，并安装 ca-certificates；其系统软件、证书及各自许可证应随镜像基础层和发行版资料另行保留与核对。Node、pnpm、Vite、TypeScript 等构建工具不因多阶段构建而自动成为最终应用运行时。
-
-
-2026-10-26 按本地缓存重新核对新增的对象存储及二维码依赖，并更新 x/* 版本。下文补录新增模块根目录 LICENSE/NOTICE，及 compress 子目录许可；这包含可能未进入本程序链接结果的模块内声明。模块归档可通过表中 Go proxy 地址或 go mod download 获取，完整性由 go.sum 核对。
+容器基础系统 Alpine、ca-certificates 及其他系统组件的许可随基础镜像和发行版资料保留。本文件不包含容器系统的完整 SBOM。Node.js、pnpm、Vite 和 TypeScript 用于构建阶段。
 
 ## Go 应用依赖与源码
 

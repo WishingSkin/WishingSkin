@@ -28,3 +28,12 @@ __pycache__/
 /docs/remaining-features.md
 /docs/plans/
 /docs/superpowers/
+
+# Local planning, acceptance walkthroughs and editor state
+/openspec/
+/CONTEXT.md
+/docs/project-brief.md
+/docs/manual-acceptance.md
+/docs/integration-testing.md
+/docs/integration-testing/
+.impeccable/

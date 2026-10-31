@@ -1,6 +1,6 @@
 # Blessing Skin 迁移手册
 
-本手册用于把已核对的 Blessing Skin 6.0.2 数据迁入一套全新的 WishingSkin schema 19 实例。固定来源包括官方传统 `yggdrasil-api 5.2.1`，以及按树摘要固定的归档联合版 `5.2.2-0.2.5`，详见[来源契约](bs-source-contract.md)。其他版本、远程文件系统、未知插件和 BS 写入 API 不在本流程内。导入报告会保持 `partial`，这表示迁移范围受限，不表示可以直接切换生产。
+本手册用于把已核对的 Blessing Skin 6.0.2 数据迁入一套全新的 WishingSkin schema 19 实例。固定来源包括官方传统 `yggdrasil-api 5.2.1`，以及按树摘要固定的归档联合版 `5.2.2-0.2.5`，详见[来源契约](bs-source-contract.md)。其他版本、远程文件系统、未知插件和 BS 写入 API 不在本流程内。导入报告使用 `partial` 标明数据范围；切换前还需核对报告中的缺口。
 
 ## 迁移前的保护
 
@@ -19,7 +19,7 @@ Copy-Item deploy/bs-source.example.json artifacts/source-info.json
 # 编辑 artifacts/source-info.json；不要把真实凭据放入日志。
 ```
 
-创建只读 MySQL 账号，导出器只执行 SELECT。停止源站写入后，取得源材质目录的完整副本，例如 `artifacts/source-textures`。目录名必须包含源文件 hash，文件不能通过符号链接逃出目录。
+创建只读 MySQL 账号，导出器只执行 SELECT。停止源站写入后，取得源材质目录的完整副本，例如 `artifacts/source-textures`。材质文件名必须为源 hash，不带扩展名；不要使用符号链接。
 
 ## 2. 导出并离线预检查
 
@@ -31,7 +31,7 @@ $env:WS_BS_SOURCE_DSN='readonly_user:replace-me@tcp(127.0.0.1:3306)/confirmed_so
 ./bin/wishingskin.exe preflight --snapshot artifacts/source-snapshot.json --source-textures artifacts/source-textures
 ```
 
-导出不会执行 SQL dump，也不会修改源库。若源库有表前缀，给 `export-bs` 增加 `--table-prefix prefix_`。输出文件必须不存在；预检查失败时先修正源快照或源文件，不要手工编辑敏感字段绕过 blocker。预检查通过只代表离线契约满足，不代表源站和 Minecraft 已验收。
+导出不会执行 SQL dump，也不会修改源库。若源库有表前缀，给 `export-bs` 增加 `--table-prefix prefix_`。输出文件必须不存在。预检查出现 blocker 时，按下一节处理来源副本，再重新导出。预检查验证数据和文件契约；迁入后的登录与角色使用在第 5 步核对。
 
 ### 预检查发现旧数据问题
 

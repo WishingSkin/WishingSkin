@@ -1,6 +1,14 @@
-# 账号与存储接入
+# 游戏、账号与存储接入
 
-配置在管理员后台填写。凭据以站点设置密钥加密保存；不要写入源码、文档或日志。设置密钥需单独备份。各项启用前按[手动验收清单](manual-acceptance.md)验证；具体操作见[外部接入验收步骤](integration-testing.md)。
+配置在管理员后台填写。凭据以站点设置密钥加密保存，密钥需单独备份。只启用需要的插件；更换部署环境时核对服务地址、回调和权限。
+
+## Minecraft 接入
+
+先在本站创建角色并绑定材质。在支持 authlib-injector 的启动器中添加认证服务器 `https://skin.example.com/api/yggdrasil/`，使用本站邮箱和密码登录，再选择角色。PCL2 可在添加外置登录服务器时填写该地址。将示例域名替换为 `WS_PUBLIC_URL` 对应的站点。
+
+服务端也需加载 authlib-injector，并使用同一个认证地址。把 `-javaagent:/path/to/authlib-injector.jar=https://skin.example.com/api/yggdrasil/` 放在 JVM 参数中、服务端 `-jar` 参数之前。注入器安装与版本说明见 [authlib-injector](https://github.com/yushijinhun/authlib-injector)。
+
+`GET /api/integration` 返回当前站点的接入地址和 CustomSkinLoader 配置。传统材质模板为 `/skin/{USERNAME}.png`、`/cape/{USERNAME}.png`，CustomSkinAPI 根地址为 `/csl/`。`/raw/{tid}` 兼容迁入的 BS 材质编号。材质加载接口不替代游戏身份认证。
 
 ## OIDC 登录
 
@@ -46,10 +54,20 @@ subject 必须稳定，不应使用可更名的昵称。可选 API key 通过 Au
 
 ## 对象存储与维护
 
-S3 兼容存储桶须预先创建。对象存储为独立官方插件，保留本地副本；实现与扩展契约见[插件 SDK](community-plugin-sdk.md)。既有材质通过后台手动同步，不自动搬迁。
+### S3 兼容存储
+
+预先创建私有存储桶，在“插件管理 → 对象存储”填写服务地址、存储桶、区域、对象前缀及 Access Key / Secret Key，保存后启用。默认区域为 `us-east-1`，前缀为 `textures`；以实际服务配置为准。可使用自部署的 MinIO，无需购买云存储。插件保留本地副本；实现与扩展契约见[插件 SDK](community-plugin-sdk.md)。
+
+凭据需要指定前缀的 `GetObject`、`PutObject` 权限；同时回收远端孤立副本时还需 `DeleteObject`。使用独立前缀，避免与其他应用共用对象名。更换凭据或地址后上传一份材质并核对远端对象即可检查接入。远端不可读时回退本地，上传失败则不提交材质记录。
+
+### 同步与回收
 
 旧材质每批同步 100 条，校验本地与远端内容，可重复执行。回收只处理超过一小时、hash 命名且 textures 表完全无记录的本地普通文件，先预览，再显式确认清单。不回收逻辑删除记录或本地回退副本，不枚举全量远端孤立对象。
 
-CDN 默认关闭，只处理已审核公开文件。将 /cdn/textures/ 回源本站，转发 expires/sig 参数，缓存键保留查询参数，并遵守源站 1–60 秒上限。CDN 不得使用本站相同域名。下架后新回源拒绝访问，旧缓存可能保留到上限。
+### CDN
+
+在“站点设置 → 存储与备份”填写 CDN 地址和 1–60 秒缓存上限，再启用公开材质 CDN。CDN 使用与本站不同的域名，将 `/cdn/textures/` 回源本站，并转发 `expires`、`sig` 查询参数。可以使用自部署的 nginx 缓存代理。
+
+缓存键必须包含完整查询参数，只缓存成功图片，遵守源站 `Cache-Control`，禁止缓存错误或在过期后继续返回旧内容。CDN 只处理已审核公开文件。下架后新回源拒绝访问，已有缓存最多保留到配置上限。使用云 CDN 时需确认边缘节点实际遵守这些规则。
 
 上传、同步、回收和备份使用数据库命名空间级存储锁。维护期间上传等待最多 5 秒；大批同步应避开高峰。自动备份与独立恢复见[备份手册](backup-restore.md)。

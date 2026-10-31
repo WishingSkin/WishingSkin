@@ -17,6 +17,15 @@ docs/game-acceptance-progress.md
 docs/remaining-features.md
 docs/plans
 docs/superpowers
+openspec
+CONTEXT.md
+docs/project-brief.md
+docs/manual-acceptance.md
+docs/integration-testing.md
+docs/integration-testing
+.impeccable
+**/.impeccable
+.superpowers
 web/node_modules
 web/dist
 web/output

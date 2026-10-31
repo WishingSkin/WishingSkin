@@ -1,6 +1,6 @@
 # 生产自部署手册
 
-本文面向第一次部署 WishingSkin 的运维人员。当前程序使用 schema 19。示例不包含真实密码、token、Client Secret 或 SMTP 凭据。部署前请为数据库、材质目录、备份目录和设置密钥安排持久化存储。
+当前程序使用 schema 19。部署前请为数据库、材质目录、备份目录和设置密钥安排持久化存储。
 
 ## 运行边界
 
@@ -36,7 +36,7 @@ docker compose --env-file .env -f deploy/compose.postgres.yaml up -d app
 
 ## 原生二进制
 
-原生部署需要 Go 构建产物、已创建的 PostgreSQL 或 MySQL 数据库和独立材质目录。前端修改后必须先构建 `web/dist`，再编译 Go 二进制：
+原生构建使用 Go 1.26.10、Node.js 24.19.0 和 pnpm 11.24.0，与 Dockerfile 保持一致。运行时需要已创建的 PostgreSQL 或 MySQL 数据库和独立材质目录。先构建 `web/dist`，再编译 Go 二进制：
 
 ```powershell
 pnpm --dir web install --frozen-lockfile
@@ -44,9 +44,9 @@ pnpm --dir web build
 go build -trimpath -o bin/wishingskin.exe ./cmd/wishingskin
 ```
 
-通过服务管理器注入 `WS_DATABASE_DRIVER`、`WS_DATABASE_DSN`、`WS_PUBLIC_URL` 和 `WS_TEXTURE_DIR`。程序不会自动读取 `.env`。首次运行 `serve` 或 `migrate` 会执行 schema 迁移；数据库本身必须提前创建，运行账号需要 DDL 权限。
+通过服务管理器注入 `WS_DATABASE_DRIVER`、`WS_DATABASE_DSN`、`WS_PUBLIC_URL` 和 `WS_TEXTURE_DIR`。程序不会自动读取 `.env`。首次运行 `serve` 或 `migrate` 会执行 schema 迁移；数据库本身必须提前创建，运行账号需要 DDL 权限。新安装还需在终端执行 `./bin/wishingskin.exe create-admin`，再启动 `./bin/wishingskin.exe serve`。BS 迁移按迁移手册初始化。
 
-## 首次验收
+## 部署检查
 
 部署后从反向代理和本机分别检查：
 
@@ -55,7 +55,9 @@ Invoke-WebRequest https://skin.example.com/healthz
 Invoke-WebRequest https://skin.example.com/readyz
 ```
 
-`healthz` 只表示进程可响应；`readyz` 还会检查数据库、迁移状态和加密设置是否可解密。两者都应返回 HTTP 200。然后登录管理员，配置站点 origin、SMTP、Turnstile、注册规则和需要启用的插件；真实 SMTP 投递、Turnstile 联网校验、OIDC 回调、AuthMe/HTTP 连接器、对象存储和 CDN 必须在实际环境逐项验收。
+`healthz` 表示进程可响应；`readyz` 还会检查数据库、迁移状态和加密设置是否可解密。两者都应返回 HTTP 200。公开 origin 由环境变量 `WS_PUBLIC_URL` 设置。登录管理员后配置 SMTP、Turnstile、注册规则和需要启用的插件。
+
+只检查已启用服务在新环境中的配置：邮件能否送达、Turnstile 是否允许当前域名、身份提供商是否登记正确回调、外部账号服务及存储是否可达。使用云 CDN 时，还需确认缓存键保留查询参数、错误响应不缓存、过期时间符合配置。接入步骤见[账号与存储接入](integrations.md)。这些是部署配置检查，无需重复执行整套功能验收。
 
 反向代理至少应保持原始 Host、HTTPS 访问和长请求的正常转发，并把上传请求体上限设置为不低于产品要求。代理缓存只应放在明确公开且已审核的材质路径，不能缓存登录、管理接口或私有材质。
 
