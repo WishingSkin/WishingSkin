@@ -18,7 +18,7 @@
 - [核心标签](https://api.github.com/repos/bs-community/blessing-skin-server/git/ref/tags/6.0.2)、[标签对象](https://api.github.com/repos/bs-community/blessing-skin-server/git/tags/b37c2aa753d9cfa53019aaeb9cc6a08de546c406)。
 - [插件固定 commit](https://api.github.com/repos/bs-community/blessing-skin-plugins/commits/de016f4cbb43df7bd6d46193d5625693f8c79b3f)、[插件 package.json](https://github.com/bs-community/blessing-skin-plugins/blob/de016f4cbb43df7bd6d46193d5625693f8c79b3f/plugins/yggdrasil-api/package.json)。
 
-源码契约已核对；当前样本是按该契约构造的本地数据，尚未安装并运行原 PHP 站点来验证样本。源码版本需要操作人员核对实际源文件后提供，导出器不会根据数据库字段推断已安装版本，也不会把任意 BS 6.x 标成 `6.0.2`。
+源码契约已核对。已完成合成样本与真实旧站归档的隔离导出、导入和数据核对；未启动原 PHP 站点。源码版本需要操作人员核对实际源文件后提供，导出器不会根据数据库字段推断已安装版本，也不会把任意 BS 6.x 标成 `6.0.2`。
 
 ## 已核对的字段与行为
 
@@ -129,4 +129,6 @@ go test ./internal/bsmigration -count=1
 
 2026-10-22 本地运行结果：MySQL 8 与 PostgreSQL 的普通导入、注入失败后恢复、同任务重复导入、不同任务拒绝，以及两库结果一致均通过；MySQL 只读源导出、未知插件登记和源数据未改也通过。单元测试覆盖重复 UUID、邮箱规范化冲突、缺文件、未知密码、路径、错误引用、PNG、签名、目标目录保护及敏感信息不进入报告。
 
-以上 2026-10-22 结果对应当时的最小链路；后续衣柜、权限/邮箱、积分核对、品牌与历史已补齐声明契约的本地测试，证据见[手动验收清单](manual-acceptance.md)。原 PHP 站点运行、真实完整 BS 数据、额外插件、真实站点恢复和生产切换仍未验收，整体状态保持 `partial`。
+以上 2026-10-22 结果对应当时的最小链路；后续衣柜、权限/邮箱、积分核对、品牌与历史已补齐声明契约的本地测试。2026-10-30 已用真实旧站归档完成隔离导出、MySQL / PostgreSQL 导入与幂等重跑、双向跨库备份恢复，并核对实际角色的 Yggdrasil 签名、UUID、材质 URL 与 HTTP 文件字节。来源为一个已核对的归档，不代表任意 BS 版本或插件都兼容。
+
+实际旧密码输入、Minecraft 客户端、原 PHP 站点运行、未适配插件和生产切换仍待验收，整体状态保持 `partial`。已确认与待测范围见[手动验收清单](manual-acceptance.md)。

@@ -1,6 +1,8 @@
 # WishingSkin
 
-面向服主自部署的开源 Minecraft 皮肤站。采用 Go 模块化单体与 Vue 3 / TypeScript / Vite，前端静态资源由后端提供，支持 MySQL 8 与 PostgreSQL。
+可自部署的开源 Minecraft 皮肤站，支持角色与皮肤管理、外置登录、插件扩展和界面个性化。
+
+采用 Go 模块化单体与 Vue 3 / TypeScript / Vite，前端静态资源由后端提供，支持 MySQL 8 与 PostgreSQL。
 
 当前程序使用 schema 19。支持本地账号、邮箱验证与找回、TOTP、角色与材质管理、衣柜和公开库、标签分类、可选上传审核、Yggdrasil 外置登录、浅深主题和个性化设置。新账号默认使用递增 ID，可切换为 10 位随机数字；已有 ID 保持不变。
 
@@ -8,7 +10,7 @@
 
 官方插件提供邀请码、积分、多 OIDC、本站 OAuth2 授权、AuthMe/HTTP 外部账号连接及 S3 对象存储。社区插件通过 Go SDK 随源码编译，可独立启停和配置，支持路由、事件、内容页及任务。
 
-Blessing Skin 迁移支持固定的 BS 6.0.2 与传统 yggdrasil-api 5.2.1 来源契约。账号、角色实际 UUID、材质及关系等按声明范围迁移，报告保持 partial。未知插件、真实源站迁移和生产切换需单独核对。原 PHP 插件不能原样运行。
+Blessing Skin 迁移支持固定的 BS 6.0.2 与传统 yggdrasil-api 5.2.1 来源契约。账号、角色实际 UUID、材质及关系等按声明范围迁移，报告保持 partial。已用真实旧站归档完成隔离迁移、双库核对和跨库恢复；其他来源的版本与插件需按契约核对。原 PHP 插件不能原样运行。
 
 运行时只需程序、一个选定数据库、材质目录和设置密钥。前端构建需要 Node.js 与 pnpm，完整构建步骤见部署手册。新安装没有默认管理员，通过本机 create-admin 初始化；从 BS 迁入时不要先创建管理员。生产使用 HTTPS 反向代理并持久化数据库、材质、备份目录和设置密钥。
 
@@ -18,6 +20,7 @@ Blessing Skin 迁移支持固定的 BS 6.0.2 与传统 yggdrasil-api 5.2.1 来�
 - [Blessing Skin 迁移](docs/migration-runbook.md)
 - [BS 来源契约](docs/bs-source-contract.md)
 - [账号与存储接入](docs/integrations.md)
+- [免费本地接入验收](docs/integration-testing.md)
 - [社区插件 SDK](docs/community-plugin-sdk.md)
 - [界面与首页设置](docs/interface-customization.md)
 - [手动验收清单](docs/manual-acceptance.md)
@@ -27,4 +30,4 @@ Blessing Skin 迁移支持固定的 BS 6.0.2 与传统 yggdrasil-api 5.2.1 来�
 - [MIT 许可证](LICENSE)
 - [第三方依赖与许可证](THIRD_PARTY_NOTICES.md)
 
-本地自动检查不能代替真实服务、源站数据、启动器和目标部署环境验收。
+已确认的验收范围和待测项目见[手动验收清单](docs/manual-acceptance.md)。
