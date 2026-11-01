@@ -55,6 +55,7 @@ func assertEmbeddedSchemasAgree(t *testing.T, migration string) {
 	ownerIndex := regexp.MustCompile(`,? KEY texture_records_owner\s*\(owner_id\)|CREATE INDEX IF NOT EXISTS texture_records_owner ON texture_records\(owner_id\);`)
 	wardrobeIndex := regexp.MustCompile(`CREATE INDEX IF NOT EXISTS wardrobe_record_id_idx ON wardrobe\(record_id\);`)
 	oidcIndex := regexp.MustCompile(`, INDEX oidc_flow_expiry\(expires_at\)|CREATE INDEX IF NOT EXISTS oidc_flow_expiry ON oidc_flows\(expires_at\);`)
+	extensionIndex := regexp.MustCompile(`, INDEX (webhook_due|plugin_event_due)\(state,next_at\)|CREATE INDEX IF NOT EXISTS (webhook_due|plugin_event_due) ON (webhook_deliveries|plugin_event_deliveries)\(state,next_at\);`)
 	normalize := func(source string) string {
 		// Compare DDL here; dialect-specific backfill/upsert behavior is tested against both databases.
 		source = strings.SplitN(source, "INSERT INTO", 2)[0]
@@ -68,6 +69,11 @@ func assertEmbeddedSchemasAgree(t *testing.T, migration string) {
 		if migration == "019_admin_event_changes" {
 			source = strings.ReplaceAll(source, "MEDIUMTEXT", "TEXT")
 		}
+		// Both forms widen the refresh credential column while retaining NOT NULL.
+		if migration == "021_oauth_extensions" {
+			source = strings.ReplaceAll(source, "MODIFY COLUMN credential_hash TEXT NOT NULL", "ALTER COLUMN credential_hash TYPE TEXT")
+		}
+		source = extensionIndex.ReplaceAllString(source, "")
 		source = mysqlOptions.ReplaceAllString(source, "")
 		source = ownerIndex.ReplaceAllString(source, "")
 		// InnoDB creates this index for the foreign key automatically.
@@ -80,6 +86,12 @@ func assertEmbeddedSchemasAgree(t *testing.T, migration string) {
 		t.Fatal("MySQL and PostgreSQL schema definitions differ")
 	}
 	tables := []string{"ygg_join_sessions"}
+	if migration == "020_extensions" {
+		tables = []string{"plugin_data", "plugin_migrations", "webhook_subscriptions", "webhook_deliveries", "oauth_code_metadata", "oauth_refresh_tokens", "plugin_event_deliveries"}
+	}
+	if migration == "021_oauth_extensions" {
+		tables = []string{"oauth_access_families", "oauth_refresh_metadata", "web_session_auth"}
+	}
 	if migration == "019_admin_event_changes" {
 		tables = []string{"admin_event_changes"}
 	}
