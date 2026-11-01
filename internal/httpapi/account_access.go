@@ -671,7 +671,7 @@ func (a *Server) resetPassword(w http.ResponseWriter, r *http.Request) {
 }
 
 func (a *Server) revokeAccountCredentials(ctx context.Context, tx *sql.Tx, id int64) error {
-	for _, table := range []string{"web_sessions", "game_tokens", "account_tokens", "oauth_codes", "oauth_tokens"} {
+	for _, table := range []string{"web_sessions", "game_tokens", "account_tokens", "oauth_codes", "oauth_tokens", "oauth_refresh_tokens"} {
 		if _, err := tx.ExecContext(ctx, a.s.Bind("DELETE FROM "+table+" WHERE user_id=?"), id); err != nil {
 			return err
 		}

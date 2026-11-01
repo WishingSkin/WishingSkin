@@ -97,6 +97,9 @@ func (a *Server) completeOIDCTOTP(w http.ResponseWriter, r *http.Request) {
 	session, err := secret()
 	if err == nil {
 		_, err = tx.ExecContext(r.Context(), a.s.Bind("INSERT INTO web_sessions(token_hash,user_id,expires_at) VALUES(?,?,?)"), tokenHash(session), u.ID, time.Now().Add(24*time.Hour).Unix())
+		if err == nil {
+			err = a.recordWebAuthTime(r.Context(), tx, session)
+		}
 	}
 	if err == nil {
 		_, err = tx.ExecContext(r.Context(), a.s.Bind("DELETE FROM oidc_flows WHERE flow_hash=?"), tokenHash(cookie.Value))

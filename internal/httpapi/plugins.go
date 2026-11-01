@@ -130,6 +130,11 @@ func (a *Server) updatePlugin(w http.ResponseWriter, r *http.Request) {
 		if err == nil {
 			_, err = tx.ExecContext(r.Context(), "DELETE FROM oauth_tokens")
 		}
+		for _, table := range []string{"oauth_refresh_tokens", "oauth_access_families", "oauth_refresh_metadata", "oauth_code_metadata"} {
+			if err == nil {
+				_, err = tx.ExecContext(r.Context(), "DELETE FROM "+table)
+			}
+		}
 	}
 	if err == nil {
 		action := "plugin.disable"

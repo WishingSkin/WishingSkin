@@ -448,6 +448,9 @@ func (a *Server) login(w http.ResponseWriter, r *http.Request) {
 	}
 	if err == nil {
 		_, err = tx.ExecContext(r.Context(), a.s.Bind("INSERT INTO web_sessions(token_hash,user_id,expires_at) VALUES(?,?,?)"), tokenHash(token), u.ID, time.Now().Add(24*time.Hour).Unix())
+		if err == nil {
+			err = a.recordWebAuthTime(r.Context(), tx, token)
+		}
 	}
 	if err == nil {
 		err = tx.Commit()

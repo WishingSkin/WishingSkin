@@ -38,7 +38,7 @@ var tables = []table{
 	{"legacy_reports", "id,tid,uploader,reporter,reason,status,report_at", "iiiisiS", "id"},
 }
 
-var credentialTables = []string{"web_sessions", "ygg_join_sessions", "game_tokens", "account_tokens", "invitation_codes", "oidc_flows", "oauth_codes", "oauth_tokens", "oauth_code_metadata", "oauth_refresh_tokens", "webhook_deliveries", "plugin_event_deliveries"}
+var credentialTables = []string{"web_sessions", "ygg_join_sessions", "game_tokens", "account_tokens", "invitation_codes", "oidc_flows", "oauth_codes", "oauth_tokens", "oauth_code_metadata", "oauth_refresh_tokens", "oauth_access_families", "oauth_refresh_metadata", "web_session_auth", "webhook_deliveries", "plugin_event_deliveries"}
 
 func (t table) insert() string {
 	return "INSERT INTO " + t.name + "(" + t.columns + ") VALUES(" + strings.TrimSuffix(strings.Repeat("?,", len(t.types)), ",") + ")"

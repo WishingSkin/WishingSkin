@@ -137,7 +137,7 @@ func run() error {
 	}
 	// A restored encrypted configuration must never silently generate a replacement key.
 	var encryptedCount int
-	if err := db.DB.QueryRowContext(ctx, "SELECT COUNT(*) FROM settings WHERE setting_key IN ('service_config','oidc_config','oidc_providers','object_storage_config','external_connectors')").Scan(&encryptedCount); err != nil {
+	if err := db.DB.QueryRowContext(ctx, "SELECT (SELECT COUNT(*) FROM settings WHERE setting_key IN ('service_config','oidc_config','oidc_providers','object_storage_config','external_connectors','oauth_signing_key')) + (SELECT COUNT(*) FROM webhook_subscriptions) + (SELECT COUNT(*) FROM plugins WHERE settings_json<>'{}' AND plugin_id NOT LIKE 'wishingskin.%')").Scan(&encryptedCount); err != nil {
 		return fmt.Errorf("cannot inspect service settings")
 	}
 	if encryptedCount > 0 {
