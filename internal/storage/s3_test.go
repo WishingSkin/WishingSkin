@@ -3,6 +3,7 @@ package storage
 import (
 	"bytes"
 	"context"
+	"fmt"
 	"io"
 	"net/http"
 	"net/http/httptest"
@@ -11,6 +12,7 @@ import (
 	"strings"
 	"sync"
 	"testing"
+	"time"
 )
 
 func TestS3SignedPutOpenDelete(t *testing.T) {
@@ -81,5 +83,51 @@ func TestS3SignedPutOpenDelete(t *testing.T) {
 	}
 	if _, err := provider.Open(ctx, "hash"); err == nil {
 		t.Fatal("deleted object still opens")
+	}
+}
+
+// Exercise the S3 pagination protocol, prefix confinement and object metadata.
+func TestS3InventoryPaginationAndStat(t *testing.T) {
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if !strings.HasPrefix(r.Header.Get("Authorization"), "AWS4-HMAC-SHA256 ") {
+			t.Error("unsigned inventory")
+			w.WriteHeader(403)
+			return
+		}
+		if r.Method == "HEAD" {
+			if r.URL.Path != "/test-bucket/textures/b" {
+				t.Error("stat escaped prefix")
+			}
+			w.Header().Set("Content-Length", "12")
+			w.Header().Set("Last-Modified", "Sun, 25 Oct 2026 00:00:00 GMT")
+			return
+		}
+		q := r.URL.Query()
+		if q.Get("prefix") != "textures/" || q.Get("list-type") != "2" {
+			t.Error("incorrect list scope")
+		}
+		w.Header().Set("Content-Type", "application/xml")
+		if q.Get("continuation-token") == "two" || q.Get("start-after") == "textures/b" {
+			fmt.Fprint(w, `<ListBucketResult xmlns="http://s3.amazonaws.com/doc/2006-03-01/"><Name>test-bucket</Name><IsTruncated>false</IsTruncated><Contents><Key>textures/c</Key><LastModified>2026-10-25T00:00:00.000Z</LastModified><Size>12</Size></Contents></ListBucketResult>`)
+		} else {
+			fmt.Fprint(w, `<ListBucketResult xmlns="http://s3.amazonaws.com/doc/2006-03-01/"><Name>test-bucket</Name><IsTruncated>true</IsTruncated><NextContinuationToken>two</NextContinuationToken><Contents><Key>textures/a</Key><LastModified>2026-10-25T00:00:00.000Z</LastModified><Size>12</Size></Contents><Contents><Key>textures/b</Key><LastModified>2026-10-25T00:00:00.000Z</LastModified><Size>12</Size></Contents></ListBucketResult>`)
+		}
+	}))
+	defer server.Close()
+	provider, err := NewS3(S3Options{Endpoint: server.URL, Bucket: "test-bucket", Region: "us-east-1", Prefix: "textures", AccessKey: "synthetic", SecretKey: "synthetic"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	page, err := provider.List(context.Background(), "", 2)
+	if err != nil || len(page.Objects) != 2 || page.Next != "b" || page.Objects[0].Key != "a" {
+		t.Fatal("first page", page, err)
+	}
+	next, err := provider.List(context.Background(), page.Next, 2)
+	if err != nil || len(next.Objects) != 1 || next.Next != "" || next.Objects[0].Key != "c" {
+		t.Fatal("next page", next, err)
+	}
+	info, err := provider.Stat(context.Background(), "b")
+	if err != nil || info.Bytes != 12 || !info.ModifiedAt.Equal(time.Date(2026, 10, 25, 0, 0, 0, 0, time.UTC)) {
+		t.Fatal("stat", info, err)
 	}
 }

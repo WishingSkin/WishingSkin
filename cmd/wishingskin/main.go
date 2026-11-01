@@ -81,9 +81,9 @@ func run() error {
 		}
 		var report backup.Report
 		if command == "backup" {
-			report, err = backup.Export(ctx, db, cfg.TextureDir, *path)
+			report, err = backup.Export(ctx, db, cfg.TextureDir, *path, cfg.PluginDir)
 		} else {
-			report, err = backup.Restore(ctx, db, *path, cfg.TextureDir)
+			report, err = backup.Restore(ctx, db, *path, cfg.TextureDir, cfg.PluginDir)
 		}
 		if err == nil {
 			err = json.NewEncoder(os.Stdout).Encode(report)

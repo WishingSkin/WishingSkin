@@ -35,7 +35,7 @@ func TestPluginPackagesAndWebhooksBothDatabases(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	pkg := rp.Package{Manifest: sdk.Manifest{ID: "example.echo", Name: "Echo", Version: "1.0.0", SettingsNamespace: "echo", MigrationVersion: 1, Permissions: []string{"routes.admin", "database", "events", "pages", "tasks", "frontend", "webhooks"}, Events: []string{"character.create"}, Pages: []sdk.PageContribution{{ID: "status", Area: "admin.plugins", Label: "Status"}}, Tasks: []sdk.TaskDeclaration{{ID: "check"}}}, Protocol: 1, Executables: map[string]string{runtime.GOOS + "/" + runtime.GOARCH: filepath.Base(exe)}, Frontend: "index.html", Routes: []rp.Route{{Method: "POST", Path: "/data", Access: "admin"}}, Migrations: []rp.Migration{{Version: 1, MySQL: []string{"CREATE TABLE IF NOT EXISTS {{prefix}}notes (id INTEGER PRIMARY KEY)"}, Postgres: []string{"CREATE TABLE IF NOT EXISTS {{prefix}}notes (id INTEGER PRIMARY KEY)"}}}}
+	pkg := rp.Package{Manifest: sdk.Manifest{ID: "example.echo", Name: "Echo", Version: "1.0.0", SettingsNamespace: "echo", MigrationVersion: 1, Permissions: []string{"routes.admin", "database", "events", "pages", "tasks", "frontend", "webhooks"}, Events: []string{"character.create"}, Pages: []sdk.PageContribution{{ID: "status", Area: "admin.plugins", Label: "Status"}}, Tasks: []sdk.TaskDeclaration{{ID: "check"}}}, Protocol: 1, Executables: map[string]string{runtime.GOOS + "/" + runtime.GOARCH: filepath.Base(exe)}, Frontend: "index.html", Routes: []rp.Route{{Method: "POST", Path: "/data", Access: "admin"}}, Migrations: []rp.Migration{{Version: 1, MySQL: []string{"CREATE TABLE IF NOT EXISTS {{prefix}}notes (id BIGINT AUTO_INCREMENT PRIMARY KEY, content BLOB, label VARCHAR(100))"}, Postgres: []string{"CREATE TABLE IF NOT EXISTS {{prefix}}notes (id BIGINT GENERATED ALWAYS AS IDENTITY PRIMARY KEY, content BYTEA, label VARCHAR(100))"}}}}
 	manifest, _ := json.Marshal(pkg)
 	var buffer bytes.Buffer
 	z := zip.NewWriter(&buffer)
@@ -133,7 +133,9 @@ func TestPluginPackagesAndWebhooksBothDatabases(t *testing.T) {
 			}
 			webStatus(t, f.call(3, "POST", "/api/admin/plugin-packages/example.echo/reload", nil), 200)
 			webStatus(t, install(pkg.Manifest.Permissions), 200)
+			verifyDynamicBackup(t, f, pkg, archive, true)
 			webStatus(t, f.call(3, "DELETE", "/api/admin/plugin-packages/example.echo", nil), 200)
+			verifyDynamicBackup(t, f, pkg, archive, false)
 			webStatus(t, f.call(3, "POST", "/api/plugins/example.echo/data", map[string]string{}), 404)
 		})
 	}

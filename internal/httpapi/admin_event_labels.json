@@ -167,6 +167,34 @@
     "report.ban": {
       "zh-CN": "举报处置：封禁上传者",
       "en": "Report action: ban uploader"
+    },
+    "plugin.install": {
+      "zh-CN": "安装插件包",
+      "en": "Install plugin package"
+    },
+    "plugin.reload": {
+      "zh-CN": "重新加载插件",
+      "en": "Reload plugin"
+    },
+    "plugin.uninstall": {
+      "zh-CN": "卸载插件",
+      "en": "Uninstall plugin"
+    },
+    "plugin.market.configure": {
+      "zh-CN": "修改插件市场源",
+      "en": "Change plugin catalog"
+    },
+    "webhook.save": {
+      "zh-CN": "保存 Webhook",
+      "en": "Save webhook"
+    },
+    "webhook.delete": {
+      "zh-CN": "删除 Webhook",
+      "en": "Delete webhook"
+    },
+    "storage.remote-gc": {
+      "zh-CN": "远端存储回收",
+      "en": "Clean up remote storage"
     }
   },
   "targets": {
@@ -197,6 +225,14 @@
     "report": {
       "zh-CN": "举报",
       "en": "Report"
+    },
+    "plugin": {
+      "zh-CN": "插件",
+      "en": "Plugin"
+    },
+    "webhook": {
+      "zh-CN": "Webhook",
+      "en": "Webhook"
     }
   },
   "settings": {

@@ -23,6 +23,7 @@ type backupSchedule struct {
 	Directory string `json:"directory"`
 	Time      string `json:"time"`
 	Timezone  string `json:"timezone"`
+	Keep      int    `json:"keep"`
 }
 type operationStatus struct {
 	ID            string `json:"id"`
@@ -54,6 +55,8 @@ func (a *Server) registerOperations() {
 	a.mux.HandleFunc("GET /api/admin/operations", a.adminOperations)
 	a.mux.HandleFunc("PATCH /api/admin/operations", a.updateOperations)
 	a.mux.HandleFunc("GET /api/admin/storage/orphans", a.orphanPreview)
+	a.mux.HandleFunc("GET /api/admin/storage/remote-orphans", a.remoteOrphanPreview)
+	a.registerBackupManagement()
 	a.mux.HandleFunc("POST /api/admin/operations/{kind}", a.startOperation)
 }
 func (a *Server) adminOperations(w http.ResponseWriter, r *http.Request) {
@@ -123,7 +126,7 @@ func (a *Server) updateOperations(w http.ResponseWriter, r *http.Request) {
 	}
 	body.Backup.Directory = strings.TrimSpace(body.Backup.Directory)
 	body.CDN.BaseURL = strings.TrimRight(strings.TrimSpace(body.CDN.BaseURL), "/")
-	if !validBackupTime(body.Backup) || body.Backup.Directory != "" && !independentBackupDirectory(a.cfg.TextureDir, body.Backup.Directory) || body.Backup.Enabled && body.Backup.Directory == "" {
+	if body.Backup.Keep < 0 || body.Backup.Keep > 1000 || !validBackupTime(body.Backup) || body.Backup.Directory != "" && !independentBackupDirectory(a.cfg.TextureDir, body.Backup.Directory) || body.Backup.Enabled && body.Backup.Directory == "" {
 		failure(w, 400, "请设置每日备份时间、有效时区和独立且已存在的绝对目录")
 		return
 	}
@@ -253,16 +256,22 @@ func (a *Server) startOperation(w http.ResponseWriter, r *http.Request) {
 	var body struct {
 		Hashes       []string `json:"hashes"`
 		DeleteRemote bool     `json:"deleteRemote"`
+		Confirmed    bool     `json:"confirmed"`
+		Revision     string   `json:"revision"`
 	}
 	if !decodeLimit(w, r, &body, 160<<10) {
 		return
 	}
-	if kind != "sync" && kind != "gc" && kind != "backup" {
+	if kind != "sync" && kind != "gc" && kind != "remote-gc" && kind != "backup" {
 		failure(w, 404, "任务不存在")
 		return
 	}
-	if kind == "gc" && (len(body.Hashes) == 0 || len(body.Hashes) > 1000) {
+	if (kind == "gc" || kind == "remote-gc") && (len(body.Hashes) == 0 || len(body.Hashes) > 1000) {
 		failure(w, 400, "请先预览并选择最多 1000 个孤立文件")
+		return
+	}
+	if kind == "remote-gc" && (!body.Confirmed || len(body.Revision) != 64 || !validHash.MatchString(body.Revision)) {
+		failure(w, 400, "请确认远端回收清单")
 		return
 	}
 	for _, hash := range body.Hashes {
@@ -287,14 +296,14 @@ func (a *Server) startOperation(w http.ResponseWriter, r *http.Request) {
 	a.ops.mu.Lock()
 	ctx := a.ops.ctx
 	a.ops.mu.Unlock()
-	job, err := a.launchOperation(ctx, kind, body.Hashes, body.DeleteRemote, time.Time{})
+	job, err := a.launchOperation(ctx, kind, body.Hashes, body.DeleteRemote, time.Time{}, body.Revision)
 	if err != nil {
 		failure(w, 409, "任务未开始，请检查存储启用状态、备份目录或正在执行的任务")
 		return
 	}
 	respond(w, 202, job)
 }
-func (a *Server) launchOperation(ctx context.Context, kind string, hashes []string, deleteRemote bool, scheduledAt time.Time) (operationStatus, error) {
+func (a *Server) launchOperation(ctx context.Context, kind string, hashes []string, deleteRemote bool, scheduledAt time.Time, revisions ...string) (operationStatus, error) {
 	a.ops.mu.Lock()
 	if a.ops.running {
 		a.ops.mu.Unlock()
@@ -361,12 +370,21 @@ func (a *Server) launchOperation(ctx context.Context, kind string, hashes []stri
 			err = a.syncStoredTextures(jobCtx, &job)
 		case "gc":
 			err = a.collectOrphans(jobCtx, &job, hashes, deleteRemote)
+		case "remote-gc":
+			expected := ""
+			if len(revisions) > 0 {
+				expected = revisions[0]
+			}
+			err = a.collectRemoteOrphans(jobCtx, &job, hashes, expected)
 		case "backup":
 			job.Destination = filepath.Join(schedule.Directory, "wishingskin-backup-"+time.Now().UTC().Format("20060102T150405Z")+"-"+id[:8])
 			var report backup.Report
-			report, err = backup.ExportWithStorageLease(jobCtx, a.s, a.cfg.TextureDir, job.Destination)
+			report, err = a.exportBackup(jobCtx, job.Destination)
 			job.Total = report.Files
 			job.Completed = report.Files
+			if err == nil && schedule.Keep > 0 {
+				err = a.pruneBackups(jobCtx, schedule)
+			}
 		}
 		job.State = "completed"
 		if job.Failed > 0 {

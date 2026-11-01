@@ -14,7 +14,7 @@ import (
 
 // Restore requires application writes stopped and a freshly migrated database.
 // Files survive failure for inspection; a retry must use a new empty directory.
-func Restore(ctx context.Context, db *store.Store, sourceDir, textureDir string) (Report, error) {
+func Restore(ctx context.Context, db *store.Store, sourceDir, textureDir string, pluginDirs ...string) (Report, error) {
 	var report Report
 	if err := independent(sourceDir, textureDir); err != nil {
 		return report, err
@@ -28,18 +28,24 @@ func Restore(ctx context.Context, db *store.Store, sourceDir, textureDir string)
 	if err != nil {
 		return report, err
 	}
-	tx, err := db.DB.BeginTx(ctx, &sql.TxOptions{Isolation: sql.LevelSerializable})
+	if len(pluginDirs) > 0 && pluginDirs[0] != "" && pluginPath(textureDir, pluginDirs) != pluginPath(textureDir, nil) {
+		if err := independent(sourceDir, pluginDirs[0]); err != nil {
+			return report, err
+		}
+	}
+	check, err := db.DB.BeginTx(ctx, &sql.TxOptions{Isolation: sql.LevelSerializable})
 	if err != nil {
 		return report, err
 	}
-	defer tx.Rollback()
-	if err := checkSchema(ctx, tx); err != nil {
+	err = checkSchema(ctx, check)
+	if err == nil {
+		err = emptyTarget(ctx, check)
+	}
+	check.Rollback()
+	if err != nil {
 		return report, err
 	}
-	if err := emptyTarget(ctx, tx); err != nil {
-		return report, err
-	}
-	if err := os.Mkdir(textureDir, 0700); err != nil {
+	if err = os.Mkdir(textureDir, 0700); err != nil {
 		return report, fmt.Errorf("restore requires a new texture directory: %w", err)
 	}
 	target, err := os.OpenRoot(textureDir)
@@ -47,7 +53,18 @@ func Restore(ctx context.Context, db *store.Store, sourceDir, textureDir string)
 		return report, err
 	}
 	defer target.Close()
-	if err := writeJSON(target, ".restore-incomplete.json", makeReport(m, true)); err != nil {
+	if err = writeJSON(target, ".restore-incomplete.json", makeReport(m, true)); err != nil {
+		return report, err
+	}
+	if err = preparePluginRestore(ctx, db, root, m, textureDir, pluginDirs); err != nil {
+		return report, err
+	}
+	tx, err := db.DB.BeginTx(ctx, &sql.TxOptions{Isolation: sql.LevelSerializable})
+	if err != nil {
+		return report, err
+	}
+	defer tx.Rollback()
+	if err = emptyTarget(ctx, tx); err != nil {
 		return report, err
 	}
 	for _, file := range m.Files {
@@ -76,6 +93,9 @@ func Restore(ctx context.Context, db *store.Store, sourceDir, textureDir string)
 		if err != nil {
 			return report, err
 		}
+	}
+	if err := restorePluginTables(ctx, db, tx, root, m); err != nil {
+		return report, err
 	}
 	if err := tx.Commit(); err != nil {
 		return report, fmt.Errorf("restore commit not confirmed; inspect durable target state before retrying")
@@ -145,7 +165,20 @@ func verify(ctx context.Context, root *os.Root) (Manifest, error) {
 			return m, err
 		}
 	}
+	if err := verifyPlugins(ctx, root, m); err != nil {
+		return m, err
+	}
 	return m, nil
+}
+
+// Verify checks every recorded table, texture and plugin archive without writing.
+func Verify(ctx context.Context, directory string) (Manifest, error) {
+	root, err := os.OpenRoot(directory)
+	if err != nil {
+		return Manifest{}, err
+	}
+	defer root.Close()
+	return verify(ctx, root)
 }
 
 func emptyTarget(ctx context.Context, tx *sql.Tx) error {

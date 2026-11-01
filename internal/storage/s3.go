@@ -13,6 +13,7 @@ import (
 	"regexp"
 	"strings"
 	"time"
+	blob "wishingskin/pkg/storage"
 )
 
 type S3Options struct {
@@ -87,4 +88,33 @@ func (s *S3) Open(ctx context.Context, key string) (io.ReadCloser, error) {
 }
 func (s *S3) Delete(ctx context.Context, key string) error {
 	return s.client.RemoveObject(ctx, s.bucket, s.prefix+key, minio.RemoveObjectOptions{})
+}
+
+func (s *S3) List(ctx context.Context, cursor string, limit int) (blob.ObjectPage, error) {
+	page := blob.ObjectPage{Objects: []blob.ObjectInfo{}}
+	if limit < 1 || limit > 1000 {
+		return page, errors.New("invalid list limit")
+	}
+	listCtx, cancel := context.WithCancel(ctx)
+	defer cancel()
+	start := ""
+	if cursor != "" {
+		start = s.prefix + cursor
+	}
+	for item := range s.client.ListObjects(listCtx, s.bucket, minio.ListObjectsOptions{Prefix: s.prefix, StartAfter: start, Recursive: true, MaxKeys: limit}) {
+		if item.Err != nil {
+			return page, item.Err
+		}
+		key := strings.TrimPrefix(item.Key, s.prefix)
+		if len(page.Objects) == limit {
+			page.Next = page.Objects[len(page.Objects)-1].Key
+			break
+		}
+		page.Objects = append(page.Objects, blob.ObjectInfo{Key: key, Bytes: item.Size, ModifiedAt: item.LastModified})
+	}
+	return page, ctx.Err()
+}
+func (s *S3) Stat(ctx context.Context, key string) (blob.ObjectInfo, error) {
+	info, err := s.client.StatObject(ctx, s.bucket, s.prefix+key, minio.StatObjectOptions{})
+	return blob.ObjectInfo{Key: key, Bytes: info.Size, ModifiedAt: info.LastModified}, err
 }

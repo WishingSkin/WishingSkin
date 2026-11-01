@@ -39,11 +39,14 @@ type FileInfo struct {
 }
 
 type Manifest struct {
-	FormatVersion int         `json:"formatVersion"`
-	SchemaVersion int         `json:"schemaVersion"`
-	CreatedAt     string      `json:"createdAt"`
-	Tables        []TableInfo `json:"tables"`
-	Files         []FileInfo  `json:"files"`
+	FormatVersion int            `json:"formatVersion"`
+	SchemaVersion int            `json:"schemaVersion"`
+	CreatedAt     string         `json:"createdAt"`
+	Tables        []TableInfo    `json:"tables"`
+	Files         []FileInfo     `json:"files"`
+	PluginBundles []PluginBundle `json:"pluginBundles,omitempty"`
+	PluginTables  []PluginTable  `json:"pluginTables,omitempty"`
+	PluginDialect string         `json:"pluginDialect,omitempty"`
 }
 
 // Report contains counts only; table rows, configuration and keys never enter logs.
@@ -57,19 +60,27 @@ type Report struct {
 // Export takes a database snapshot and excludes upload/cleanup file writes.
 // Other CLI writers (imports/restores) must remain stopped.
 // A missing manifest identifies an unfinished backup; existing paths are never reused.
-func Export(ctx context.Context, db *store.Store, textureDir, destination string) (Report, error) {
+func Export(ctx context.Context, db *store.Store, textureDir, destination string, pluginDirs ...string) (Report, error) {
 	release, err := db.LeaseStorage(ctx)
 	if err != nil {
 		return Report{}, err
 	}
 	defer release()
-	return ExportWithStorageLease(ctx, db, textureDir, destination)
+	return ExportWithStorageLease(ctx, db, textureDir, destination, pluginDirs...)
 }
 
 // ExportWithStorageLease requires the caller to hold db.LeaseStorage.
-func ExportWithStorageLease(ctx context.Context, db *store.Store, textureDir, destination string) (Report, error) {
+func ExportWithStorageLease(ctx context.Context, db *store.Store, textureDir, destination string, pluginDirs ...string) (Report, error) {
 	var report Report
 	if err := independent(textureDir, destination); err != nil {
+		return report, err
+	}
+	path := pluginPath(textureDir, pluginDirs)
+	if _, err := os.Stat(path); err == nil {
+		if err = independent(path, destination); err != nil {
+			return report, err
+		}
+	} else if !os.IsNotExist(err) {
 		return report, err
 	}
 	tx, err := db.DB.BeginTx(ctx, &sql.TxOptions{Isolation: sql.LevelRepeatableRead, ReadOnly: true})
@@ -125,6 +136,9 @@ func ExportWithStorageLease(ctx context.Context, db *store.Store, textureDir, de
 		}
 		return err
 	}); err != nil {
+		return report, err
+	}
+	if err := exportPlugins(ctx, db, tx, root, pluginPath(textureDir, pluginDirs), &m); err != nil {
 		return report, err
 	}
 	if err := tx.Commit(); err != nil {

@@ -1,4 +1,4 @@
-// Package backup implements offline, portable backups without executing supplied SQL.
+// Package backup implements offline backups, including trusted plugin schema packages.
 package backup
 
 import "strings"
