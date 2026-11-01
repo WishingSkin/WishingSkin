@@ -24,13 +24,15 @@ wishingskin.oauth2 默认关闭。登记精确 HTTPS 回调，loopback 可用 HT
 
 | 接口 | 路径 |
 | --- | --- |
-| 发现 | /.well-known/oauth-authorization-server |
+| 发现 | /.well-known/oauth-authorization-server、/.well-known/openid-configuration |
+| 公钥 | /oauth/jwks |
+| 内省 | /oauth/introspect |
 | 授权 | /oauth/authorize |
 | 令牌 | /oauth/token |
 | 撤销 | /oauth/revoke |
 | 用户资料 | /oauth/userinfo |
 
-code 有效期 1 分钟，只能使用一次；access token 为 1 小时。仅提供 profile/email 只读 scope，不提供 refresh token、ID token、password 或 implicit grant。
+code 有效期 1 分钟，只能使用一次；access token 为 1 小时。`profile`、`email` 用于读取资料。`openid` 返回 RS256 ID Token；`offline_access` 签发最长 30 天、逐次轮换的 Refresh Token。不提供 password、implicit 或 client_credentials grant。参数与接入流程见[授权服务手册](oauth-provider.md)。
 
 ## 外部账号连接器
 
@@ -58,11 +60,11 @@ subject 必须稳定，不应使用可更名的昵称。可选 API key 通过 Au
 
 预先创建私有存储桶，在“插件管理 → 对象存储”填写服务地址、存储桶、区域、对象前缀及 Access Key / Secret Key，保存后启用。默认区域为 `us-east-1`，前缀为 `textures`；以实际服务配置为准。可使用自部署的 MinIO，无需购买云存储。插件保留本地副本；实现与扩展契约见[插件 SDK](community-plugin-sdk.md)。
 
-凭据需要指定前缀的 `GetObject`、`PutObject` 权限；同时回收远端孤立副本时还需 `DeleteObject`。使用独立前缀，避免与其他应用共用对象名。更换凭据或地址后上传一份材质并核对远端对象即可检查接入。远端不可读时回退本地，上传失败则不提交材质记录。
+凭据需要指定前缀的 `GetObject`、`PutObject` 权限；同时回收远端孤立副本时还需 `DeleteObject`。使用远端文件列举时，还需存储桶上的 `ListBucket` 权限，并将 prefix 条件限制为本站前缀。使用独立前缀，避免与其他应用共用对象名。更换凭据或地址后上传一份材质并核对远端对象即可检查接入。远端不可读时回退本地，上传失败则不提交材质记录。
 
 ### 同步与回收
 
-旧材质每批同步 100 条，校验本地与远端内容，可重复执行。回收只处理超过一小时、hash 命名且 textures 表完全无记录的本地普通文件，先预览，再显式确认清单。不回收逻辑删除记录或本地回退副本，不枚举全量远端孤立对象。
+旧材质每批同步 100 条，校验本地与远端内容，可重复执行。回收只处理超过一小时、hash 命名且 textures 表完全无记录的本地普通文件，先预览，再显式确认清单。不回收逻辑删除记录或本地回退副本。远端存储另有分页预览，每页最多扫描 1000 个对象，并显式确认当前页；文件须符合 hash 命名、超过一小时且无数据库记录。执行时重新检查引用、修改时间和存储配置。对象前缀应由本站独占管理。
 
 ### CDN
 

@@ -1,6 +1,6 @@
 # 架构与数据模型
 
-WishingSkin 采用 Go 模块化单体后端和 Vue 3 / TypeScript / Vite 前端。构建后的网页嵌入 Go 程序，由同一个 HTTP 服务提供页面、业务 API 和 Yggdrasil 接口。部署时选择 MySQL 8 或 PostgreSQL，当前 schema 为 19。
+WishingSkin 采用 Go 模块化单体后端和 Vue 3 / TypeScript / Vite 前端。构建后的网页嵌入 Go 程序，由同一个 HTTP 服务提供页面、业务 API 和 Yggdrasil 接口。部署时选择 MySQL 8 或 PostgreSQL，当前 schema 为 21。
 
 ## 模块
 
@@ -35,13 +35,13 @@ WishingSkin 采用 Go 模块化单体后端和 Vue 3 / TypeScript / Vite 前端�
 
 网页登录使用本站账号密码，可启用 TOTP。OIDC 身份按 Issuer 和 subject 绑定，不按邮箱自动合并；新身份注册遵守本站注册规则。Minecraft 使用本站密码与 Yggdrasil 角色资料，TOTP 和 OIDC 不替换游戏密码。
 
-本站 OAuth2 服务向已登记应用提供授权码与 PKCE 流程，开放只读 `profile`、`email` scope。AuthMe 和 HTTP 连接器用于主动绑定外部身份，不提供外部密码直接登录。
+本站授权服务提供授权码与 PKCE、刷新令牌轮换、撤销和内省。`openid` 返回 RS256 ID Token；`profile`、`email` 用于读取资料，`offline_access` 用于续期授权。详见[授权服务](oauth-provider.md)。AuthMe 和 HTTP 连接器用于主动绑定外部身份，不提供外部密码直接登录。
 
-官方插件随程序发行，由数据库保存配置和启停状态。社区插件通过 Go SDK 随源码编译，与宿主在同一进程运行。页面由宿主渲染，任务协作式取消；不支持热加载或任意前端模块。接口见[插件 SDK](community-plugin-sdk.md)。
+官方插件随程序发行，由数据库保存配置和启停状态。源码插件通过 Go SDK 与宿主一起编译。可执行插件通过 ZIP 或静态市场源安装，在子进程中运行，支持热加载、路由、页面、任务、KV 数据与 SQL 迁移。自定义前端使用 iframe 和宿主消息桥。Webhook 与动态插件事件使用持久队列。插件是可信本机程序，进程分离不提供操作系统沙箱。接口见[插件 SDK](community-plugin-sdk.md)。
 
 ## 存储与维护
 
-数据库保存业务记录。材质保留本地文件，S3 插件提供远端副本和读取回退。CDN 只接收通过审核的公开材质，使用有期限的签名 URL。上传、同步、回收和备份通过数据库命名空间级存储锁协调。
+数据库保存业务记录。材质保留本地文件，S3 插件提供远端副本和读取回退。CDN 只接收通过审核的公开材质，使用有期限的签名 URL。上传、同步、回收和备份通过数据库命名空间级存储锁协调。S3 支持分页列举远端对象；清理前重新检查数据库引用与对象年龄。备份可按份数保留，并包含动态插件包、KV 数据和插件 SQL 表。插件 SQL 表恢复需要相同数据库引擎。
 
 服务凭据和 TOTP 密钥使用独立的 32 字节设置密钥加密。密文随业务备份保存，密钥文件单独备份。运行时的数据库连接、公开地址和可信代理配置来自环境变量。
 
