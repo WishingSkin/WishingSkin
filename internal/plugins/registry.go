@@ -91,3 +91,15 @@ func (r *Registry) States() []State {
 	sort.Slice(out, func(i, j int) bool { return out[i].Manifest.ID < out[j].Manifest.ID })
 	return out
 }
+
+// Replace changes an installed runtime manifest.
+func (r *Registry) Replace(manifest Manifest) error {
+	if err := manifest.Validate(); err != nil {
+		return err
+	}
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	r.states[manifest.ID] = State{Manifest: manifest, Enabled: true}
+	return nil
+}
+func (r *Registry) Remove(id string) { r.mu.Lock(); defer r.mu.Unlock(); delete(r.states, id) }

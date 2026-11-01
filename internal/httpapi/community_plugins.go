@@ -75,16 +75,21 @@ func (h *communityHost) Handle(route sdk.Route) error {
 	return nil
 }
 func (a *Server) communityEnabled(ctx context.Context, id string) (bool, error) {
+	return a.communityDependencyEnabled(ctx, id, map[string]bool{})
+}
+func (a *Server) communityDependencyEnabled(ctx context.Context, id string, visiting map[string]bool) (bool, error) {
 	state, ok := a.plugins.State(id)
-	if !ok || !state.Enabled || state.Error != "" {
+	if !ok || !state.Enabled || state.Error != "" || visiting[id] {
 		return false, nil
 	}
 	enabled, err := a.storedPluginEnabled(ctx, id)
 	if err != nil || !enabled {
 		return enabled, err
 	}
+	visiting[id] = true
+	defer delete(visiting, id)
 	for _, dep := range state.Manifest.Dependencies {
-		on, err := a.storedPluginEnabled(ctx, dep)
+		on, err := a.communityDependencyEnabled(ctx, dep, visiting)
 		if err != nil || !on {
 			return false, err
 		}
@@ -128,7 +133,9 @@ func (h *communityHost) Subscribe(name string, handler func(context.Context, sdk
 	})
 }
 func (a *Server) publishPluginEvent(ctx context.Context, name string, userID int64, resource string) {
-	_ = a.pluginEvents.Publish(ctx, name, sdk.Event{Name: name, UserID: userID, ResourceID: resource})
+	event := sdk.Event{Name: name, UserID: userID, ResourceID: resource}
+	_ = a.pluginEvents.Publish(ctx, name, event)
+	_ = a.queueExtensionEvent(ctx, event)
 }
 func (a *Server) readCommunitySettings(ctx context.Context, id string) (map[string]any, error) {
 	var raw string

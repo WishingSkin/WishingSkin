@@ -545,6 +545,7 @@ func (a *Server) RunBackground(ctx context.Context) {
 			a.recoverInterruptedOperation(ctx)
 			a.runScheduledBackup(ctx, now)
 			a.runCommunityTasks(ctx, now)
+			a.runExtensionDeliveries(ctx, now)
 		}
 	}
 }
@@ -600,7 +601,13 @@ func (a *Server) runScheduledBackup(ctx context.Context, now time.Time) {
 	}
 }
 
-func (a *Server) WaitBackground() { a.ops.jobs.Wait(); a.communityRuntime.jobs.Wait() }
+func (a *Server) WaitBackground() {
+	a.ops.jobs.Wait()
+	a.communityRuntime.jobs.Wait()
+	if a.dynamic != nil {
+		a.dynamic.Close()
+	}
+}
 
 func validBackupTime(schedule backupSchedule) bool {
 	clock, err := time.Parse("15:04", schedule.Time)

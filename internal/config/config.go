@@ -10,6 +10,7 @@ import (
 
 type Config struct {
 	Listen, Driver, DSN, PublicURL, TextureDir string
+	PluginDir                                  string
 	SMTP                                       *mailer.SMTP
 	TurnstileSiteKey, TurnstileSecret          string
 	TrustedProxies                             []netip.Prefix
@@ -17,6 +18,7 @@ type Config struct {
 
 func Load() (Config, error) {
 	c := Config{Listen: value("WS_LISTEN", "127.0.0.1:8090"), Driver: value("WS_DATABASE_DRIVER", "postgres"), DSN: os.Getenv("WS_DATABASE_DSN"), PublicURL: value("WS_PUBLIC_URL", "http://localhost:8090"), TextureDir: value("WS_TEXTURE_DIR", "data/textures")}
+	c.PluginDir = value("WS_PLUGIN_DIR", c.TextureDir+"/.plugins")
 	if c.DSN == "" {
 		return c, errors.New("WS_DATABASE_DSN is required")
 	}

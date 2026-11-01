@@ -23,6 +23,7 @@ import (
 	"wishingskin/internal/credential"
 	"wishingskin/internal/mailer"
 	pluginregistry "wishingskin/internal/plugins"
+	"wishingskin/internal/runtimeplugin"
 	"wishingskin/internal/store"
 	sdk "wishingskin/pkg/plugin"
 	blob "wishingskin/pkg/storage"
@@ -30,6 +31,7 @@ import (
 
 type Config struct {
 	PublicURL, TextureDir string
+	PluginDir             string
 	Assets                fs.FS
 	MailSender            MailSender
 	Challenge             ChallengeVerifier
@@ -43,6 +45,8 @@ type Config struct {
 }
 type Server struct {
 	communityRuntime   communityRuntime
+	dynamic            *runtimeplugin.Manager
+	dynamicMu          sync.Mutex
 	ops                operationsRuntime
 	s                  *store.Store
 	cfg                Config
@@ -64,6 +68,7 @@ type Server struct {
 	totpLimit          limiter
 	plugins            *pluginregistry.Registry
 	pluginEvents       *pluginregistry.EventBus
+	dynamicCalls       sync.Map
 	storageMu          sync.Mutex
 	storageConfigHash  string
 	remoteStorage      blob.BlobStore
@@ -120,6 +125,9 @@ func New(s *store.Store, cfg Config) (*Server, error) {
 		if err := p.Register(&communityHost{a: a, manifest: m, routes: map[string]bool{}}); err != nil {
 			return nil, err
 		}
+	}
+	if err := a.initDynamicPlugins(); err != nil {
+		return nil, err
 	}
 	a.mux.HandleFunc("GET /healthz", func(w http.ResponseWriter, r *http.Request) { respond(w, 200, map[string]string{"status": "alive"}) })
 	a.mux.HandleFunc("GET /readyz", a.ready)

@@ -56,6 +56,8 @@ func (h *communityHost) Page(page sdk.Page) error {
 	if !declared || page.Handler == nil {
 		return fmt.Errorf("plugin page not declared")
 	}
+	h.a.communityRuntime.mu.Lock()
+	defer h.a.communityRuntime.mu.Unlock()
 	if _, exists := h.a.communityRuntime.pages[key]; exists {
 		return fmt.Errorf("duplicate plugin page")
 	}
@@ -84,6 +86,8 @@ func (h *communityHost) Task(task sdk.Task) error {
 		return err
 	}
 	key := runtimeKey(h.manifest.ID, task.ID)
+	h.a.communityRuntime.mu.Lock()
+	defer h.a.communityRuntime.mu.Unlock()
 	if _, exists := h.a.communityRuntime.tasks[key]; exists {
 		return fmt.Errorf("duplicate plugin task")
 	}
@@ -122,7 +126,9 @@ func (a *Server) adminPluginPage(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	id := r.PathValue("id")
+	a.communityRuntime.mu.Lock()
 	page, ok := a.communityRuntime.pages[runtimeKey(id, r.PathValue("page"))]
+	a.communityRuntime.mu.Unlock()
 	if !ok || !a.availableCommunity(r.Context(), id) {
 		http.NotFound(w, r)
 		return
@@ -163,6 +169,8 @@ func (a *Server) adminPluginRuntime(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	state, _ := a.plugins.State(id)
+	a.communityRuntime.mu.Lock()
+	defer a.communityRuntime.mu.Unlock()
 	pages := []sdk.PageContribution{}
 	tasks := []map[string]any{}
 	for _, p := range state.Manifest.Pages {
@@ -188,7 +196,10 @@ func (a *Server) adminStartPluginTask(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	id, task := r.PathValue("id"), r.PathValue("task")
-	if _, exists := a.communityRuntime.tasks[runtimeKey(id, task)]; !exists || !a.availableCommunity(r.Context(), id) {
+	a.communityRuntime.mu.Lock()
+	_, exists := a.communityRuntime.tasks[runtimeKey(id, task)]
+	a.communityRuntime.mu.Unlock()
+	if !exists || !a.availableCommunity(r.Context(), id) {
 		http.NotFound(w, r)
 		return
 	}
@@ -345,7 +356,9 @@ func (a *Server) runCommunityTasks(ctx context.Context, now time.Time) {
 		}
 		id := state.Manifest.ID
 		for _, d := range state.Manifest.Tasks {
+			a.communityRuntime.mu.Lock()
 			task, ok := a.communityRuntime.tasks[runtimeKey(id, d.ID)]
+			a.communityRuntime.mu.Unlock()
 			if !ok {
 				continue
 			}

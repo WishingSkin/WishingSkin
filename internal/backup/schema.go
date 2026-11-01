@@ -25,6 +25,10 @@ var tables = []table{
 	{"external_identities", "identity_key,connector_id,subject,username,user_id,created_at", "ssssii", "identity_key"},
 	{"settings", "setting_key,value", "ss", "setting_key"},
 	{"plugins", "plugin_id,version,enabled,settings_json", "ssbs", "plugin_id"},
+	{"plugin_data", "plugin_id,data_key,value_json", "sss", "plugin_id,data_key"},
+	{"plugin_migrations", "plugin_id,version,step,checksum,applied_at", "siisi", "plugin_id,version,step"},
+	{"webhook_subscriptions", "id,plugin_id,url,events_json,secret_json,enabled", "sssssb", "id"},
+
 	{"site_notices", "notice_id,content,format,created_at", "sssi", "notice_id"},
 	{"migration_state", "id,source_fingerprint,status,report", "isss", "id"},
 	{"admin_events", "event_id,actor_id,action,target_type,target_id,created_at", "sisssi", "event_id"},
@@ -34,7 +38,7 @@ var tables = []table{
 	{"legacy_reports", "id,tid,uploader,reporter,reason,status,report_at", "iiiisiS", "id"},
 }
 
-var credentialTables = []string{"web_sessions", "ygg_join_sessions", "game_tokens", "account_tokens", "invitation_codes", "oidc_flows", "oauth_codes", "oauth_tokens"}
+var credentialTables = []string{"web_sessions", "ygg_join_sessions", "game_tokens", "account_tokens", "invitation_codes", "oidc_flows", "oauth_codes", "oauth_tokens", "oauth_code_metadata", "oauth_refresh_tokens", "webhook_deliveries", "plugin_event_deliveries"}
 
 func (t table) insert() string {
 	return "INSERT INTO " + t.name + "(" + t.columns + ") VALUES(" + strings.TrimSuffix(strings.Repeat("?,", len(t.types)), ",") + ")"

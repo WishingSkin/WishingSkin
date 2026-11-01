@@ -1,6 +1,4 @@
-// Package plugin contains the public contract for source-built WishingSkin
-// community plugins. Plugins are compiled into the server and registered at
-// startup; this package intentionally has no dynamic loading or installation.
+// Package plugin contains the public contracts for source-built and executable plugins.
 package plugin
 
 import (

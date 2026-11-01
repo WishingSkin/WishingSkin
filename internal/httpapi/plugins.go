@@ -33,9 +33,9 @@ func (a *Server) storedPluginEnabled(ctx context.Context, id string) (bool, erro
 }
 
 func (a *Server) putPluginEnabled(ctx context.Context, tx *sql.Tx, id, version string, enabled bool) error {
-	query := "INSERT INTO plugins(plugin_id,version,enabled,settings_json) VALUES(?,?,?,'{}') ON CONFLICT(plugin_id) DO UPDATE SET enabled=EXCLUDED.enabled"
+	query := "INSERT INTO plugins(plugin_id,version,enabled,settings_json) VALUES(?,?,?,'{}') ON CONFLICT(plugin_id) DO UPDATE SET enabled=EXCLUDED.enabled,version=EXCLUDED.version"
 	if a.s.Dialect == "mysql" {
-		query = "INSERT INTO plugins(plugin_id,version,enabled,settings_json) VALUES(?,?,?,'{}') ON DUPLICATE KEY UPDATE enabled=VALUES(enabled)"
+		query = "INSERT INTO plugins(plugin_id,version,enabled,settings_json) VALUES(?,?,?,'{}') ON DUPLICATE KEY UPDATE enabled=VALUES(enabled),version=VALUES(version)"
 	}
 	_, err := tx.ExecContext(ctx, a.s.Bind(query), id, version, enabled)
 	return err
@@ -147,6 +147,9 @@ func (a *Server) updatePlugin(w http.ResponseWriter, r *http.Request) {
 	}
 	if !*body.Enabled {
 		a.cancelCommunityTasks(state.Manifest.ID)
+		if a.dynamic != nil {
+			_ = a.dynamic.Reload(state.Manifest.ID)
+		}
 	}
 	respond(w, 200, map[string]any{"name": state.Manifest.Name, "description": state.Manifest.Description, "settings": state.Manifest.Settings, "origin": pluginOrigin(state.Manifest.ID), "id": state.Manifest.ID, "enabled": *body.Enabled})
 }
