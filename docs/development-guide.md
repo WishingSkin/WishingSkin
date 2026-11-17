@@ -64,6 +64,8 @@ go run ./testdata/bs/generate.go artifacts/generated-bs-fixture
 
 页面地址由 `web/src/workspaceRoutes.ts` 统一处理。材质浏览和上传分别使用 `/user/resources`、`/user/resources/upload`；旧 `/user/materials?tab=…` 地址会转换到对应页面。后台使用 `/admin/users`、`/admin/resources`、`/admin/events` 等子页，设置分类和插件配置也有独立地址。子页支持刷新、浏览器前进和后退。
 
+前后端共用 `internal/httpapi/page_routes.json` 中的页面清单和旧地址映射。新增页面时同步更新清单。不存在的页面显示 404，直接请求返回 HTTP 404；拼错的子路径不回退到上级栏目。缺失的 API、脚本和图片仍使用各自的错误响应。
+
 同一工作区切换子页时，只对 `data-panel-region` 标记的内容区播放动画，保留标题和导航。公开库、我的材质和衣柜复用 `ResourceFilters`，使用相同的搜索栏和类型筛选。
 
 管理记录的动作、对象和设置名称共用 `internal/httpapi/admin_event_labels.json`。搜索支持中英文名称及带 `#` 的编号，列表和 CSV 导出使用相同筛选。普通用户按材质名称、描述或收藏名搜索；哈希搜索保留在管理页面。

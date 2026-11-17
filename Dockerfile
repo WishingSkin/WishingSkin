@@ -5,6 +5,7 @@ COPY web/package.json web/pnpm-lock.yaml ./
 RUN pnpm install --frozen-lockfile
 COPY web/ ./
 COPY internal/httpapi/admin_event_labels.json /src/internal/httpapi/admin_event_labels.json
+COPY internal/httpapi/page_routes.json /src/internal/httpapi/page_routes.json
 RUN pnpm build
 
 FROM golang:1.26.10-alpine AS backend

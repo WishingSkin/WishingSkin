@@ -1,0 +1,16 @@
+{
+  "paths": [
+    "/", "/login", "/library",
+    "/user", "/user/wardrobe", "/user/resources", "/user/resources/upload",
+    "/user/account", "/user/account/profile", "/user/account/points", "/user/account/integration", "/user/account/reports",
+    "/admin/users", "/admin/characters", "/admin/wardrobe", "/admin/resources", "/admin/reports", "/admin/events", "/admin/plugins",
+    "/admin/settings/site", "/admin/settings/appearance", "/admin/settings/services", "/admin/settings/operations"
+  ],
+  "aliases": {
+    "/user/materials": "/user/resources",
+    "/admin": "/admin/users",
+    "/admin/textures": "/admin/resources",
+    "/admin/settings": "/admin/settings/site"
+  },
+  "pluginPath": "^/admin/plugins/[a-z0-9]+(?:[._-][a-z0-9]+)*$"
+}

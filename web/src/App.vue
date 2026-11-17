@@ -5,6 +5,7 @@ import FeedbackHost from './components/FeedbackHost.vue'
 import AppIcon from './components/AppIcon.vue'
 import AccountMenu from './components/AccountMenu.vue'
 import LoadingSkeleton from './components/LoadingSkeleton.vue'
+import NotFoundPage from './components/NotFoundPage.vue'
 import InterfaceIcon from './components/InterfaceIcon.vue'
 import { setInterfaceAppearance, applyInterfaceColors } from './interfaceAppearance'
 import HomepageContent from './components/HomepageContent.vue'
@@ -23,7 +24,7 @@ import TexturePicker from './components/TexturePicker.vue'
 import ApplyTextureDialog from './components/ApplyTextureDialog.vue'
 import TextureBrowser from './components/TextureBrowser.vue'
 import ResourceFilters from './components/ResourceFilters.vue'
-import { adminRoute, canonicalWorkspaceURL, isProtectedPath, navigationRegion, normalizePath, resourcePath } from './workspaceRoutes'
+import { adminRoute, canonicalWorkspaceURL, isPagePath, isProtectedPath, navigationRegion, normalizePath, resourcePath } from './workspaceRoutes'
 import AccountAccess from './components/AccountAccess.vue'
 import RegistrationSettings from './components/RegistrationSettings.vue'
 import Administration from './components/Administration.vue'
@@ -75,6 +76,7 @@ const publicLibraryOpen = ref(false)
 const materialTab = ref<'browse' | 'upload'>('browse')
 const materialKind = ref('')
 const routePath = ref(window.location.pathname || '/')
+const notFound = ref(false)
 const pendingNext = ref<string | null>(null)
 const materialSearch = ref('')
 const characters = ref<Character[]>([])
@@ -126,7 +128,7 @@ const fallbackViewer = ref('')
 const site = ref<SiteAccess>({ appearance: { logoImage: '', accent: 'blue', defaultTheme: 'system' }, homepage: { blocks: [] }, noticeFormat: '', noticeHtml: '', name: 'WishingSkin', tagline: '', footer: '', notice: '', registration: 'closed', emailDomains: [], mailEnabled: false, turnstileSiteKey: '', points: { enabled: false, dailyReward: 0, uploadCost: 0, characterCost: 0 } })
 const loginImageFailed = ref(false)
 watch(() => site.value.loginImageUrl, () => { loginImageFailed.value = false })
-watch([() => site.value.name, locale], () => { document.title = `${site.value.name} / ${t('角色与材质')}` }, { immediate: true, flush: 'sync' })
+watch([() => site.value.name, locale, notFound], () => { document.title = `${site.value.name} / ${t(notFound.value ? '页面不存在' : '角色与材质')}` }, { immediate: true, flush: 'sync' })
 const siteError = ref(false)
 const accessMode = ref<AccessMode | null>(null)
 const linkToken = ref('')
@@ -154,6 +156,9 @@ function setRouteView(path: string, search = '') {
   const canonical = new URL(canonicalWorkspaceURL(path, search), window.location.origin)
   const normalized = canonical.pathname
   if (normalized + canonical.search !== path + search) window.history.replaceState({}, '', normalized + canonical.search + window.location.hash)
+  routePath.value = normalized
+  notFound.value = !isPagePath(normalized)
+  if (notFound.value) { publicHome.value = false; publicLibraryOpen.value = false; accessMode.value = null; return }
   if ((normalized === '/admin' || normalized.startsWith('/admin/')) && user.value && !user.value.isAdmin) {
     const fallback = '/user'
     if (window.location.pathname !== fallback || window.location.search) window.history.replaceState({}, '', fallback)
@@ -161,7 +166,6 @@ function setRouteView(path: string, search = '') {
     return
   }
   const params = canonical.searchParams
-  routePath.value = normalized
   publicHome.value = normalized === '/'
   publicLibraryOpen.value = normalized === '/library' && !user.value
   if (normalized === '/library' && user.value) page.value = 'library'
@@ -248,7 +252,7 @@ function readMailLink() {
 }
 const initialPath = normalizePath(window.location.pathname)
 pendingNext.value = safeNext(new URLSearchParams(window.location.search).get('next'))
-if (!pendingNext.value && isProtectedPath(initialPath)) pendingNext.value = initialPath + window.location.search
+if (!pendingNext.value && isPagePath(initialPath) && isProtectedPath(initialPath)) pendingNext.value = initialPath + window.location.search
 setRouteView(initialPath, window.location.search)
 readMailLink()
 async function loadSite() {
@@ -346,7 +350,7 @@ function acceptSession(session: Session) {
   csrfToken.value = session.csrfToken
   sessionError.value = ''
   const currentPath = normalizePath(window.location.pathname)
-  const destination = currentPath === '/login' && accessMode.value === 'mail'
+  const destination = notFound.value ? currentPath + window.location.search : currentPath === '/login' && accessMode.value === 'mail'
     ? '/login?mode=mail'
     : pendingNext.value || (currentPath === '/' || currentPath === '/library' ? currentPath : '/user')
   if (destination.startsWith('/user/oauth/authorize?')) { window.location.assign(destination); return }
@@ -809,6 +813,8 @@ onBeforeUnmount(() => {
 
     <main v-if="initializing" class="initial-state"><LoadingSkeleton layout="rows" label="正在打开你的工作台…" /></main>
 
+    <main v-else-if="notFound" class="not-found-layout"><NotFoundPage @navigate="navigate" /></main>
+
     <main v-else-if="accessMode" class="access-layout"><AccountAccess :mode="accessMode" :token="linkToken" :site="site" :email="user?.email || email" :dark="dark" @back="navigate('/login'); linkToken = ''" @completed="accessCompleted" /></main>
 
     <main v-else-if="!user && publicLibraryOpen" class="public-library-layout"><button class="secondary-button public-library-back" type="button" @click="navigate('/')">{{ t("返回主页") }}</button><TextureBrowser mode="library" csrf-token="" :wardrobe="[]" :wardrobe-busy="false" wardrobe-error="" @login="navigate('/login')" @upload="openUpload" /></main>
@@ -855,7 +861,7 @@ onBeforeUnmount(() => {
       </aside>
 
       <main class="workspace-content">
-        <Administration v-if="page === 'administration' && user.isAdmin" :csrf-token="csrfToken" :user-id="String(user.id)" :active-tab="adminView.tab" :plugin-id="adminView.pluginId" @navigate="navigate" @expired="expireSession" @updated="loadSite"><template #settings>
+        <Administration v-if="page === 'administration' && user.isAdmin && adminView" :csrf-token="csrfToken" :user-id="String(user.id)" :active-tab="adminView.tab" :plugin-id="adminView.pluginId" @navigate="navigate" @expired="expireSession" @updated="loadSite"><template #settings>
           <SettingsWorkspace :active-tab="adminView.settingsTab" @navigate="navigate" :site="site" :csrf-token="csrfToken" @updated="loadSite" @expired="expireSession">
           <section class="character-setting" :aria-label="t('角色数量设置')"><form class="inline-form" @submit.prevent="saveCharacterLimit"><label for="character-limit">{{ t("站点每账号角色上限") }}</label><div class="inline-controls"><input id="character-limit" v-model.number="adminCharacterLimit" type="number" min="1" step="1" required :disabled="actionBusy" /><button class="secondary-button" type="submit" :disabled="actionBusy">{{ t("保存设置") }}</button></div><small>{{ t("已有角色会保留；上限降低后，用户暂时不能继续新增角色。") }}</small></form></section>
 
@@ -955,6 +961,6 @@ onBeforeUnmount(() => {
         <SiteFooter :name="site.name" :tagline="site.tagline || t('每一个像素，都是你的模样。')" :footer="site.footer" />
       </main>
     </div>
-    <SiteFooter v-if="!user || publicHome" class="public-site-footer" :name="site.name" :tagline="site.tagline" :footer="site.footer" />
+    <SiteFooter v-if="!user || publicHome || notFound" class="public-site-footer" :name="site.name" :tagline="site.tagline" :footer="site.footer" />
   </div>
 </template>

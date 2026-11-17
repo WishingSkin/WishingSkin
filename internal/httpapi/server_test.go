@@ -123,6 +123,8 @@ func TestStaticAssetsAndAPIRouting(t *testing.T) {
 		{"GET", "/", 200}, {"HEAD", "/", 200}, {"GET", "/login", 200}, {"GET", "/library", 200}, {"GET", "/user/materials", 200}, {"GET", "/user/account/profile", 200}, {"GET", "/admin", 200}, {"GET", "/assets/main.js", 200},
 		{"POST", "/", 405}, {"GET", "/api/unknown", 404}, {"POST", "/api/unknown", 404},
 		{"GET", "/unknown", 404}, {"GET", "/api/site", 200}, {"GET", "/api/auth/me", 401},
+		{"GET", "/admin/settings/appearances", 404}, {"GET", "/admin/users/extra", 404}, {"GET", "/user/account/missing", 404}, {"GET", "/admin/plugins/not.installed", 404},
+		{"GET", "/admin/plugins/wishingskin.oidc", 200}, {"GET", "/admin/settings/appearance/", 200},
 	} {
 		w := httptest.NewRecorder()
 		app.ServeHTTP(w, httptest.NewRequest(tt.method, tt.path, nil))

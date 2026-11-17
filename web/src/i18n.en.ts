@@ -305,6 +305,8 @@ export const english: Record<string, string> = {
   '请先启用并保存 SMTP 设置': 'Enable and save SMTP settings first.',
   'Minecraft 外观工作台': 'Minecraft appearance workspace',
   '返回主页': 'Back to home',
+  '页面不存在': 'Page not found',
+  '请检查地址，或返回主页继续浏览。': 'Check the address or return to the home page.',
   '管理角色、皮肤和披风，在公开库中发现新的外观，并通过 Yggdrasil 接入游戏。': 'Manage characters, skins and capes, discover new looks in the public library, and connect to the game through Yggdrasil.',
   '默认角色预览': 'Default character preview',
   '站点功能': 'Site features',

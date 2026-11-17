@@ -1,3 +1,5 @@
+import pageRoutes from '../../internal/httpapi/page_routes.json' with { type: 'json' }
+
 export type AdminTab = 'users' | 'characters' | 'wardrobe' | 'resources' | 'reports' | 'events' | 'settings' | 'plugins'
 export type SettingsTab = 'site' | 'appearance' | 'services' | 'operations'
 
@@ -11,15 +13,21 @@ export function canonicalWorkspaceURL(path: string, search = '') {
   const params = new URLSearchParams(search)
   if (pathname === '/user/materials') {
     const tab = params.get('tab')
-    pathname = tab === 'upload' ? '/user/resources/upload' : '/user/resources'
+    pathname = tab === 'upload' ? '/user/resources/upload' : pageRoutes.aliases['/user/materials']
     params.delete('tab')
     if (tab === 'skin' || tab === 'cape') params.set('kind', tab)
   }
-  if (pathname === '/admin') pathname = '/admin/users'
-  if (pathname === '/admin/textures') pathname = '/admin/resources'
-  if (pathname === '/admin/settings') pathname = '/admin/settings/site'
+  pathname = (pageRoutes.aliases as Record<string, string>)[pathname] || pathname
   const query = params.toString()
   return pathname + (query ? `?${query}` : '')
+}
+
+const pagePaths = new Set(pageRoutes.paths)
+const pluginPagePattern = new RegExp(pageRoutes.pluginPath)
+export function isPagePath(path: string) {
+  const normalized = normalizePath(path)
+  const canonical = (pageRoutes.aliases as Record<string, string>)[normalized] || normalized
+  return pagePaths.has(canonical) || (pluginPagePattern.test(canonical) && canonical.slice('/admin/plugins/'.length).length <= 64)
 }
 
 export function isProtectedPath(path: string) {
@@ -35,13 +43,12 @@ export function adminPath(tab: AdminTab) {
 }
 
 export function adminRoute(path: string) {
-  const parts = normalizePath(path).split('/')
-  const tab: AdminTab = (['users', 'characters', 'wardrobe', 'resources', 'reports', 'events', 'settings', 'plugins'] as const).find(tab => tab === parts[2]) || 'users'
-  const settingsTab: SettingsTab = (['site', 'appearance', 'services', 'operations'] as const).find(tab => tab === parts[3]) || 'site'
-  let pluginId = ''
-  if (tab === 'plugins' && parts[3]) {
-    try { pluginId = decodeURIComponent(parts[3]) } catch { /* An invalid URL opens the plugin catalog. */ }
-  }
+  const normalized = canonicalWorkspaceURL(path)
+  if (!normalized.startsWith('/admin/') || !isPagePath(normalized)) return null
+  const parts = normalized.split('/')
+  const tab = parts[2] as AdminTab
+  const settingsTab: SettingsTab = tab === 'settings' ? parts[3] as SettingsTab : 'site'
+  const pluginId = tab === 'plugins' ? parts[3] || '' : ''
   return { tab, settingsTab, pluginId }
 }
 
@@ -54,5 +61,5 @@ export function navigationRegion(from: string, to: string) {
   if (within('/admin/settings')) return '[data-panel-region="settings"]'
   if (within('/admin/plugins')) return '[data-panel-region="plugins"]'
   if (within('/admin')) return '[data-panel-region="admin"]'
-  return '.workspace-content, .public-home-page, .login-layout, .public-library-layout, .access-layout'
+  return '.workspace-content, .public-home-page, .login-layout, .public-library-layout, .access-layout, .not-found-layout'
 }

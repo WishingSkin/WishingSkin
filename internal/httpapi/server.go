@@ -14,6 +14,7 @@ import (
 	"net/http"
 	"net/netip"
 	"net/url"
+	"path"
 	"strconv"
 	"strings"
 	"sync"
@@ -204,19 +205,18 @@ func New(s *store.Store, cfg Config) (*Server, error) {
 	return a, nil
 }
 
-func isSPAPath(path string) bool {
-	if strings.HasSuffix(path, ".json") {
-		return false
-	}
-	return path == "/" || path == "/login" || path == "/library" || path == "/user" || strings.HasPrefix(path, "/user/") || path == "/admin" || strings.HasPrefix(path, "/admin/")
-}
-
 func (a *Server) serveAssetOrSPA(w http.ResponseWriter, r *http.Request) {
 	if a.cfg.Assets == nil {
 		http.NotFound(w, r)
 		return
 	}
-	if isSPAPath(r.URL.Path) {
+	pagePath := strings.TrimSuffix(r.URL.Path, "/")
+	known := isSPAPath(r.URL.Path)
+	pluginPage := strings.HasPrefix(pagePath, "/admin/plugins/")
+	if known && pluginPage && a.plugins != nil {
+		_, known = a.plugins.State(strings.TrimPrefix(pagePath, "/admin/plugins/"))
+	}
+	if known {
 		clone := r.Clone(r.Context())
 		// Serve the root directory so FileServerFS can select index.html without
 		// redirecting the SPA route back to ./.
@@ -225,7 +225,25 @@ func (a *Server) serveAssetOrSPA(w http.ResponseWriter, r *http.Request) {
 		http.FileServerFS(a.cfg.Assets).ServeHTTP(w, clone)
 		return
 	}
-	http.FileServerFS(a.cfg.Assets).ServeHTTP(w, r)
+	if file, err := fs.Stat(a.cfg.Assets, strings.TrimPrefix(r.URL.Path, "/")); err == nil && !file.IsDir() {
+		http.FileServerFS(a.cfg.Assets).ServeHTTP(w, r)
+		return
+	}
+	if strings.HasPrefix(r.URL.Path, "/assets/") || (path.Ext(r.URL.Path) != "" && !pluginPage) {
+		http.FileServerFS(a.cfg.Assets).ServeHTTP(w, r)
+		return
+	}
+	index, err := fs.ReadFile(a.cfg.Assets, "index.html")
+	if err != nil {
+		http.NotFound(w, r)
+		return
+	}
+	w.Header().Set("Content-Type", "text/html; charset=utf-8")
+	w.Header().Set("Cache-Control", "no-store")
+	w.WriteHeader(http.StatusNotFound)
+	if r.Method != http.MethodHead {
+		_, _ = w.Write(index)
+	}
 }
 
 func (a *Server) ServeHTTP(w http.ResponseWriter, r *http.Request) {

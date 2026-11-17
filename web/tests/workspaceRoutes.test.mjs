@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict'
 import { test } from 'node:test'
-import { adminRoute, canonicalWorkspaceURL, isProtectedPath, navigationRegion, resourcePath } from '../src/workspaceRoutes.ts'
+import { adminRoute, canonicalWorkspaceURL, isPagePath, isProtectedPath, navigationRegion, resourcePath } from '../src/workspaceRoutes.ts'
 
 test('legacy resource and management links keep their destination and filters', () => {
   assert.equal(canonicalWorkspaceURL('/user/materials', '?tab=upload'), '/user/resources/upload')
@@ -21,6 +21,18 @@ test('management deep links retain selected panels and require a session', () =>
     assert.equal(isProtectedPath(path), true, path)
   }
   for (const path of ['/', '/library', '/administrator', '/users']) assert.equal(isProtectedPath(path), false, path)
+})
+
+test('unknown management pages do not fall back to a parent panel', () => {
+  for (const path of ['/admin/settings/appearances', '/admin/settings/site/extra', '/admin/missing', '/admin/users/extra', '/admin/plugins/example.plugin/extra']) {
+    assert.equal(adminRoute(path), null, path)
+    assert.equal(canonicalWorkspaceURL(path), path, path)
+  }
+})
+
+test('page matching accepts complete routes and rejects extra or misspelled segments', () => {
+  for (const path of ['/', '/login', '/library', '/user/account/profile', '/user/resources/upload', '/admin/settings/appearance/', '/admin/plugins/wishingskin.oidc', '/admin/settings', '/user/materials']) assert.equal(isPagePath(path), true, path)
+  for (const path of ['/missing', '/library/extra', '/login/extra', '/user/missing', '/user/account/profiles', '/user/resources/uploads', '/admin/settings/appearances', '/admin/plugins/example.plugin/extra', '/admin/plugins/%invalid']) assert.equal(isPagePath(path), false, path)
 })
 
 test('subpage navigation transitions only the changed content', () => {
