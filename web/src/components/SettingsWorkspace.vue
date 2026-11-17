@@ -57,10 +57,10 @@ const labels = { site: '站点', appearance: '个性化', services: '邮件与�
     </fieldset>
 
   </div>
-  <div v-if="dirty || saving" class="personalization-save-bar" role="region" :aria-label="t('保存个性化设置')">
+  <Teleport to="body"><div v-if="dirty || saving" class="personalization-save-bar" role="region" :aria-label="t('保存个性化设置')">
     <p role="status">{{ t('有未保存的个性化设置') }}</p>
     <button class="primary-button" type="button" :disabled="saving || pending" @click="saveAll">{{ saving ? t('正在保存…') : t('保存全部') }}</button>
-  </div>
+  </div></Teleport>
   <OperationsSettings v-if="tab === 'operations'" :csrf-token="csrfToken" @expired="emit('expired')" />
   <ServiceSettings v-if="tab === 'services'" :csrf-token="csrfToken" @updated="emit('updated')" @expired="emit('expired')" />
   </div>
