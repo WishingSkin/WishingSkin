@@ -1,5 +1,13 @@
 import type { PointRules } from './pointTypes'
-export interface Appearance { logoImage: string; accent: 'blue' | 'green' | 'violet' | 'rose' | 'orange' | 'teal' | 'gray'; defaultTheme: 'light' | 'dark' | 'system'; surfaceEffect?: 'solid' | 'translucent' | 'glass'; advanced?: AdvancedAppearance }
+import type { ThemePack } from './themePacks'
+export interface Appearance {
+  logoImage: string;
+  accent: 'blue' | 'green' | 'violet' | 'rose' | 'orange' | 'teal' | 'gray';
+  defaultTheme: 'light' | 'dark' | 'system';
+  themePack?: ThemePack;
+  surfaceEffect?: 'solid' | 'translucent' | 'glass';
+  advanced?: AdvancedAppearance
+}
 export interface AdvancedAppearance { light: Record<string, string>; dark: Record<string, string>; copy: Record<string, string>; localizedCopy: Record<'zh-CN' | 'en', Record<string, string>>; icons: Record<string, string> }
 export interface HomepageFeature { title: string; body: string; href: string; icon?: string; iconImage?: string }
 export interface HomepageBlock { id: string; name?: string; image?: string; imageAlt?: string; kind: 'intro' | 'features' | 'notice' | 'cta' | 'showcase'; enabled: boolean; title: string; body: string; buttonLabel: string; buttonHref: string; features?: HomepageFeature[]; iconImage?: string }

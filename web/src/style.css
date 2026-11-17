@@ -106,9 +106,9 @@
 
 :root[data-surface=translucent],:root[data-surface=glass]{--surface-panel:color-mix(in srgb,var(--panel) 88%,transparent);--surface-subtle:color-mix(in srgb,var(--subtle) 88%,transparent);--surface-filter:none}
 :root[data-surface=glass]{--surface-panel:color-mix(in srgb,var(--panel) 76%,transparent);--surface-filter:blur(14px) saturate(115%)}
-:root:is([data-surface=translucent],[data-surface=glass]) :is(.panel,.material-card,.notice-dialog,.topbar,.sidebar,.login-layout,.access-panel,.homepage-features-grid,.homepage-notice){background:var(--surface-panel);backdrop-filter:var(--surface-filter);-webkit-backdrop-filter:var(--surface-filter)}
+:root:is([data-surface=translucent],[data-surface=glass]) :is(.panel,.material-card,.notice-dialog,.topbar,.sidebar,.login-layout,.access-panel,.homepage-features-grid,.homepage-notice){background:var(--surface-panel);-webkit-backdrop-filter:var(--surface-filter);backdrop-filter:var(--surface-filter)}
 :root:is([data-surface=translucent],[data-surface=glass]) .welcome-panel{background:var(--surface-subtle)}
-:root:is([data-surface=translucent],[data-surface=glass]) .panel .panel{backdrop-filter:none;-webkit-backdrop-filter:none}
+:root:is([data-surface=translucent],[data-surface=glass]) .panel .panel{-webkit-backdrop-filter:none;backdrop-filter:none}
 @media(prefers-reduced-transparency:reduce){:root[data-surface=translucent],:root[data-surface=glass]{--surface-panel:var(--panel);--surface-subtle:var(--subtle);--surface-filter:none}}
 
 /* Advanced appearance uses bounded CSS tokens, never arbitrary CSS. */

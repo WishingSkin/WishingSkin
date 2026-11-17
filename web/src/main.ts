@@ -2,6 +2,7 @@ import { createApp } from 'vue'
 import App from './App.vue'
 import { toast } from './feedback'
 import './style.css'
+import './themes.css'
 
 document.addEventListener('invalid', event => {
   const field = event.target

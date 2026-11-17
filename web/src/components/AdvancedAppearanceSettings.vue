@@ -19,6 +19,7 @@ function resetCopy(key: string) { delete copies.value[key] }
   <details class="advanced-settings">
     <summary>{{ t('高级界面设置') }}</summary>
     <details class="advanced-group" open><summary>{{ t('界面颜色') }}</summary>
+      <p class="password-rule">{{ t('自定义颜色覆盖所选主题包，清空后使用主题颜色。') }}</p>
       <div class="settings-tabs" role="group" :aria-label="t('颜色模式')"><button v-for="mode in (['light', 'dark'] as const)" :key="mode" class="secondary-button" :class="{ active: palette === mode }" type="button" :aria-pressed="palette === mode" @click="palette = mode">{{ t(mode === 'light' ? '浅色' : '深色') }}</button></div>
       <div class="appearance-color-grid"><label v-for="[key, label] in colorFields" :key="palette + key" class="binding-field"><span>{{ t(label) }}</span><div class="color-control"><input type="color" :value="draft[palette][key] || '#808080'" :aria-label="t(label)" @input="draft[palette][key] = ($event.target as HTMLInputElement).value" /><input v-model="draft[palette][key]" :aria-label="t(label) + ' HEX'" placeholder="#RRGGBB" pattern="#[0-9a-fA-F]{6}" maxlength="7" /><button class="text-button" type="button" :disabled="!draft[palette][key]" @click="resetColor(key)">{{ t('默认') }}</button></div></label></div>
     </details>

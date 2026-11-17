@@ -1,0 +1,501 @@
+/* 主题包提供浅色与深色配色；高级界面设置的颜色覆盖优先。 */
+
+/* 平原 Plains */
+:root[data-theme-pack="plains"]:not([data-theme="dark"]) {
+  --bg: #f4f6fa;
+  --panel: #ffffff;
+  --ink: #2d401f;
+  --muted: #517737;
+  --border: #c9d4b0;
+  --accent: #4f742b;
+  --accent-hover: #426224;
+  --accent-soft: #e8f2dc;
+  --subtle: #f8fafc;
+  --checker: #edf0f5;
+  --error: #b33240;
+  --error-bg: #fff1f2;
+  --shadow: 0 12px 40px rgba(145, 189, 89, 0.08);
+}
+
+:root[data-theme="dark"][data-theme-pack="plains"] {
+  --bg: #1a1f15;
+  --panel: #252d1e;
+  --ink: #e8f2dc;
+  --muted: #91bd59;
+  --border: #3a5228;
+  --accent: #91bd59;
+  --accent-hover: #a4c76d;
+  --accent-soft: #2d401f;
+  --subtle: #2d401f;
+  --checker: #3a5228;
+}
+
+/* 雪原 Snowy */
+:root[data-theme-pack="snowy"]:not([data-theme="dark"]) {
+  --bg: #f0f7fb;
+  --panel: #ffffff;
+  --ink: #2d3f50;
+  --muted: #3e7293;
+  --border: #c0dde8;
+  --accent: #326b92;
+  --accent-hover: #285b7f;
+  --accent-soft: #e8f5fd;
+  --subtle: #f8fcfe;
+  --checker: #edf4f8;
+  --error: #b33240;
+  --error-bg: #fff1f2;
+  --shadow: 0 12px 40px rgba(127, 180, 217, 0.08);
+}
+
+:root[data-theme="dark"][data-theme-pack="snowy"] {
+  --bg: #151d23;
+  --panel: #1e2a33;
+  --ink: #e8f5fd;
+  --muted: #7fb4d9;
+  --border: #2d3f50;
+  --accent: #7fb4d9;
+  --accent-hover: #95c4e3;
+  --accent-soft: #1a3545;
+  --subtle: #1a3545;
+  --checker: #2d3f50;
+}
+
+/* 丛林 Jungle */
+:root[data-theme-pack="jungle"]:not([data-theme="dark"]) {
+  --bg: #f2f8ef;
+  --panel: #ffffff;
+  --ink: #1d3315;
+  --muted: #3a7a24;
+  --border: #b8d4a8;
+  --accent: #34751f;
+  --accent-hover: #2b6419;
+  --accent-soft: #e6f5e0;
+  --subtle: #f8fcf6;
+  --checker: #edf4ea;
+  --error: #b33240;
+  --error-bg: #fff1f2;
+  --shadow: 0 12px 40px rgba(89, 201, 60, 0.08);
+}
+
+:root[data-theme="dark"][data-theme-pack="jungle"] {
+  --bg: #15210f;
+  --panel: #1d3315;
+  --ink: #e6f5e0;
+  --muted: #59c93c;
+  --border: #2a4a1e;
+  --accent: #59c93c;
+  --accent-hover: #6fd94f;
+  --accent-soft: #1d3315;
+  --subtle: #1d3315;
+  --checker: #2a4a1e;
+}
+
+/* 沙漠 Desert */
+:root[data-theme-pack="desert"]:not([data-theme="dark"]) {
+  --bg: #f7f3ee;
+  --panel: #ffffff;
+  --ink: #3a2f22;
+  --muted: #8a6840;
+  --border: #ddc391;
+  --accent: #896334;
+  --accent-hover: #765329;
+  --accent-soft: #f5ede0;
+  --subtle: #fdfbf8;
+  --checker: #f5ede0;
+  --error: #b33240;
+  --error-bg: #fff1f2;
+  --shadow: 0 12px 40px rgba(201, 169, 117, 0.08);
+}
+
+:root[data-theme="dark"][data-theme-pack="desert"] {
+  --bg: #1f1a13;
+  --panel: #2f261b;
+  --ink: #f5ede0;
+  --muted: #c9a975;
+  --border: #4a3d2e;
+  --accent: #c9a975;
+  --accent-hover: #dab888;
+  --accent-soft: #3a2f22;
+  --subtle: #3a2f22;
+  --checker: #4a3d2e;
+}
+
+/* ============================================================
+   地下洞穴 · 暗色模式
+   ============================================================ */
+
+/* 废弃矿井 Cave */
+:root[data-theme-pack="cave"]:not([data-theme="dark"]) {
+  --bg: #f4f6fa;
+  --panel: #ffffff;
+  --ink: #1a1a1a;
+  --muted: #636363;
+  --border: #b8b8b8;
+  --accent: #356c8e;
+  --accent-hover: #2b5c7b;
+  --accent-soft: #e8f3f9;
+  --subtle: #f8fafc;
+  --checker: #edf0f5;
+  --error: #b33240;
+  --error-bg: #fff1f2;
+  --shadow: 0 12px 40px rgba(74, 143, 184, 0.08);
+}
+
+:root[data-theme="dark"][data-theme-pack="cave"] {
+  --bg: #0f0f0f;
+  --panel: #1a1a1a;
+  --ink: #e8e8e8;
+  --muted: #b4b4b4;
+  --border: #2a2a2a;
+  --accent: #4a8fb8;
+  --accent-hover: #5da4cc;
+  --accent-soft: #12232b;
+  --subtle: #1a1a1a;
+  --checker: #2a2a2a;
+}
+
+/* 冰洞 Ice Caves */
+:root[data-theme-pack="ice_caves"]:not([data-theme="dark"]) {
+  --bg: #f0f7fb;
+  --panel: #ffffff;
+  --ink: #1a3545;
+  --muted: #2d5f7a;
+  --border: #a4d4e8;
+  --accent: #326b92;
+  --accent-hover: #285b7f;
+  --accent-soft: #e8f5fd;
+  --subtle: #f8fcfe;
+  --checker: #edf4f8;
+  --error: #b33240;
+  --error-bg: #fff1f2;
+  --shadow: 0 12px 40px rgba(127, 180, 217, 0.08);
+}
+
+:root[data-theme="dark"][data-theme-pack="ice_caves"] {
+  --bg: #0d1a20;
+  --panel: #1a2a33;
+  --ink: #e8f5fd;
+  --muted: #7fb4d9;
+  --border: #1a3545;
+  --accent: #7fb4d9;
+  --accent-hover: #95c4e3;
+  --accent-soft: #0d1a20;
+  --subtle: #1a3545;
+  --checker: #2d5f7a;
+}
+
+/* 繁茂洞穴 Lush Caves */
+:root[data-theme-pack="lush_caves"]:not([data-theme="dark"]) {
+  --bg: #f2f8ef;
+  --panel: #ffffff;
+  --ink: #1d3315;
+  --muted: #52771a;
+  --border: #b8d4a8;
+  --accent: #507815;
+  --accent-hover: #426411;
+  --accent-soft: #e6f5e0;
+  --subtle: #f8fcf6;
+  --checker: #edf4ea;
+  --error: #b33240;
+  --error-bg: #fff1f2;
+  --shadow: 0 12px 40px rgba(110, 162, 30, 0.08);
+}
+
+:root[data-theme="dark"][data-theme-pack="lush_caves"] {
+  --bg: #15210f;
+  --panel: #223310;
+  --ink: #e6f5e0;
+  --muted: #94bb55;
+  --border: #3a5414;
+  --accent: #94bb55;
+  --accent-hover: #a8ce6c;
+  --accent-soft: #1d3315;
+  --subtle: #1d3315;
+  --checker: #3a5414;
+}
+
+/* 沙漠神殿 Desert Temple */
+:root[data-theme-pack="desert_temple"]:not([data-theme="dark"]) {
+  --bg: #f7f3ee;
+  --panel: #ffffff;
+  --ink: #3a2f22;
+  --muted: #8a6840;
+  --border: #ddc391;
+  --accent: #ae501c;
+  --accent-hover: #963f12;
+  --accent-soft: #fef3e8;
+  --subtle: #fdfbf8;
+  --checker: #f5ede0;
+  --error: #b33240;
+  --error-bg: #fff1f2;
+  --shadow: 0 12px 40px rgba(217, 108, 44, 0.08);
+}
+
+:root[data-theme="dark"][data-theme-pack="desert_temple"] {
+  --bg: #1f1a13;
+  --panel: #2f261b;
+  --ink: #fef3e8;
+  --muted: #ed975f;
+  --border: #4a3d2e;
+  --accent: #ed975f;
+  --accent-hover: #f5af7e;
+  --accent-soft: #3a2f22;
+  --subtle: #3a2f22;
+  --checker: #4a3d2e;
+}
+
+/* ============================================================
+   单色特别主题
+   ============================================================ */
+
+/* 樱花 Cherry */
+:root[data-theme-pack="cherry"]:not([data-theme="dark"]) {
+  --bg: #fef8fa;
+  --panel: #ffffff;
+  --ink: #4a1f2e;
+  --muted: #a85570;
+  --border: #f5d0dc;
+  --accent: #ae3e64;
+  --accent-hover: #963351;
+  --accent-soft: #fef3f6;
+  --subtle: #fffcfd;
+  --checker: #fef8fa;
+  --error: #b33240;
+  --error-bg: #fff1f2;
+  --shadow: 0 12px 40px rgba(245, 169, 184, 0.08);
+}
+
+:root[data-theme="dark"][data-theme-pack="cherry"] {
+  --bg: #201015;
+  --panel: #301820;
+  --ink: #fef3f6;
+  --muted: #f5a9b8;
+  --border: #4a1f2e;
+  --accent: #f5a9b8;
+  --accent-hover: #ffc0cc;
+  --accent-soft: #3a1523;
+  --subtle: #3a1523;
+  --checker: #4a1f2e;
+}
+
+/* ============================================================
+   下界与末地
+   ============================================================ */
+
+/* 下界绯红 Nether Crimson */
+:root[data-theme-pack="nether_crimson"]:not([data-theme="dark"]) {
+  --bg: #f7f0f1;
+  --panel: #ffffff;
+  --ink: #3a1e1a;
+  --muted: #8e2c3a;
+  --border: #e0b0b8;
+  --accent: #a34532;
+  --accent-hover: #8c3929;
+  --accent-soft: #fef0f2;
+  --subtle: #fffbfc;
+  --checker: #fef8f9;
+  --error: #b33240;
+  --error-bg: #fff1f2;
+  --shadow: 0 12px 40px rgba(191, 90, 61, 0.08);
+}
+
+:root[data-theme="dark"][data-theme-pack="nether_crimson"] {
+  --bg: #1a0d0f;
+  --panel: #2a1518;
+  --ink: #fef0f2;
+  --muted: #e48a76;
+  --border: #3a1e1a;
+  --accent: #e48a76;
+  --accent-hover: #f1a390;
+  --accent-soft: #2a1518;
+  --subtle: #2a1518;
+  --checker: #3a1e1a;
+}
+
+/* 下界诡异 Nether Warped */
+:root[data-theme-pack="nether_warped"]:not([data-theme="dark"]) {
+  --bg: #f0f8f9;
+  --panel: #ffffff;
+  --ink: #0d5a5e;
+  --muted: #167e86;
+  --border: #b8e8ec;
+  --accent: #08757c;
+  --accent-hover: #066168;
+  --accent-soft: #e8f8f9;
+  --subtle: #f8fcfd;
+  --checker: #edf6f7;
+  --error: #b33240;
+  --error-bg: #fff1f2;
+  --shadow: 0 12px 40px rgba(26, 155, 165, 0.08);
+}
+
+:root[data-theme="dark"][data-theme-pack="nether_warped"] {
+  --bg: #0a1f21;
+  --panel: #12282b;
+  --ink: #e8f8f9;
+  --muted: #52b8bf;
+  --border: #0d5a5e;
+  --accent: #52b8bf;
+  --accent-hover: #74cbd0;
+  --accent-soft: #143b40;
+  --subtle: #0d5a5e;
+  --checker: #167e86;
+}
+
+/* 深暗之域 Deep Dark */
+:root[data-theme-pack="deep_dark"]:not([data-theme="dark"]) {
+  --bg: #f4f6fa;
+  --panel: #ffffff;
+  --ink: #0a1e27;
+  --muted: #1a2e37;
+  --border: #a8c8d2;
+  --accent: #08748a;
+  --accent-hover: #066176;
+  --accent-soft: #e8f3f6;
+  --subtle: #f8fcfd;
+  --checker: #edf4f7;
+  --error: #b33240;
+  --error-bg: #fff1f2;
+  --shadow: 0 12px 40px rgba(13, 142, 165, 0.08);
+}
+
+:root[data-theme="dark"][data-theme-pack="deep_dark"] {
+  --bg: #050e12;
+  --panel: #0a1e27;
+  --ink: #e8f3f6;
+  --muted: #39b4c8;
+  --border: #1a2e37;
+  --accent: #39b4c8;
+  --accent-hover: #64c7d6;
+  --accent-soft: #0a1e27;
+  --subtle: #0a1e27;
+  --checker: #1a2e37;
+}
+
+/* 末地城 End City */
+:root[data-theme-pack="end_city"]:not([data-theme="dark"]) {
+  --bg: #f5f4f8;
+  --panel: #ffffff;
+  --ink: #3a2e45;
+  --muted: #7a6f8a;
+  --border: #d0c8dc;
+  --accent: #766282;
+  --accent-hover: #65526f;
+  --accent-soft: #f0edf5;
+  --subtle: #fdfcfe;
+  --checker: #f5f3f8;
+  --error: #b33240;
+  --error-bg: #fff1f2;
+  --shadow: 0 12px 40px rgba(168, 159, 184, 0.08);
+}
+
+:root[data-theme="dark"][data-theme-pack="end_city"] {
+  --bg: #1a1520;
+  --panel: #2a1f33;
+  --ink: #f0edf5;
+  --muted: #a89fb8;
+  --border: #3a2e45;
+  --accent: #a89fb8;
+  --accent-hover: #bdb4cc;
+  --accent-soft: #2a1f33;
+  --subtle: #2a1f33;
+  --checker: #3a2e45;
+}
+
+/* 虚空 Void */
+:root[data-theme-pack="void"]:not([data-theme="dark"]) {
+  --bg: #f4f6fa;
+  --panel: #ffffff;
+  --ink: #0d4a5a;
+  --muted: #1a1a1a;
+  --border: #a8b8c0;
+  --accent: #3a3a3a;
+  --accent-hover: #2a2a2a;
+  --accent-soft: #f0f2f4;
+  --subtle: #f8fafc;
+  --checker: #edf0f5;
+  --error: #b33240;
+  --error-bg: #fff1f2;
+  --shadow: 0 12px 40px rgba(58, 58, 58, 0.08);
+}
+
+:root[data-theme="dark"][data-theme-pack="void"] {
+  --bg: #0a0a0a;
+  --panel: #1a1a1a;
+  --ink: #e8e8e8;
+  --muted: #b4b4b4;
+  --border: #2a2a2a;
+  --accent: #b8b8bd;
+  --accent-hover: #d0d0d4;
+  --accent-soft: #1a1a1a;
+  --subtle: #1a1a1a;
+  --checker: #2a2a2a;
+}
+
+/* ============================================================
+   辅助主题
+   ============================================================ */
+
+/* Minecraft 官网配色 */
+:root[data-theme-pack="mc_official"]:not([data-theme="dark"]) {
+  --bg: #f2f2f2;
+  --panel: #ffffff;
+  --ink: #262626;
+  --muted: #646464;
+  --border: #d6d6d6;
+  --accent: #447326;
+  --accent-hover: #365d1e;
+  --accent-soft: #edf5e7;
+  --subtle: #f8f8f8;
+  --checker: #e8e8e8;
+  --error: #b33240;
+  --error-bg: #fff1f2;
+  --shadow: 0 12px 40px rgba(68, 115, 38, 0.08);
+}
+
+:root[data-theme="dark"][data-theme-pack="mc_official"] {
+  --bg: #111111;
+  --panel: #191919;
+  --ink: #eeeeee;
+  --muted: #b4b4b4;
+  --border: #3e3e3e;
+  --accent: #85c165;
+  --accent-hover: #a0d483;
+  --accent-soft: #253b1d;
+  --subtle: #222222;
+  --checker: #2a2a2a;
+  --error: #ffadb5;
+  --error-bg: #422630;
+}
+
+/* Wiki 配色 */
+:root[data-theme-pack="mc_wiki"]:not([data-theme="dark"]) {
+  --bg: #e6eff4;
+  --panel: #ffffff;
+  --ink: #202122;
+  --muted: #54595d;
+  --border: #c8d6dd;
+  --accent: #4e7517;
+  --accent-hover: #416210;
+  --accent-soft: #edf5e2;
+  --subtle: #f8faf6;
+  --checker: #edf4ea;
+  --error: #b33240;
+  --error-bg: #fff1f2;
+  --shadow: 0 12px 40px rgba(110, 162, 30, 0.08);
+}
+
+:root[data-theme="dark"][data-theme-pack="mc_wiki"] {
+  --bg: #202020;
+  --panel: #303030;
+  --ink: #eaecf0;
+  --muted: #c8ccd1;
+  --border: #54595d;
+  --accent: #b0d780;
+  --accent-hover: #c7e8a1;
+  --accent-soft: #33482a;
+  --subtle: #272727;
+  --checker: #3a3a3a;
+  --error: #ffadb5;
+  --error-bg: #422630;
+}

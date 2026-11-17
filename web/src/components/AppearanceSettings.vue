@@ -6,9 +6,10 @@ import { t } from '../i18n'
 import { imageData } from './imageInput'
 import { cloneAdvanced } from '../interfaceAppearance'
 import { settingsSnapshot } from '../settingsDraft'
+import { themePackGroups } from '../themePacks'
 const props = defineProps<{ appearance: Appearance; csrfToken: string; managed?: boolean }>()
 const emit = defineEmits<{ updated: []; expired: [] }>()
-function cloneDraft() { return { ...props.appearance, surfaceEffect: props.appearance.surfaceEffect || 'solid', advanced: cloneAdvanced(props.appearance.advanced) } }
+function cloneDraft() { return { ...props.appearance, themePack: props.appearance.themePack || 'default', surfaceEffect: props.appearance.surfaceEffect || 'solid', advanced: cloneAdvanced(props.appearance.advanced) } }
 const draft = ref(cloneDraft())
 const saved = ref(settingsSnapshot(draft.value))
 const dirty = computed(() => settingsSnapshot(draft.value) !== saved.value)
@@ -43,7 +44,8 @@ defineExpose({ draft, dirty, busy: computed(() => busy.value || imageBusy.value)
     <form class="settings-form" @submit.prevent="!managed && save()"><fieldset :disabled="busy || imageBusy">
       <div class="image-setting"><img v-if="draft.logoImage" :src="draft.logoImage" :alt="t('Logo 预览')" width="96" height="96" /><span v-else class="image-placeholder large">W</span><div><label class="binding-field"><span>{{ t('站点 Logo') }}</span><input type="file" accept="image/png,image/jpeg" @change="pick" /></label><button class="text-button" type="button" :disabled="!draft.logoImage" @click="draft.logoImage = ''">{{ t('恢复默认标识') }}</button></div></div>
       <p class="password-rule">{{ t('PNG 或 JPEG，最大 512 KiB、2048×2048；保存为最长 512 px 的正方形 PNG。') }}</p>
-      <label class="binding-field"><span>{{ t('主题配色') }}</span><select v-model="draft.accent"><option value="blue">{{ t('蓝色') }}</option><option value="green">{{ t('绿色') }}</option><option value="violet">{{ t('紫色') }}</option><option value="rose">{{ t('玫瑰') }}</option><option value="orange">{{ t('橙色') }}</option><option value="teal">{{ t('青色') }}</option><option value="gray">{{ t('石墨') }}</option></select></label>
+      <label class="binding-field"><span>{{ t('主题包') }}</span><select v-model="draft.themePack"><option value="default">{{ t('默认') }}</option><optgroup v-for="group in themePackGroups" :key="group.label" :label="t(group.label)"><option v-for="option in group.options" :key="option.value" :value="option.value">{{ t(option.label) }}</option></optgroup></select></label>
+      <label v-if="draft.themePack === 'default'" class="binding-field"><span>{{ t('主题配色') }}</span><select v-model="draft.accent"><option value="blue">{{ t('蓝色') }}</option><option value="green">{{ t('绿色') }}</option><option value="violet">{{ t('紫色') }}</option><option value="rose">{{ t('玫瑰') }}</option><option value="orange">{{ t('橙色') }}</option><option value="teal">{{ t('青色') }}</option><option value="gray">{{ t('石墨') }}</option></select></label>
       <label class="binding-field"><span>{{ t('站点默认主题') }}</span><select v-model="draft.defaultTheme"><option value="system">{{ t('跟随系统') }}</option><option value="light">{{ t('浅色') }}</option><option value="dark">{{ t('深色') }}</option></select></label>
       <label class="binding-field"><span>{{ t('面板效果') }}</span><select v-model="draft.surfaceEffect"><option value="solid">{{ t('实色') }}</option><option value="translucent">{{ t('半透明') }}</option><option value="glass">{{ t('毛玻璃') }}</option></select></label>
       <button v-if="!managed" class="primary-button" type="submit">{{ busy ? t('正在保存…') : t('保存个性化设置') }}</button>

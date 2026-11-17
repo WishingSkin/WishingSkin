@@ -26,6 +26,7 @@ type appearance struct {
 	LogoImage     string             `json:"logoImage"`
 	Accent        string             `json:"accent"`
 	DefaultTheme  string             `json:"defaultTheme"`
+	ThemePack     string             `json:"themePack"`
 	SurfaceEffect string             `json:"surfaceEffect"`
 	Advanced      advancedAppearance `json:"advanced"`
 }
@@ -59,8 +60,11 @@ func (a *Server) putSetting(ctx context.Context, tx *sql.Tx, key string, value a
 }
 
 func (a *Server) appearance(ctx context.Context) (appearance, error) {
-	value := appearance{Accent: "blue", DefaultTheme: "system", SurfaceEffect: "solid"}
+	value := appearance{Accent: "blue", DefaultTheme: "system", ThemePack: "default", SurfaceEffect: "solid"}
 	_, err := a.readSetting(ctx, "site_appearance", &value)
+	if value.ThemePack == "" {
+		value.ThemePack = "default"
+	}
 	value.Advanced.localizeLegacyCopy()
 	return value, err
 }
@@ -202,6 +206,13 @@ func (a *Server) updateAppearance(w http.ResponseWriter, r *http.Request) {
 		failure(w, 400, "面板效果无效")
 		return
 	}
+	if body.ThemePack == "" {
+		body.ThemePack = "default"
+	}
+	if !validThemePack(body.ThemePack) {
+		failure(w, 400, "主题包无效")
+		return
+	}
 	if !validAccent(body.Accent) || (body.DefaultTheme != "light" && body.DefaultTheme != "dark" && body.DefaultTheme != "system") {
 		failure(w, 400, "个性化设置无效")
 		return
@@ -272,6 +283,17 @@ func copyFace(skin image.Image) image.Image {
 func validAccent(value string) bool {
 	switch value {
 	case "blue", "green", "violet", "rose", "orange", "teal", "gray":
+		return true
+	}
+	return false
+}
+
+func validThemePack(value string) bool {
+	switch value {
+	case "default", "plains", "snowy", "jungle", "desert",
+		"cave", "ice_caves", "lush_caves", "desert_temple",
+		"cherry", "nether_crimson", "nether_warped", "deep_dark",
+		"end_city", "void", "mc_official", "mc_wiki":
 		return true
 	}
 	return false

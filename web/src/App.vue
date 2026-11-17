@@ -272,15 +272,20 @@ let themePreference = ''
 let themeTransition: ViewTransition | undefined
 function siteTheme() {
   setInterfaceAppearance(site.value.appearance.advanced)
-  applyInterfaceColors(dark.value)
   document.documentElement.dataset.accent = site.value.appearance.accent
   document.documentElement.dataset.surface = site.value.appearance.surfaceEffect || 'solid'
+  const pack = site.value.appearance.themePack || 'default'
+  if (pack === 'default') {
+    delete document.documentElement.dataset.themePack
+  } else {
+    document.documentElement.dataset.themePack = pack
+  }
   const favicon = document.querySelector<HTMLLinkElement>('link[rel="icon"]')
   if (favicon) {
     favicon.href = site.value.appearance.logoImage || '/favicon.svg'
     favicon.type = site.value.appearance.logoImage ? 'image/png' : 'image/svg+xml'
   }
-  if (!themePreference) applyTheme(site.value.appearance.defaultTheme === 'system' ? window.matchMedia('(prefers-color-scheme: dark)').matches : site.value.appearance.defaultTheme === 'dark')
+  applyTheme(themePreference ? themePreference === 'dark' : site.value.appearance.defaultTheme === 'system' ? window.matchMedia('(prefers-color-scheme: dark)').matches : site.value.appearance.defaultTheme === 'dark')
 }
 async function profileUpdated() {
   try {
@@ -304,7 +309,7 @@ function applyTheme(value: boolean) {
   dark.value = value
   applyInterfaceColors(value)
   document.documentElement.dataset.theme = value ? 'dark' : 'light'
-  document.querySelector('meta[name="theme-color"]')?.setAttribute('content', value ? '#111824' : '#f4f6fa')
+  document.querySelector('meta[name="theme-color"]')?.setAttribute('content', getComputedStyle(document.documentElement).getPropertyValue('--bg').trim())
 }
 
 function toggleTheme() {

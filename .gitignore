@@ -1,4 +1,6 @@
 /bin/
+/wishingskin.exe
+/.claude/
 /data/
 /artifacts/
 /.playwright-cli/
