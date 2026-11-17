@@ -1,4 +1,5 @@
 <script setup lang="ts">
+import LoadingSkeleton from './LoadingSkeleton.vue'
 import { feedbackRef, toast } from '../feedback'
 import { onMounted, ref } from 'vue'
 import { t } from '../i18n'
@@ -34,7 +35,7 @@ onMounted(load)
   <section class="integration-panel panel" :aria-label="t('游戏接入')">
     <h2>{{ t('游戏接入') }}</h2>
     <p>{{ t('外置登录用于认证；CustomSkinLoader 与传统地址用于加载外观。按客户端说明选择一种方式。') }}</p>
-    <p v-if="busy" role="status">{{ t('正在加载…') }}</p>
+    <LoadingSkeleton v-if="busy" label="正在加载…" :count="2" />
     <div v-else-if="error"><button class="text-button" type="button" @click="load">{{ t('重试') }}</button></div>
     <template v-else-if="config">
       <div v-for="item in [{ label: '外置登录地址', value: config.authlibInjector }, { label: 'CustomSkinLoader 根地址', value: config.cslRoot }, { label: '传统皮肤地址模板', value: config.skinTemplate }, { label: '传统披风地址模板', value: config.capeTemplate }]" :key="item.label" class="integration-address">

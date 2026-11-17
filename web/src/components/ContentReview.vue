@@ -1,4 +1,5 @@
 <script setup lang="ts">
+import LoadingSkeleton from './LoadingSkeleton.vue'
 import { feedbackRef, toast } from '../feedback'
 import { onMounted, onBeforeUnmount, ref } from 'vue'
 import AppModal from './AppModal.vue'
@@ -48,7 +49,7 @@ onBeforeUnmount(() => { request?.abort(); lifetime.abort() })
       </fieldset></form>
     </details>
     <header class="review-toolbar"><h2>{{ t('材质审核') }}</h2><label class="binding-field"><select :aria-label="t('审核状态')" v-model="state" :disabled="busy" @change="page = 1; load()"><option value="pending">{{ t('待审核') }}</option><option value="approved">{{ t('已通过') }}</option><option value="rejected">{{ t('已拒绝') }}</option></select></label><button class="secondary-button" type="button" :disabled="busy || loading" @click="load">{{ t('刷新列表') }}</button></header>
-    <div v-if="loading" class="review-empty" role="status">{{ t('正在加载材质…') }}</div>
+    <LoadingSkeleton v-if="loading" label="正在加载材质…" />
     <div v-else-if="error" class="review-empty"><button class="secondary-button" @click="load">{{ t('重试') }}</button></div>
     <div v-else-if="!items.length" class="review-empty">{{ t('没有对应的材质') }}</div>
     <div v-else class="review-list"><article v-for="item in items" :key="item.id" class="review-card"><img class="checkerboard" :src="'/api/admin/review/' + item.id + '/image'" :alt="item.name" loading="lazy" /><div class="review-card-copy"><h3>{{ item.name }}</h3><p v-if="item.description">{{ item.description }}</p><p v-if="item.category || item.tags?.length" class="review-meta">{{ [item.category, ...(item.tags || [])].filter(Boolean).join(' / ') }}</p><p v-if="item.reviewReason">{{ item.reviewReason }}</p><div class="settings-actions"><button class="secondary-button" type="button" :disabled="busy || state === 'approved'" @click="review(item, 'approved')">{{ t('通过') }}</button><button class="danger-button" type="button" :disabled="busy || state === 'rejected'" @click="review(item, 'rejected')">{{ t('拒绝') }}</button></div></div></article></div>

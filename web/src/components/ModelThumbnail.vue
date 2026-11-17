@@ -33,6 +33,6 @@ onBeforeUnmount(() => { controller?.abort(); observer?.disconnect() })
   <span ref="root" class="model-thumbnail" :class="{ 'model-thumbnail-failed': failed }" :aria-busy="!image && !failed">
     <img v-if="image" class="model-snapshot" :src="image" :alt="t('“{name}”的模型预览', { name })" width="180" height="220" />
     <span v-else-if="failed" class="thumbnail-error">{{ t('模型预览不可用，请打开详情重试或查看 PNG。') }}</span>
-    <span v-else class="model-loading" aria-hidden="true">◇</span>
+    <span v-else class="model-loading skeleton-block" aria-hidden="true"></span>
   </span>
 </template>

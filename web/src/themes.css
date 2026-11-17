@@ -14,7 +14,6 @@
   --checker: #edf0f5;
   --error: #b33240;
   --error-bg: #fff1f2;
-  --shadow: 0 12px 40px rgba(145, 189, 89, 0.08);
 }
 
 :root[data-theme="dark"][data-theme-pack="plains"] {
@@ -44,7 +43,6 @@
   --checker: #edf4f8;
   --error: #b33240;
   --error-bg: #fff1f2;
-  --shadow: 0 12px 40px rgba(127, 180, 217, 0.08);
 }
 
 :root[data-theme="dark"][data-theme-pack="snowy"] {
@@ -74,7 +72,6 @@
   --checker: #edf4ea;
   --error: #b33240;
   --error-bg: #fff1f2;
-  --shadow: 0 12px 40px rgba(89, 201, 60, 0.08);
 }
 
 :root[data-theme="dark"][data-theme-pack="jungle"] {
@@ -104,7 +101,6 @@
   --checker: #f5ede0;
   --error: #b33240;
   --error-bg: #fff1f2;
-  --shadow: 0 12px 40px rgba(201, 169, 117, 0.08);
 }
 
 :root[data-theme="dark"][data-theme-pack="desert"] {
@@ -138,7 +134,6 @@
   --checker: #edf0f5;
   --error: #b33240;
   --error-bg: #fff1f2;
-  --shadow: 0 12px 40px rgba(74, 143, 184, 0.08);
 }
 
 :root[data-theme="dark"][data-theme-pack="cave"] {
@@ -168,7 +163,6 @@
   --checker: #edf4f8;
   --error: #b33240;
   --error-bg: #fff1f2;
-  --shadow: 0 12px 40px rgba(127, 180, 217, 0.08);
 }
 
 :root[data-theme="dark"][data-theme-pack="ice_caves"] {
@@ -198,7 +192,6 @@
   --checker: #edf4ea;
   --error: #b33240;
   --error-bg: #fff1f2;
-  --shadow: 0 12px 40px rgba(110, 162, 30, 0.08);
 }
 
 :root[data-theme="dark"][data-theme-pack="lush_caves"] {
@@ -228,7 +221,6 @@
   --checker: #f5ede0;
   --error: #b33240;
   --error-bg: #fff1f2;
-  --shadow: 0 12px 40px rgba(217, 108, 44, 0.08);
 }
 
 :root[data-theme="dark"][data-theme-pack="desert_temple"] {
@@ -262,7 +254,6 @@
   --checker: #fef8fa;
   --error: #b33240;
   --error-bg: #fff1f2;
-  --shadow: 0 12px 40px rgba(245, 169, 184, 0.08);
 }
 
 :root[data-theme="dark"][data-theme-pack="cherry"] {
@@ -296,7 +287,6 @@
   --checker: #fef8f9;
   --error: #b33240;
   --error-bg: #fff1f2;
-  --shadow: 0 12px 40px rgba(191, 90, 61, 0.08);
 }
 
 :root[data-theme="dark"][data-theme-pack="nether_crimson"] {
@@ -326,7 +316,6 @@
   --checker: #edf6f7;
   --error: #b33240;
   --error-bg: #fff1f2;
-  --shadow: 0 12px 40px rgba(26, 155, 165, 0.08);
 }
 
 :root[data-theme="dark"][data-theme-pack="nether_warped"] {
@@ -356,7 +345,6 @@
   --checker: #edf4f7;
   --error: #b33240;
   --error-bg: #fff1f2;
-  --shadow: 0 12px 40px rgba(13, 142, 165, 0.08);
 }
 
 :root[data-theme="dark"][data-theme-pack="deep_dark"] {
@@ -386,7 +374,6 @@
   --checker: #f5f3f8;
   --error: #b33240;
   --error-bg: #fff1f2;
-  --shadow: 0 12px 40px rgba(168, 159, 184, 0.08);
 }
 
 :root[data-theme="dark"][data-theme-pack="end_city"] {
@@ -416,7 +403,6 @@
   --checker: #edf0f5;
   --error: #b33240;
   --error-bg: #fff1f2;
-  --shadow: 0 12px 40px rgba(58, 58, 58, 0.08);
 }
 
 :root[data-theme="dark"][data-theme-pack="void"] {
@@ -450,7 +436,6 @@
   --checker: #e8e8e8;
   --error: #b33240;
   --error-bg: #fff1f2;
-  --shadow: 0 12px 40px rgba(68, 115, 38, 0.08);
 }
 
 :root[data-theme="dark"][data-theme-pack="mc_official"] {
@@ -482,7 +467,6 @@
   --checker: #edf4ea;
   --error: #b33240;
   --error-bg: #fff1f2;
-  --shadow: 0 12px 40px rgba(110, 162, 30, 0.08);
 }
 
 :root[data-theme="dark"][data-theme-pack="mc_wiki"] {

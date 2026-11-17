@@ -1,4 +1,5 @@
 <script setup lang="ts">
+import LoadingSkeleton from './LoadingSkeleton.vue'
 import { ref, onMounted, onBeforeUnmount } from 'vue'
 import AppModal from './AppModal.vue'
 import CharacterViewer from './CharacterViewer.vue'
@@ -40,7 +41,7 @@ async function apply() {
 </script>
 <template>
   <AppModal :title="t('应用到角色')" :busy="busy" @close="emit('close')">
-    <p>{{ texture.name }}</p><p v-if="loading" class="modal-empty" role="status">{{ t('正在加载角色…') }}</p>
+    <p>{{ texture.name }}</p><LoadingSkeleton v-if="loading" label="正在加载角色…" :count="2" />
     <div v-else-if="failed" class="modal-empty"><button class="secondary-button" type="button" @click="load">{{ t('重新加载') }}</button></div>
     <form v-else-if="characters.length" class="settings-form" @submit.prevent="apply"><label class="binding-field"><span>{{ t('选择角色') }}</span><select v-model="selected" :disabled="busy"><option v-for="character in characters" :key="character.id" :value="character">{{ character.name }}</option></select></label>
       <label v-if="texture.kind === 'skin'" class="binding-field"><span>{{ t('手臂模型') }}</span><select v-model="model" :disabled="busy"><option value="default">{{ t('标准手臂') }}</option><option value="slim">{{ t('纤细手臂') }}</option></select></label>

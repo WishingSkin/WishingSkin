@@ -1,4 +1,5 @@
 <script setup lang="ts">
+import LoadingSkeleton from './LoadingSkeleton.vue'
 import { feedbackRef } from '../feedback'
 import { onMounted, ref } from 'vue'
 import { t } from '../i18n'
@@ -53,7 +54,7 @@ onMounted(load)
 </script>
 <template>
   <section class="settings-section invitation-plugin"><h3>{{ t('邀请码设置') }}</h3><p>{{ t('设置注册邀请码的使用规则。') }}</p>
-    <p v-if="loading" role="status">{{ t('正在加载…') }}</p><p v-if="error" class="form-error" role="alert"><button v-if="!options && !loading" class="text-button" type="button" @click="load">{{ t('重试') }}</button></p>
+    <LoadingSkeleton v-if="loading" label="正在加载…" :count="2" /><p v-if="error" class="form-error" role="alert"><button v-if="!options && !loading" class="text-button" type="button" @click="load">{{ t('重试') }}</button></p>
     <template v-if="options"><form class="settings-form" @submit.prevent="submit(false)"><fieldset :disabled="busy"><label class="settings-check"><input v-model="enabled" type="checkbox" />{{ t('启用邀请码插件') }}</label><label class="settings-check"><input v-model="required" type="checkbox" :disabled="!enabled" />{{ t('注册时必须填写邀请码') }}</label><button class="primary-button" type="submit">{{ busy ? t('正在保存…') : t('保存插件设置') }}</button></fieldset></form>
       <form v-if="options.enabled" class="settings-form plugin-generation" @submit.prevent="submit(true)"><fieldset :disabled="busy"><h3>{{ t('批量生成') }}</h3><div class="settings-grid"><label class="binding-field"><span>{{ t('生成数量') }}</span><input v-model.number="count" type="number" min="1" max="100" required /></label></div><p class="password-rule">{{ t('每个邀请码只能使用一次，永久有效。服务器保存加密值，可在此页重复导出。') }}</p><button class="secondary-button" type="submit">{{ t('生成邀请码') }}</button></fieldset></form>
       <div v-if="options.migration" class="invitation-migration"><h3>{{ t('迁移统计') }}</h3><p>{{ t('共 {total} 个，未使用 {unused} 个，已使用 {used} 个。', options.migration) }}</p></div>

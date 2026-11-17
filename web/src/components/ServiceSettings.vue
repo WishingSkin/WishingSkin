@@ -1,4 +1,5 @@
 <script setup lang="ts">
+import LoadingSkeleton from './LoadingSkeleton.vue'
 import { feedbackRef } from '../feedback'
 import { onMounted, ref } from 'vue'
 import { t } from '../i18n'
@@ -74,7 +75,7 @@ onMounted(load)
 </script>
 <template>
   <section class="settings-section"><h3>{{ t('邮件与验证') }}</h3><p>{{ t('注册始终需要验证邮箱和完成人机验证。请先配置邮件服务与 Turnstile。') }}</p>
-    <p v-if="loading" role="status">{{ t('正在加载…') }}</p><p v-if="error" class="form-error" role="alert"><button v-if="!draft && !loading" class="text-button" type="button" @click="load">{{ t('重试') }}</button></p>
+    <LoadingSkeleton v-if="loading" label="正在加载…" :count="2" /><p v-if="error" class="form-error" role="alert"><button v-if="!draft && !loading" class="text-button" type="button" @click="load">{{ t('重试') }}</button></p>
     <form v-if="draft" class="settings-form" @submit.prevent="save"><p class="password-rule">{{ draft.source === 'database' ? t('当前使用后台保存的配置。') : t('当前使用启动时的配置，保存后将以后台配置为准。') }}</p><p v-if="!draft.editable" class="notice">{{ t('本地设置密钥尚不可用') }}</p><fieldset :disabled="busy || !draft.editable">
       <h4>SMTP</h4><label class="settings-check"><input v-model="draft.smtpEnabled" type="checkbox" />{{ t('启用邮件服务') }}</label>
       <label class="binding-field"><span>{{ t('SMTP 服务器与端口') }}</span><input v-model="draft.address" placeholder="smtp.example.com:587" :required="draft.smtpEnabled" /></label>

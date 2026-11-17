@@ -1,4 +1,5 @@
 <script setup lang="ts">
+import LoadingSkeleton from './LoadingSkeleton.vue'
 import { feedbackRef, confirmAction, toast } from '../feedback'
 import { computed, onMounted, ref } from 'vue'
 import { oidcMessages } from '../oidcMessages'
@@ -45,7 +46,7 @@ function finishConfirmation(path: string) { window.location.assign(path) }
 <template>
   <section class="account-password oidc-account">
     <h3>{{ t('第三方登录') }}</h3>
-    <p v-if="!loaded && !error" role="status">{{ t('正在加载…') }}</p>
+    <LoadingSkeleton v-if="!loaded && !error" label="正在加载…" :count="2" />
 
     <p v-if="error" class="form-error" role="alert"><button v-if="!loaded" class="text-button" type="button" @click="load">{{ t('重试') }}</button></p>
     <template v-if="loaded">

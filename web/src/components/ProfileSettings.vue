@@ -1,4 +1,5 @@
 <script setup lang="ts">
+import LoadingSkeleton from './LoadingSkeleton.vue'
 import { feedbackRef } from '../feedback'
 import { computed, onMounted, ref } from 'vue'
 import { t } from '../i18n'
@@ -47,7 +48,7 @@ onMounted(load)
 </script>
 <template>
   <section class="account-password profile-settings"><h3>{{ t('编辑个人资料') }}</h3><p>{{ t('设置昵称和头像。') }}</p>
-    <p v-if="loading" role="status">{{ t('正在加载…') }}</p><p v-if="error" class="form-error" role="alert"><button v-if="!loaded && !loading" class="text-button" type="button" @click="load">{{ t('重试') }}</button></p>
+    <LoadingSkeleton v-if="loading" label="正在加载…" :count="2" /><p v-if="error" class="form-error" role="alert"><button v-if="!loaded && !loading" class="text-button" type="button" @click="load">{{ t('重试') }}</button></p>
     <form v-if="loaded" class="settings-form" @submit.prevent="save"><fieldset :disabled="busy || imageBusy">
       <label class="binding-field"><span>{{ t('昵称') }} <small>{{ length }}/64</small></span><input v-model="draft.nickname" required autocomplete="nickname" /></label>
       <label class="binding-field"><span>{{ t('头像来源') }}</span><select v-model="draft.avatarMode"><option value="default">{{ t('默认头像') }}</option><option value="upload">{{ t('上传图片') }}</option><option value="character">{{ t('跟随角色皮肤') }}</option></select></label>

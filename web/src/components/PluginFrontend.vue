@@ -48,4 +48,4 @@ watch(() => [props.pluginId, props.enabled, props.version], load, { immediate: t
 onBeforeUnmount(() => { clear(); window.removeEventListener('message', receive) })
 </script>
 <template><iframe v-if="html" ref="frame" class="plugin-frame" sandbox="allow-scripts" :srcdoc="html" :title="t('插件界面')" /></template>
-<style scoped>.plugin-frame { width: 100%; min-height: 420px; margin-top: 24px; border: 1px solid var(--border); border-radius: 6px; background: var(--panel); }</style>
+<style scoped>.plugin-frame { width: 100%; min-height: 420px; margin-top: 24px; border: 1px solid var(--border); border-radius:var(--radius-card); background: var(--panel); }</style>

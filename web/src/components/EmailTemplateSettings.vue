@@ -1,4 +1,6 @@
 <script setup lang="ts">
+import LoadingSkeleton from './LoadingSkeleton.vue'
+import AppIcon from './AppIcon.vue'
 import { feedbackRef } from '../feedback'
 import { computed, onMounted, ref, watch } from 'vue'
 import { t } from '../i18n'
@@ -59,7 +61,7 @@ onMounted(load)
 <template>
   <section class="settings-section email-template-settings" aria-labelledby="email-template-heading">
     <h4 id="email-template-heading">{{ t('邮件样式') }}</h4>
-    <p v-if="!draft && busy" role="status">{{ t('正在加载…') }}</p>
+    <LoadingSkeleton v-if="!draft && busy" label="正在加载…" :count="2" />
     <p v-if="error" class="form-error" role="alert"><button v-if="!draft" class="text-button" type="button" @click="load">{{ t('重试') }}</button></p>
     <form v-if="draft" class="email-template-editor" @submit.prevent="perform('save')">
       <fieldset :disabled="busy" class="settings-form">
@@ -78,7 +80,7 @@ onMounted(load)
         <label class="binding-field"><span>{{ t('邮件正文') }}</span><textarea v-model="draft[purpose].body" rows="5" maxlength="2000" required></textarea></label>
         <label v-if="purpose !== 'test'" class="binding-field"><span>{{ t('按钮文字') }}</span><input v-model="draft[purpose].button" maxlength="80" required /></label>
         <p class="password-rule">{{ t('预览验证与找回密码邮件的样式。') }}</p>
-        <p class="password-rule email-template-entry">{{ t('实际验证和找回邮件请从账号邮件入口发起。') }} <a href="/login?mode=mail">{{ t('打开实际账号邮件入口') }} ↗</a></p>
+        <p class="password-rule email-template-entry">{{ t('实际验证和找回邮件请从账号邮件入口发起。') }} <a href="/login?mode=mail">{{ t('打开实际账号邮件入口') }}<AppIcon name="arrow" /></a></p>
         <div class="settings-actions">
           <button class="primary-button" type="submit">{{ t('保存邮件样式') }}</button>
           <button class="secondary-button" type="button" @click="perform('preview')">{{ t('更新预览') }}</button>

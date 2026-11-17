@@ -7,6 +7,8 @@ import AppModal from './AppModal.vue'
 import ApplyTextureDialog from './ApplyTextureDialog.vue'
 import ReportForm from './ReportForm.vue'
 import ResourceFilters from './ResourceFilters.vue'
+import AppIcon from './AppIcon.vue'
+import LoadingSkeleton from './LoadingSkeleton.vue'
 import type { LibraryRecord } from '../textureTypes'
 import { t } from '../i18n'
 
@@ -107,11 +109,11 @@ onBeforeUnmount(() => { active = false; request?.abort(); lifetime.abort() })
 
 <template>
   <section class="texture-browser">
-    <div class="page-heading"><div><h1>{{ mode === 'library' ? t('公开库') : t('我的衣柜') }}<span class="heading-pixel" aria-hidden="true"></span></h1></div><div class="page-heading-actions"><button v-if="mode === 'library'" type="button" class="primary-button" @click="emit('upload')">{{ t('上传材质') }}</button><button type="button" class="secondary-button" :disabled="pending || busy" @click="load">{{ pending ? t('正在刷新…') : t('刷新列表') }}</button></div></div>
-    <ResourceFilters v-model:query="query" v-model:kind="kind" :label="mode === 'library' ? '搜索公开库' : '搜索我的衣柜'" :placeholder="mode === 'library' ? '搜索材质名称' : '收藏名或材质名称'" :busy="pending" @search="search">
+    <div class="page-heading"><div><h1>{{ mode === 'library' ? t('公开库') : t('我的衣柜') }}</h1></div><div class="page-heading-actions"><button v-if="mode === 'library'" type="button" class="primary-button" @click="emit('upload')">{{ t('上传材质') }}</button><button type="button" class="secondary-button" :disabled="pending || busy" @click="load">{{ pending ? t('正在刷新…') : t('刷新列表') }}</button></div></div>
+    <ResourceFilters v-model:query="query" v-model:kind="kind" :label="mode === 'library' ? '搜索公开库' : '搜索我的衣柜'" :placeholder="mode === 'library' ? '搜索材质名称' : '收藏名或材质名称'" :active-filters="Number(!!category) + Number(!!tag) + Number(sort !== 'name')" :busy="pending" @search="search">
       <template v-if="mode === 'library'" #extra>
-        <label class="binding-field"><span>{{ t('分类') }}</span><input v-model="category" maxlength="32" /></label>
-        <label class="binding-field"><span>{{ t('标签') }}</span><input v-model="tag" maxlength="24" /></label>
+        <label class="binding-field"><span>{{ t('分类') }}</span><input v-model="category" maxlength="32" :placeholder="t('输入分类')" /></label>
+        <label class="binding-field"><span>{{ t('标签') }}</span><input v-model="tag" maxlength="24" :placeholder="t('输入标签')" /></label>
         <label class="binding-field"><span>{{ t('排序') }}</span><select v-model="sort" @change="search"><option value="name">{{ t('名称升序') }}</option><option value="name-desc">{{ t('名称降序') }}</option><option value="collections">{{ t('收藏最多') }}</option></select></label>
       </template>
       <template #summary><p v-if="owner" class="owner-filter">{{ t('上传者：') }}{{ ownerName || t('这位上传者') }} <button type="button" class="text-button" @click="owner = ''; ownerName = ''; search()">{{ t('查看所有上传者') }}</button></p></template>
@@ -120,9 +122,9 @@ onBeforeUnmount(() => { active = false; request?.abort(); lifetime.abort() })
     <div class="materials-workspace browse-list-layout">
       <section class="material-library panel" :aria-label="mode === 'library' ? t('公开材质列表') : t('收藏列表')" :aria-busy="pending">
         <div class="panel-title"><h2>{{ mode === 'library' ? t('公开材质') : t('收藏的材质') }}</h2><span>{{ t('{count} 份材质', { count: total }) }}</span></div>
-        <div v-if="pending" class="empty-state" role="status"><span class="loading-dot"></span><h2>{{ t("正在加载材质…") }}</h2></div>
+        <LoadingSkeleton v-if="pending" layout="cards" label="正在加载材质…" :count="6" />
         <div v-else-if="error" class="empty-state" role="alert"><h2>{{ t("暂时没有加载出来") }}</h2><button class="secondary-button" type="button" @click="load">{{ t("重新加载") }}</button></div>
-        <div v-else-if="!items.length" class="empty-state"><span class="empty-symbol" aria-hidden="true">▦</span><h2>{{ mode === 'library' ? t('没有找到公开材质') : t('衣柜还是空的') }}</h2><p>{{ mode === 'library' ? t('试试其他名称或类型，或稍后再来看看。') : t('前往公开库，或在我的材质中收藏一份皮肤或披风。') }}</p></div>
+        <div v-else-if="!items.length" class="empty-state"><span class="empty-symbol"><AppIcon name="library" /></span><h2>{{ mode === 'library' ? t('没有找到公开材质') : t('衣柜还是空的') }}</h2><p>{{ mode === 'library' ? t('试试其他名称或类型，或稍后再来看看。') : t('前往公开库，或在我的材质中收藏一份皮肤或披风。') }}</p></div>
         <div v-else class="material-cards"><button v-for="item in items" :key="item.id" type="button" class="material-card" :class="{ selected: item.id === selectedId }" :aria-pressed="item.id === selectedId" @click="selectedId = item.id"><ModelThumbnail class="material-thumbnail" :name="label(item)" :model="item.kind === 'skin' ? item.model : 'default'" :skin-hash="item.kind === 'skin' ? item.fileHash : ''" :cape-hash="item.kind === 'cape' ? item.fileHash : ''" /><span class="material-card-copy"><strong>{{ label(item) }}</strong><span>{{ item.kind === 'cape' ? t('披风') : item.model === 'slim' ? t('纤细手臂') : t('标准手臂') }}<small>{{ item.public ? t('{count} 人收藏', { count: item.collectionCount }) : t('未公开') }}</small></span></span></button></div>
         <nav v-if="total > 24" class="library-pagination" :aria-label="t('公开库分页')"><button class="secondary-button" type="button" :disabled="pending || page === 1" @click="changePage(page - 1)">{{ t("上一页") }}</button><span>{{ t('第 {page} / {total} 页', { page, total: Math.ceil(total / 24) }) }}</span><button class="secondary-button" type="button" :disabled="pending || page * 24 >= total" @click="changePage(page + 1)">{{ t("下一页") }}</button></nav>
       </section>

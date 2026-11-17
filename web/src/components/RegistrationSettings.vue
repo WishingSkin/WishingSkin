@@ -69,8 +69,8 @@ async function submit() {
 <style scoped>
 .registration-form{display:grid;gap:20px}
 .registration-form .binding-field,.registration-form .primary-button{margin-top:0}
-.registration-form small{display:block;font-size:12px;line-height:1.7;color:var(--muted);margin-top:7px}
-.registration-id-option{display:flex;align-items:flex-start;gap:10px;font-size:13px;line-height:1.7;cursor:pointer}
+.registration-form small{display:block;font-size:var(--font-small);line-height:1.7;color:var(--muted);margin-top:7px}
+.registration-id-option{display:flex;align-items:flex-start;gap:10px;font-size:var(--font-body);line-height:1.7;cursor:pointer}
 .registration-id-option input{flex-shrink:0;width:16px;height:16px;margin:3px 0 0;accent-color:var(--accent)}
 .registration-id-option span{min-width:0}
 .registration-id-option strong{font-weight:600}

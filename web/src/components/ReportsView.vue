@@ -1,4 +1,5 @@
 <script setup lang="ts">
+import LoadingSkeleton from './LoadingSkeleton.vue'
 import AppModal from './AppModal.vue'
 import { feedbackRef } from '../feedback'
 import { computed, nextTick, onMounted, ref } from 'vue'
@@ -72,7 +73,7 @@ onMounted(load)
       <div class="admin-actions"><button class="danger-button" type="submit" :disabled="saving">{{ saving ? t('正在保存…') : t('确认处理举报') }}</button><button class="secondary-button" type="button" :disabled="saving" @click="selected = null">{{ t('取消') }}</button></div>
     </form></AppModal>
 
-    <div v-if="busy" class="empty-state panel" role="status"><p>{{ t('正在加载举报…') }}</p></div><div v-else-if="error" class="empty-state panel" role="alert"><button class="secondary-button" type="button" @click="load">{{ t('重新加载') }}</button></div>
+    <LoadingSkeleton v-if="busy" class="panel" label="正在加载举报…" /><div v-else-if="error" class="empty-state panel" role="alert"><button class="secondary-button" type="button" @click="load">{{ t('重新加载') }}</button></div>
     <div v-else class="panel admin-list"><p v-if="!items.length" class="empty-state">{{ t('暂无匹配的举报。') }}</p><article v-for="item in items" :key="item.id" class="admin-user report-item"><div class="admin-user-copy"><h3>{{ item.name }}</h3><p>{{ t(statuses[item.status] || '未知状态') }} / <time :datetime="new Date(item.createdAt * 1000).toISOString()">{{ time(item.createdAt) }}</time></p><template v-if="admin"><p>{{ t('举报人') }}：{{ item.reporterEmail }} / #{{ item.reporterId }}</p><p>{{ t('上传者：') }}{{ item.ownerId ? `${item.ownerEmail} / #${item.ownerId}` : t('归属未知') }}</p><p class="admin-file-hash">{{ item.fileHash }}</p><p v-if="item.disabled">{{ t('图片已下架') }}</p></template><p class="report-text"><strong>{{ t('举报原因') }}：</strong>{{ item.reason }}</p><template v-if="item.status !== 'pending'"><p>{{ t(resolutions[item.resolution] || '其他管理操作') }} / {{ time(item.resolvedAt) }}</p><p class="report-text"><strong>{{ t('处理说明') }}：</strong>{{ item.reply || t('管理员未填写说明。') }}</p></template></div><button v-if="admin && item.status === 'pending'" class="secondary-button" type="button" :disabled="saving" @click="choose(item)">{{ t('处理举报') }}</button></article><div class="library-pagination"><button class="secondary-button" type="button" :disabled="page <= 1 || saving" @click="turn(-1)">{{ t('上一页') }}</button><span>{{ t('第 {page} 页，共 {total} 条记录', { page, total }) }}</span><button class="secondary-button" type="button" :disabled="page * 20 >= total || saving" @click="turn(1)">{{ t('下一页') }}</button></div></div>
     <LegacyReports v-if="admin" @expired="emit('expired')" />
   </section>

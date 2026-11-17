@@ -1,6 +1,7 @@
 import { createApp } from 'vue'
 import App from './App.vue'
 import { toast } from './feedback'
+import './tokens.css'
 import './style.css'
 import './themes.css'
 

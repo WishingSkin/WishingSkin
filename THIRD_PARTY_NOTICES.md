@@ -61,6 +61,34 @@ WishingSkin 当前直接使用、未修改 `github.com/go-sql-driver/mysql v1.10
 
 本项目的 Blessing Skin 兼容工作采用独立协议和数据适配。本文件未包含 Blessing Skin 的 GPL 源码，也不授予复制该源码的许可。
 
+## 界面图标
+
+界面使用 Heroicons v2.2.0 的 outline SVG，按需内嵌在 `web/src/icons.ts`，未引入运行时图标依赖。源码：https://github.com/tailwindlabs/heroicons/tree/v2.2.0 。许可如下：
+
+```text
+MIT License
+
+Copyright (c) Tailwind Labs, Inc.
+
+Permission is hereby granted, free of charge, to any person obtaining a copy
+of this software and associated documentation files (the "Software"), to deal
+in the Software without restriction, including without limitation the rights
+to use, copy, modify, merge, publish, distribute, sublicense, and/or sell
+copies of the Software, and to permit persons to whom the Software is
+furnished to do so, subject to the following conditions:
+
+The above copyright notice and this permission notice shall be included in all
+copies or substantial portions of the Software.
+
+THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
+IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
+FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE
+AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
+LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
+OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
+SOFTWARE.
+```
+
 ## 浏览器运行时
 
 | 包或组件 | 版本 | 许可 | 源码 |

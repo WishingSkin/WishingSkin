@@ -1,4 +1,6 @@
 <script setup lang="ts">
+import LoadingSkeleton from './LoadingSkeleton.vue'
+import AppIcon from './AppIcon.vue'
 import { computed, onBeforeUnmount, onMounted, ref, watch } from 'vue'
 import { toast } from '../feedback'
 import { locale, t } from '../i18n'
@@ -61,12 +63,12 @@ onBeforeUnmount(() => { controller?.abort(); window.removeEventListener('resize'
 
 <template>
   <button ref="trigger" class="icon-button notice-toggle" type="button" :aria-label="unread ? t('公告（有新公告）') : t('公告')" :title="t('公告')" aria-haspopup="dialog" :aria-expanded="opened" @click="open">
-    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" aria-hidden="true"><path d="M18 8a6 6 0 0 0-12 0c0 7-3 7-3 9h18c0-2-3-2-3-9M10 21h4"/></svg>
+    <AppIcon name="bell" />
     <span v-if="unread" class="notice-unread" aria-hidden="true"></span>
   </button>
-  <Teleport to="body"><section ref="popover" popover="auto" role="dialog" class="notice-popover" :aria-label="t('站点公告')" :style="position" @toggle="toggled"><header class="notice-popover-heading"><h2>{{ t('站点公告') }}</h2><button type="button" class="text-button" :aria-label="t('关闭')" @click="popover?.hidePopover()">×</button></header>
+  <Teleport to="body"><section ref="popover" popover="auto" role="dialog" class="notice-popover" :aria-label="t('站点公告')" :style="position" @toggle="toggled"><header class="notice-popover-heading"><h2>{{ t('站点公告') }}</h2><button type="button" class="text-button" :aria-label="t('关闭')" @click="popover?.hidePopover()"><AppIcon name="close" /></button></header>
       <div class="notice-dialog-content" :aria-busy="busy">
-        <p v-if="busy && !notices.length" role="status">{{ t('正在加载…') }}</p>
+        <LoadingSkeleton v-if="busy && !notices.length" label="正在加载…" :count="2" />
         <p v-else-if="error" class="form-error" role="alert"><button class="text-button" type="button" @click="load()">{{ t('重试') }}</button></p>
         <template v-else>
           <p v-if="!notices.length">{{ t('暂无公告') }}</p>

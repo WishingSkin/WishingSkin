@@ -1,4 +1,5 @@
 <script setup lang="ts">
+import LoadingSkeleton from './LoadingSkeleton.vue'
 import { feedbackRef, toast } from '../feedback'
 import { onBeforeUnmount, onMounted, ref, watch } from 'vue'
 import { locale, t } from '../i18n'
@@ -66,7 +67,7 @@ onBeforeUnmount(() => { generation++; clearTimeout(timer) })
     <div v-if="pages.length" class="runtime-pages">
       <h4>{{ t('插件页面') }}</h4>
       <div class="settings-actions"><button v-for="page in pages" :key="page.id" class="secondary-button" type="button" :aria-expanded="selected === page.id" @click="open(page.id)">{{ t(page.label) }}</button></div>
-      <p v-if="loading" role="status">{{ t('正在加载…') }}</p>
+      <LoadingSkeleton v-if="loading" label="正在加载…" :count="2" />
       <article v-if="document" class="runtime-document">
         <h4>{{ t(document.title) }}</h4><p v-if="document.summary">{{ t(document.summary) }}</p>
         <section v-for="(section, index) in document.sections || []" :key="index">
@@ -88,10 +89,10 @@ onBeforeUnmount(() => { generation++; clearTimeout(timer) })
 </template>
 
 <style scoped>
-.community-runtime{margin-top:24px;font-size:13px;line-height:1.7;min-width:0}
-.community-runtime h4,.community-runtime h5{font-size:14px;font-weight:600}
+.community-runtime{margin-top:24px;font-size:var(--font-body);line-height:1.7;min-width:0}
+.community-runtime h4,.community-runtime h5{font-size:var(--font-body);font-weight:600}
 .runtime-tasks{margin-top:24px}
-.runtime-document{margin-top:18px;padding:18px;background:var(--subtle);border-radius:6px}
+.runtime-document{margin-top:18px;padding:18px;background:var(--subtle);border-radius:var(--radius-control)}
 .runtime-document section{margin-top:18px}
 .runtime-document p{white-space:pre-wrap;overflow-wrap:anywhere}
 .runtime-document dl{margin:10px 0 0}
@@ -101,6 +102,6 @@ onBeforeUnmount(() => { generation++; clearTimeout(timer) })
 .runtime-task{display:flex;align-items:flex-start;justify-content:space-between;gap:16px;padding:16px 0;border-bottom:1px solid var(--border)}
 .runtime-task>div{min-width:0;overflow-wrap:anywhere}
 .runtime-task button{flex-shrink:0}
-.runtime-task time{display:block;font-size:12px}
+.runtime-task time{display:block;font-size:var(--font-small)}
 @media(max-width:560px){.runtime-task{flex-direction:column;gap:10px}.runtime-document{padding:14px}.runtime-document dl>div{grid-template-columns:minmax(0,1fr);gap:3px}}
 </style>

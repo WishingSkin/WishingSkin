@@ -1,4 +1,5 @@
 <script setup lang="ts">
+import LoadingSkeleton from './LoadingSkeleton.vue'
 import { feedbackRef } from '../feedback'
 import { ref } from 'vue'
 import { t } from '../i18n'
@@ -42,7 +43,7 @@ function turn(offset: number) { page.value += offset; load() }
         <label class="binding-field"><span>{{ t('原站举报状态') }}</span><select v-model="status" :disabled="busy"><option value="">{{ t('全部状态') }}</option><option v-for="(label, index) in statuses" :key="index" :value="String(index)">{{ t(label) }}</option></select></label>
         <button class="primary-button" type="submit" :disabled="busy">{{ t('筛选') }}</button><button class="secondary-button" type="button" :disabled="busy" @click="load">{{ t('刷新列表') }}</button>
       </form>
-      <div v-if="busy" class="empty-state panel" role="status"><p>{{ t('正在加载历史举报…') }}</p></div>
+      <LoadingSkeleton v-if="busy" class="panel" label="正在加载历史举报…" />
       <div v-else-if="error" class="empty-state panel" role="alert"><button class="secondary-button" type="button" @click="load">{{ t('重新加载') }}</button></div>
       <div v-else class="panel admin-list">
         <p v-if="!items.length" class="empty-state">{{ t('暂无匹配的历史举报。') }}</p>

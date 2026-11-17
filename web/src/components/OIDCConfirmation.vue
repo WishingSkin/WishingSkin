@@ -1,4 +1,5 @@
 <script setup lang="ts">
+import LoadingSkeleton from './LoadingSkeleton.vue'
 import { feedbackRef } from '../feedback'
 import AppModal from './AppModal.vue'
 import { onMounted, ref } from 'vue'
@@ -58,7 +59,7 @@ onMounted(() => {
 
 <template>
   <AppModal :title="t('确认 OIDC 账号')" :busy="busy" @close="data ? decide('cancel') : back()">
-    <p v-if="!data && !error" class="password-rule" role="status">{{ t('正在加载…') }}</p>
+    <LoadingSkeleton v-if="!data && !error" label="正在加载…" :count="2" />
     <dl v-if="data" class="oidc-identity-details">
       <div><dt>{{ t('身份提供商') }}</dt><dd>{{ data.provider || t('未提供') }}</dd></div>
       <div><dt>{{ data.purpose === 'link' ? t('将绑定到本站账号') : t('将登录本站账号') }}</dt><dd>{{ data.accountName || t('未设置昵称') }}<span v-if="data.accountEmail"> ({{ data.accountEmail }})</span></dd></div>
