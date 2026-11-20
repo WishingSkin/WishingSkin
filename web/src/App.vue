@@ -39,6 +39,9 @@ import type { LibraryRecord, TextureRecord } from './textureTypes'
 import { validNewPassword } from './passwordPolicy'
 import { oidcMessages } from './oidcMessages'
 import { locale, t } from './i18n'
+import { fontPresetNames, isDarkOnlyTheme, isMCBiomeTheme, isMCFamilyTheme, themePackById } from './themePacks'
+import { applyThemeTextures } from './themeTextures'
+import { applyThemeFont } from './themeFonts'
 
 interface User { id: number; email: string; nickname: string; isAdmin: boolean; emailVerified: boolean; legacyAccount: boolean }
 interface Session { user: User; csrfToken: string }
@@ -277,22 +280,39 @@ const dark = ref(false)
 const avatarVersion = ref(0)
 let themePreference = ''
 let themeTransition: ViewTransition | undefined
+const userThemePack = ref('')
+const userFontPreset = ref('')
+const effectiveThemePack = computed(() => (site.value.appearance.allowUserTheme && userThemePack.value && themePackById[userThemePack.value]) ? userThemePack.value : (site.value.appearance.themePack || 'default'))
+const effectiveDarkOnly = computed(() => isDarkOnlyTheme(effectiveThemePack.value))
+const effectiveMCBiome = computed(() => isMCBiomeTheme(effectiveThemePack.value))
+const showMcDisclaimer = computed(() => isMCFamilyTheme(effectiveThemePack.value) || Boolean(site.value.themeAssets?.count))
+const effectiveFontPreset = computed(() => (site.value.appearance.allowUserTheme && userFontPreset.value && fontPresetNames[userFontPreset.value] && userFontPreset.value !== 'custom') ? userFontPreset.value : (site.value.appearance.fontPreset || 'system'))
+
 function siteTheme() {
   setInterfaceAppearance(site.value.appearance.advanced)
   document.documentElement.dataset.accent = site.value.appearance.accent
   document.documentElement.dataset.surface = site.value.appearance.surfaceEffect || 'solid'
-  const pack = site.value.appearance.themePack || 'default'
+  const pack = effectiveThemePack.value
   if (pack === 'default') {
     delete document.documentElement.dataset.themePack
   } else {
     document.documentElement.dataset.themePack = pack
   }
+  applyThemeFont({
+    preset: effectiveFontPreset.value,
+    scope: site.value.appearance.fontScope || 'headings',
+    customFontUrl: site.value.appearance.customFontUrl,
+    uploadedFontUrl: site.value.themeFont?.url,
+  })
   const favicon = document.querySelector<HTMLLinkElement>('link[rel="icon"]')
   if (favicon) {
     favicon.href = site.value.appearance.logoImage || '/favicon.svg'
     favicon.type = site.value.appearance.logoImage ? 'image/png' : 'image/svg+xml'
   }
-  applyTheme(themePreference ? themePreference === 'dark' : site.value.appearance.defaultTheme === 'system' ? window.matchMedia('(prefers-color-scheme: dark)').matches : site.value.appearance.defaultTheme === 'dark')
+  const preferDark = effectiveDarkOnly.value
+    ? true
+    : (themePreference ? themePreference === 'dark' : site.value.appearance.defaultTheme === 'system' ? window.matchMedia('(prefers-color-scheme: dark)').matches : site.value.appearance.defaultTheme === 'dark')
+  applyTheme(preferDark)
 }
 async function profileUpdated() {
   try {
@@ -313,19 +333,19 @@ watch(visibleTextures, items => {
 watch(selectedTextureId, () => { editingTextureId.value = '' })
 
 function applyTheme(value: boolean) {
-  dark.value = value
-  applyInterfaceColors(value)
-  document.documentElement.dataset.theme = value ? 'dark' : 'light'
+  const resolvedDark = effectiveDarkOnly.value ? true : value
+  dark.value = resolvedDark
+  applyInterfaceColors(resolvedDark)
+  document.documentElement.dataset.theme = resolvedDark ? 'dark' : 'light'
+  applyThemeTextures(effectiveThemePack.value, resolvedDark, site.value.themeAssets)
   document.querySelector('meta[name="theme-color"]')?.setAttribute('content', getComputedStyle(document.documentElement).getPropertyValue('--bg').trim())
 }
 
-function toggleTheme() {
-  const nextDark = themePreference ? themePreference !== 'dark' : !dark.value
-  const changeTheme = () => applyTheme(nextDark)
+function runThemeTransition(apply: () => void) {
   themeTransition?.skipTransition()
   if (document.startViewTransition && !window.matchMedia('(prefers-reduced-motion: reduce)').matches) {
     document.documentElement.dataset.themeSwitching = ''
-    const transition = document.startViewTransition(changeTheme)
+    const transition = document.startViewTransition(apply)
     themeTransition = transition
     void transition.ready.catch(() => { /* A newer toggle may skip this transition. */ })
     const completed = () => {
@@ -334,9 +354,35 @@ function toggleTheme() {
       delete document.documentElement.dataset.themeSwitching
     }
     void transition.finished.then(completed, completed)
-  } else changeTheme()
+  } else apply()
+}
+
+function toggleTheme() {
+  if (effectiveDarkOnly.value) return
+  const nextDark = themePreference ? themePreference !== 'dark' : !dark.value
+  runThemeTransition(() => applyTheme(nextDark))
   themePreference = nextDark ? 'dark' : 'light'
   try { localStorage.setItem('wishingskin-theme', themePreference) } catch { /* Theme still works without storage. */ }
+}
+
+function setUserThemePack(value: string) {
+  const next = value && themePackById[value] ? value : ''
+  userThemePack.value = next
+  try {
+    if (next) localStorage.setItem('wishingskin-theme-pack', next)
+    else localStorage.removeItem('wishingskin-theme-pack')
+  } catch { /* Ignore storage failures. */ }
+  runThemeTransition(() => siteTheme())
+}
+
+function setUserFontPreset(value: string) {
+  const next = value && fontPresetNames[value] && value !== 'custom' ? value : ''
+  userFontPreset.value = next
+  try {
+    if (next) localStorage.setItem('wishingskin-font-preset', next)
+    else localStorage.removeItem('wishingskin-font-preset')
+  } catch { /* Ignore storage failures. */ }
+  siteTheme()
 }
 
 async function api(path: string, options: RequestInit = {}) {
@@ -782,7 +828,13 @@ onMounted(() => {
   window.addEventListener('hashchange', readMailLink)
   window.addEventListener('popstate', handlePopState)
   let preference: string | null = null
-  try { preference = localStorage.getItem('wishingskin-theme') } catch { /* Use the system preference. */ }
+  try {
+    preference = localStorage.getItem('wishingskin-theme')
+    const savedPack = localStorage.getItem('wishingskin-theme-pack')
+    if (savedPack && themePackById[savedPack]) userThemePack.value = savedPack
+    const savedFont = localStorage.getItem('wishingskin-font-preset')
+    if (savedFont && fontPresetNames[savedFont] && savedFont !== 'custom') userFontPreset.value = savedFont
+  } catch { /* Use the system preference. */ }
   themePreference = preference === 'light' || preference === 'dark' ? preference : ''
   applyTheme(themePreference ? themePreference === 'dark' : window.matchMedia('(prefers-color-scheme: dark)').matches)
   void restoreSession()
@@ -807,7 +859,7 @@ onBeforeUnmount(() => {
       <div class="topbar-actions">
         <button class="topbar-link" :class="{ active: routePath === '/library' }" type="button" :aria-current="routePath === '/library' ? 'page' : undefined" @click="navigate('/library')"><InterfaceIcon name="library" />{{ t('公开库') }}</button>
         <NoticeCenter :notice="site.notice" :format="site.noticeFormat" />
-        <AccountMenu :user="user" :avatar-version="avatarVersion" :dark="dark" :logout-busy="logoutBusy" @navigate="navigate" @theme="toggleTheme" @logout="logout" />
+        <AccountMenu :user="user" :avatar-version="avatarVersion" :dark="dark" :dark-only="effectiveDarkOnly" :allow-user-theme="!!site.appearance.allowUserTheme" :user-theme-pack="userThemePack" :user-font-preset="userFontPreset" :logout-busy="logoutBusy" @navigate="navigate" @theme="toggleTheme" @update:theme-pack="setUserThemePack" @update:font-preset="setUserFontPreset" @logout="logout" />
       </div>
     </header>
 
@@ -818,7 +870,7 @@ onBeforeUnmount(() => {
     <main v-else-if="accessMode" class="access-layout"><AccountAccess :mode="accessMode" :token="linkToken" :site="site" :email="user?.email || email" :dark="dark" @back="navigate('/login'); linkToken = ''" @completed="accessCompleted" /></main>
 
     <main v-else-if="!user && publicLibraryOpen" class="public-library-layout"><button class="secondary-button public-library-back" type="button" @click="navigate('/')">{{ t("返回主页") }}</button><TextureBrowser mode="library" csrf-token="" :wardrobe="[]" :wardrobe-busy="false" wardrobe-error="" @login="navigate('/login')" @upload="openUpload" /></main>
-    <main v-else-if="publicHome" class="public-home-page"><HomepageContent :homepage="site.homepage" :name="site.name" :tagline="site.tagline" :notice="site.notice" :notice-html="site.noticeHtml" @navigate="homepageLink" /></main>
+    <main v-else-if="publicHome" class="public-home-page"><HomepageContent :homepage="site.homepage" :name="site.name" :tagline="site.tagline" :notice="site.notice" :notice-html="site.noticeHtml" :mc-biome="effectiveMCBiome" :cherry-petals="effectiveThemePack === 'cherry' && !dark" @navigate="homepageLink" /></main>
     <main v-else-if="!user" class="login-layout">
       <section class="welcome-panel" aria-labelledby="welcome-title">
         <div class="welcome-copy"><h1 id="welcome-title">{{ t("每个角色，") + ' ' }}<br>{{ t("都有自己的模样。") }}</h1><p>{{ t("在这里查看你的 Minecraft 角色，") }}<br class="desktop-break">{{ t("找到属于它的皮肤和披风。") }}</p></div>
@@ -958,9 +1010,9 @@ onBeforeUnmount(() => {
           <ReportsView v-else-if="accountTab === 'reports'" :csrf-token="csrfToken" @expired="expireSession" />
           </div>
         </template>
-        <SiteFooter :name="site.name" :tagline="site.tagline || t('每一个像素，都是你的模样。')" :footer="site.footer" />
+        <SiteFooter :name="site.name" :tagline="site.tagline || t('每一个像素，都是你的模样。')" :footer="site.footer" :show-mc-disclaimer="showMcDisclaimer" />
       </main>
     </div>
-    <SiteFooter v-if="!user || publicHome || notFound" class="public-site-footer" :name="site.name" :tagline="site.tagline" :footer="site.footer" />
+    <SiteFooter v-if="!user || publicHome || notFound" class="public-site-footer" :name="site.name" :tagline="site.tagline" :footer="site.footer" :show-mc-disclaimer="showMcDisclaimer" />
   </div>
 </template>

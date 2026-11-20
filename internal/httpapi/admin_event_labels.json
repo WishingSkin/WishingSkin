@@ -104,6 +104,14 @@
       "zh-CN": "修改个性化设置",
       "en": "Update appearance"
     },
+    "settings.theme_assets": {
+      "zh-CN": "更新主题材质资源",
+      "en": "Update theme textures"
+    },
+    "settings.theme_font": {
+      "zh-CN": "更新自定义字体",
+      "en": "Update custom font"
+    },
     "settings.services": {
       "zh-CN": "修改邮件与验证设置",
       "en": "Update email and verification"
@@ -255,6 +263,14 @@
     "appearance": {
       "zh-CN": "个性化",
       "en": "Appearance"
+    },
+    "theme_assets": {
+      "zh-CN": "主题材质资源",
+      "en": "Theme textures"
+    },
+    "theme_font": {
+      "zh-CN": "自定义字体",
+      "en": "Custom font"
     },
     "services": {
       "zh-CN": "邮件与验证",

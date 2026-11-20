@@ -131,7 +131,17 @@ func (a *Server) site(w http.ResponseWriter, r *http.Request) {
 	if loginImage != "" {
 		loginImageURL = "/api/login/image?v=" + tokenHash(loginImage)[:16]
 	}
-	respond(w, 200, map[string]any{"contentPolicy": content, "appearance": custom, "homepage": publicHomepage(homepage), "loginImageUrl": loginImageURL, "oidcProviders": providers, "oidc": map[string]any{"enabled": oidcConfig.Enabled, "name": oidcConfig.Name}, "noticeFormat": brand.NoticeFormat, "noticeHtml": renderNotice(brand.Notice, brand.NoticeFormat), "name": brand.Name, "tagline": brand.Tagline, "footer": brand.Footer, "notice": brand.Notice, "registration": mode, "randomUserIds": randomIDs, "emailDomains": domains, "blockedEmailDomains": blockedDomains, "manualEmailVerification": manualVerification, "mailEnabled": services.Mail != nil, "turnstileSiteKey": services.SiteKey, "points": points})
+	assets, err := a.themeAssets(r.Context())
+	if err != nil {
+		failure(w, 503, "暂时无法读取主题材质资源")
+		return
+	}
+	customFont, err := a.themeFont(r.Context())
+	if err != nil {
+		failure(w, 503, "暂时无法读取自定义字体")
+		return
+	}
+	respond(w, 200, map[string]any{"contentPolicy": content, "appearance": custom, "themeAssets": summarizeThemeAssets(assets), "themeFont": summarizeThemeFont(customFont), "homepage": publicHomepage(homepage), "loginImageUrl": loginImageURL, "oidcProviders": providers, "oidc": map[string]any{"enabled": oidcConfig.Enabled, "name": oidcConfig.Name}, "noticeFormat": brand.NoticeFormat, "noticeHtml": renderNotice(brand.Notice, brand.NoticeFormat), "name": brand.Name, "tagline": brand.Tagline, "footer": brand.Footer, "notice": brand.Notice, "registration": mode, "randomUserIds": randomIDs, "emailDomains": domains, "blockedEmailDomains": blockedDomains, "manualEmailVerification": manualVerification, "mailEnabled": services.Mail != nil, "turnstileSiteKey": services.SiteKey, "points": points})
 }
 
 func validEmail(value string) bool {

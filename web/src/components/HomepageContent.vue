@@ -1,17 +1,75 @@
 <script setup lang="ts">
 import AppIcon from './AppIcon.vue'
-import { computed } from 'vue'
+import { computed, onBeforeUnmount, onMounted, ref } from 'vue'
 import type { HomepageSettings } from '../accountTypes'
 import HomepageIcon from './HomepageIcon.vue'
 import { t } from '../i18n'
-const props = defineProps<{ homepage: HomepageSettings; name: string; tagline: string; notice: string; noticeHtml: string; preview?: boolean }>()
+
+const props = defineProps<{
+  homepage: HomepageSettings
+  name: string
+  tagline: string
+  notice: string
+  noticeHtml: string
+  preview?: boolean
+  mcBiome?: boolean
+  cherryPetals?: boolean
+}>()
 const emit = defineEmits<{ navigate: [event: MouseEvent, href: string] }>()
 const background = computed(() => props.homepage.background?.image || props.homepage.background?.imageUrl || '')
-const style = computed(() => ({ '--homepage-image': background.value ? `url("${background.value}")` : 'none', '--homepage-overlay': `${props.homepage.background?.overlay ?? 65}%` }))
-function follow(event: MouseEvent, href: string) { if (props.preview) event.preventDefault(); else emit('navigate', event, href) }
+const useStrata = computed(() => Boolean(props.mcBiome && !background.value && !props.preview))
+const scrollProgress = ref(0)
+
+const petals = [
+  { left: '8%', dur: '10s', delay: '-2s' },
+  { left: '21%', dur: '13s', delay: '-6s' },
+  { left: '36%', dur: '11s', delay: '-1s' },
+  { left: '52%', dur: '14s', delay: '-8s' },
+  { left: '68%', dur: '12s', delay: '-4s' },
+  { left: '84%', dur: '10.5s', delay: '-7s' },
+  { left: '93%', dur: '13.5s', delay: '-3s' },
+]
+
+const style = computed(() => ({
+  '--homepage-image': background.value ? `url("${background.value}")` : 'none',
+  '--homepage-overlay': `${props.homepage.background?.overlay ?? 65}%`,
+  '--strata-progress': String(scrollProgress.value),
+}))
+
+let raf = 0
+function updateScroll() {
+  if (raf || !useStrata.value) return
+  raf = window.requestAnimationFrame(() => {
+    raf = 0
+    const maxScroll = Math.max(1, document.documentElement.scrollHeight - window.innerHeight)
+    scrollProgress.value = Math.min(1, Math.max(0, window.scrollY / maxScroll))
+  })
+}
+
+onMounted(() => {
+  if (!props.preview) window.addEventListener('scroll', updateScroll, { passive: true })
+})
+onBeforeUnmount(() => {
+  window.removeEventListener('scroll', updateScroll)
+  if (raf) window.cancelAnimationFrame(raf)
+})
+
+function follow(event: MouseEvent, href: string) {
+  if (props.preview) event.preventDefault()
+  else emit('navigate', event, href)
+}
 </script>
 <template>
-  <div class="homepage-surface" :class="{ 'has-background': !!background, 'is-preview': preview }" :style="style">
+  <div class="homepage-surface" :class="{ 'has-background': !!background, 'is-preview': preview, 'mc-strata': useStrata }" :style="style">
+    <div v-if="useStrata" class="homepage-strata-backdrop" aria-hidden="true">
+      <div class="homepage-strata-layer layer-1"></div>
+      <div class="homepage-strata-layer layer-2"></div>
+      <div class="homepage-strata-layer layer-3"></div>
+      <div class="homepage-strata-layer layer-4"></div>
+    </div>
+    <div v-if="cherryPetals && !preview" class="cherry-petals" aria-hidden="true">
+      <span v-for="(petal, index) in petals" :key="index" class="cherry-petal" :style="{ '--petal-left': petal.left, '--petal-dur': petal.dur, '--petal-delay': petal.delay }"></span>
+    </div>
     <div class="homepage-content">
       <template v-for="block in homepage.blocks.filter(item => item.enabled)" :key="block.id">
         <section v-if="block.kind === 'intro'" class="homepage-intro">

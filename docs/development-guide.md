@@ -58,7 +58,7 @@ go run ./testdata/bs/generate.go artifacts/generated-bs-fixture
 
 界面使用简体中文和 English 文案，个性化覆盖按语言分别保存。复用现有模态弹窗、Toast、表单和主题变量。动画需支持 `prefers-reduced-motion`。用户可配置的图片和文字规则见[界面设置](interface-customization.md)。
 
-视觉 token 位于 `web/src/tokens.css`。字号使用 12、14、20px，首页主标题使用 40px；控件、卡片和弹窗圆角分别为 6、12、16px。阴影分为卡片和浮层两档。`themes.css` 只覆盖配色。组件引用语义颜色和尺寸变量，二维码使用独立白底变量。
+视觉 token 位于 `web/src/tokens.css`。字号使用 12、14、20px，首页主标题使用 40px；控件、卡片和弹窗圆角分别为 6、12、16px。阴影分为卡片和浮层两档，空间位移动效使用 `--ease-spring` 并在 `prefers-reduced-motion` 下退化。`themes.css`、`themePacks.ts`、`themeTextures.ts` 与 `themeFonts.ts` 共同提供 13 套主题（含 MC 维度贴图槽位、首页剖面滚动、官网/Wiki 风格与通用主题）及按需加载的 OFL 1.1 开源像素字体。组件引用语义颜色和尺寸变量，二维码使用独立白底变量。
 
 默认图标通过 `AppIcon` 使用 Heroicons outline SVG，许可见[第三方声明](../THIRD_PARTY_NOTICES.md)。`InterfaceIcon` 保留管理员自定义覆盖。加载界面复用 `LoadingSkeleton`；卡片骨架沿用材质列表网格。
 

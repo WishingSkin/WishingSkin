@@ -1,485 +1,927 @@
-/* 主题包提供浅色与深色配色；高级界面设置的颜色覆盖优先。 */
+/* ==========================================================================
+   WishingSkin Theme System
+   8 paired Minecraft biome/dimension themes (Light = Surface, Dark = Underground)
+   + 2 Minecraft community styles (Official & Wiki)
+   + 3 Universal themes (Nord, Paper, High Contrast)
+   Advanced color overrides from inline style always remain highest priority.
+   ========================================================================== */
 
-/* 平原 Plains */
+/* --------------------------------------------------------------------------
+   Display Typography Binding (headings vs full UI)
+   -------------------------------------------------------------------------- */
+:root[data-font-preset] :is(.brand, h1, h2, .panel-title h2, .not-found-code, .point-balance) {
+  font-family: var(--font-display);
+}
+:root[data-font-preset="monocraft"] :is(.brand, h1, h2),
+:root[data-font-preset="fusion_pixel"] :is(.brand, h1, h2),
+:root[data-font-preset="ark_pixel"] :is(.brand, h1, h2) {
+  letter-spacing: 0.01em;
+}
+:root[data-font-scope="all"][data-font-preset] body {
+  line-height: 1.65;
+}
+
+/* ==========================================================================
+   1. MC Overworld Biomes (Light = Surface, Dark = Underground)
+   ========================================================================== */
+
+/* Plains (Surface: Plains & Grass) <-> Mineshaft (Underground: Deepslate & Ores) */
 :root[data-theme-pack="plains"]:not([data-theme="dark"]) {
-  --bg: #f4f6fa;
+  --bg: #f2f7ec;
   --panel: #ffffff;
-  --ink: #2d401f;
-  --muted: #517737;
-  --border: #c9d4b0;
-  --accent: #4f742b;
-  --accent-hover: #426224;
-  --accent-soft: #e8f2dc;
-  --subtle: #f8fafc;
-  --checker: #edf0f5;
+  --ink: #1f2e17;
+  --muted: #4b633d;
+  --border: #c5d6b4;
+  --accent: #3d6e22;
+  --accent-hover: #315a1b;
+  --accent-soft: #e6f2d9;
+  --subtle: #f7faf3;
+  --checker: #e8efe0;
+  --button-text: #ffffff;
   --error: #b33240;
   --error-bg: #fff1f2;
+  --mc-sky-top: #cfe9fc;
+  --mc-sky-bottom: #e8f5e0;
+  --mc-strata-tint: #232830;
 }
-
 :root[data-theme="dark"][data-theme-pack="plains"] {
-  --bg: #1a1f15;
-  --panel: #252d1e;
-  --ink: #e8f2dc;
-  --muted: #91bd59;
-  --border: #3a5228;
-  --accent: #91bd59;
-  --accent-hover: #a4c76d;
-  --accent-soft: #2d401f;
-  --subtle: #2d401f;
-  --checker: #3a5228;
+  --bg: #13161b;
+  --panel: #1b2028;
+  --ink: #e8eef4;
+  --muted: #9fb0c2;
+  --border: #323c4a;
+  --accent: #56c2d6;
+  --accent-hover: #74d3e4;
+  --accent-soft: #1a333c;
+  --subtle: #222832;
+  --checker: #2a323e;
+  --button-text: #0c171b;
+  --error: #ffadb5;
+  --error-bg: #422630;
+  --mc-sky-top: #1c222b;
+  --mc-sky-bottom: #13161b;
+  --mc-strata-tint: #0c0e12;
 }
 
-/* 雪原 Snowy */
+/* Snowy (Surface: Frozen Peaks & Ice Spikes) <-> Ice Caves (26.4 Ice Crystals & Calcite) */
 :root[data-theme-pack="snowy"]:not([data-theme="dark"]) {
-  --bg: #f0f7fb;
+  --bg: #edf5fb;
   --panel: #ffffff;
-  --ink: #2d3f50;
-  --muted: #3e7293;
-  --border: #c0dde8;
-  --accent: #326b92;
-  --accent-hover: #285b7f;
-  --accent-soft: #e8f5fd;
-  --subtle: #f8fcfe;
-  --checker: #edf4f8;
+  --ink: #192b3a;
+  --muted: #42647e;
+  --border: #bfd8ea;
+  --accent: #1f628c;
+  --accent-hover: #174f72;
+  --accent-soft: #e3f2fc;
+  --subtle: #f5fafd;
+  --checker: #e5eff7;
+  --button-text: #ffffff;
   --error: #b33240;
   --error-bg: #fff1f2;
+  --mc-sky-top: #d4ecfc;
+  --mc-sky-bottom: #eef7fc;
+  --mc-strata-tint: #132c40;
 }
-
 :root[data-theme="dark"][data-theme-pack="snowy"] {
-  --bg: #151d23;
-  --panel: #1e2a33;
-  --ink: #e8f5fd;
-  --muted: #7fb4d9;
-  --border: #2d3f50;
-  --accent: #7fb4d9;
-  --accent-hover: #95c4e3;
-  --accent-soft: #1a3545;
-  --subtle: #1a3545;
-  --checker: #2d3f50;
+  --bg: #0a1520;
+  --panel: #122130;
+  --ink: #e7f4fc;
+  --muted: #93bcd6;
+  --border: #254059;
+  --accent: #6ad2f5;
+  --accent-hover: #8edef9;
+  --accent-soft: #15364a;
+  --subtle: #182b3d;
+  --checker: #20374d;
+  --button-text: #081822;
+  --error: #ffadb5;
+  --error-bg: #422630;
+  --mc-sky-top: #10263a;
+  --mc-sky-bottom: #0a1520;
+  --mc-strata-tint: #060e16;
 }
 
-/* 丛林 Jungle */
+/* Jungle (Surface: Tropical Rainforest) <-> Lush Caves (Moss, Dripleaf & Spore Blossom) */
 :root[data-theme-pack="jungle"]:not([data-theme="dark"]) {
-  --bg: #f2f8ef;
+  --bg: #eef7eb;
   --panel: #ffffff;
-  --ink: #1d3315;
-  --muted: #3a7a24;
-  --border: #b8d4a8;
-  --accent: #34751f;
-  --accent-hover: #2b6419;
-  --accent-soft: #e6f5e0;
-  --subtle: #f8fcf6;
-  --checker: #edf4ea;
+  --ink: #192d14;
+  --muted: #3d6433;
+  --border: #b8d5ac;
+  --accent: #256d1b;
+  --accent-hover: #1d5815;
+  --accent-soft: #e2f4dc;
+  --subtle: #f5faf3;
+  --checker: #e4f0df;
+  --button-text: #ffffff;
   --error: #b33240;
   --error-bg: #fff1f2;
+  --mc-sky-top: #c7ecd9;
+  --mc-sky-bottom: #e7f6e2;
+  --mc-strata-tint: #1b2a19;
 }
-
 :root[data-theme="dark"][data-theme-pack="jungle"] {
-  --bg: #15210f;
-  --panel: #1d3315;
-  --ink: #e6f5e0;
-  --muted: #59c93c;
-  --border: #2a4a1e;
-  --accent: #59c93c;
-  --accent-hover: #6fd94f;
-  --accent-soft: #1d3315;
-  --subtle: #1d3315;
-  --checker: #2a4a1e;
+  --bg: #101911;
+  --panel: #18261a;
+  --ink: #e8f4e4;
+  --muted: #9ec096;
+  --border: #2e482f;
+  --accent: #8cc63f;
+  --accent-hover: #a2d75b;
+  --accent-soft: #23381b;
+  --subtle: #203122;
+  --checker: #293e2b;
+  --button-text: #101a0c;
+  --error: #ffadb5;
+  --error-bg: #422630;
+  --mc-sky-top: #192d1b;
+  --mc-sky-bottom: #101911;
+  --mc-strata-tint: #0a110b;
 }
 
-/* 沙漠 Desert */
+/* Desert (Surface: Sand & Sandstone) <-> Desert Temple Chamber & Archaeology */
 :root[data-theme-pack="desert"]:not([data-theme="dark"]) {
-  --bg: #f7f3ee;
+  --bg: #f9f4e8;
   --panel: #ffffff;
-  --ink: #3a2f22;
-  --muted: #8a6840;
-  --border: #ddc391;
-  --accent: #896334;
-  --accent-hover: #765329;
-  --accent-soft: #f5ede0;
-  --subtle: #fdfbf8;
-  --checker: #f5ede0;
+  --ink: #332618;
+  --muted: #70573d;
+  --border: #dfcca8;
+  --accent: #945218;
+  --accent-hover: #7b4211;
+  --accent-soft: #f7ebda;
+  --subtle: #fcf9f2;
+  --checker: #f0e6d2;
+  --button-text: #ffffff;
   --error: #b33240;
   --error-bg: #fff1f2;
+  --mc-sky-top: #fbe6c2;
+  --mc-sky-bottom: #f9f3e4;
+  --mc-strata-tint: #312116;
 }
-
 :root[data-theme="dark"][data-theme-pack="desert"] {
-  --bg: #1f1a13;
-  --panel: #2f261b;
-  --ink: #f5ede0;
-  --muted: #c9a975;
-  --border: #4a3d2e;
-  --accent: #c9a975;
-  --accent-hover: #dab888;
-  --accent-soft: #3a2f22;
-  --subtle: #3a2f22;
-  --checker: #4a3d2e;
+  --bg: #1a140f;
+  --panel: #261e17;
+  --ink: #f7efe5;
+  --muted: #c9af92;
+  --border: #4a3a2b;
+  --accent: #ec954d;
+  --accent-hover: #f5ab6e;
+  --accent-soft: #3d2817;
+  --subtle: #30251c;
+  --checker: #3d3025;
+  --button-text: #1c1108;
+  --error: #ffadb5;
+  --error-bg: #422630;
+  --mc-sky-top: #2c2016;
+  --mc-sky-bottom: #1a140f;
+  --mc-strata-tint: #110c08;
 }
 
-/* ============================================================
-   地下洞穴 · 暗色模式
-   ============================================================ */
-
-/* 废弃矿井 Cave */
-:root[data-theme-pack="cave"]:not([data-theme="dark"]) {
-  --bg: #f4f6fa;
-  --panel: #ffffff;
-  --ink: #1a1a1a;
-  --muted: #636363;
-  --border: #b8b8b8;
-  --accent: #356c8e;
-  --accent-hover: #2b5c7b;
-  --accent-soft: #e8f3f9;
-  --subtle: #f8fafc;
-  --checker: #edf0f5;
-  --error: #b33240;
-  --error-bg: #fff1f2;
-}
-
-:root[data-theme="dark"][data-theme-pack="cave"] {
-  --bg: #0f0f0f;
-  --panel: #1a1a1a;
-  --ink: #e8e8e8;
-  --muted: #b4b4b4;
-  --border: #2a2a2a;
-  --accent: #4a8fb8;
-  --accent-hover: #5da4cc;
-  --accent-soft: #12232b;
-  --subtle: #1a1a1a;
-  --checker: #2a2a2a;
-}
-
-/* 冰洞 Ice Caves */
-:root[data-theme-pack="ice_caves"]:not([data-theme="dark"]) {
-  --bg: #f0f7fb;
-  --panel: #ffffff;
-  --ink: #1a3545;
-  --muted: #2d5f7a;
-  --border: #a4d4e8;
-  --accent: #326b92;
-  --accent-hover: #285b7f;
-  --accent-soft: #e8f5fd;
-  --subtle: #f8fcfe;
-  --checker: #edf4f8;
-  --error: #b33240;
-  --error-bg: #fff1f2;
-}
-
-:root[data-theme="dark"][data-theme-pack="ice_caves"] {
-  --bg: #0d1a20;
-  --panel: #1a2a33;
-  --ink: #e8f5fd;
-  --muted: #7fb4d9;
-  --border: #1a3545;
-  --accent: #7fb4d9;
-  --accent-hover: #95c4e3;
-  --accent-soft: #0d1a20;
-  --subtle: #1a3545;
-  --checker: #2d5f7a;
-}
-
-/* 繁茂洞穴 Lush Caves */
-:root[data-theme-pack="lush_caves"]:not([data-theme="dark"]) {
-  --bg: #f2f8ef;
-  --panel: #ffffff;
-  --ink: #1d3315;
-  --muted: #52771a;
-  --border: #b8d4a8;
-  --accent: #507815;
-  --accent-hover: #426411;
-  --accent-soft: #e6f5e0;
-  --subtle: #f8fcf6;
-  --checker: #edf4ea;
-  --error: #b33240;
-  --error-bg: #fff1f2;
-}
-
-:root[data-theme="dark"][data-theme-pack="lush_caves"] {
-  --bg: #15210f;
-  --panel: #223310;
-  --ink: #e6f5e0;
-  --muted: #94bb55;
-  --border: #3a5414;
-  --accent: #94bb55;
-  --accent-hover: #a8ce6c;
-  --accent-soft: #1d3315;
-  --subtle: #1d3315;
-  --checker: #3a5414;
-}
-
-/* 沙漠神殿 Desert Temple */
-:root[data-theme-pack="desert_temple"]:not([data-theme="dark"]) {
-  --bg: #f7f3ee;
-  --panel: #ffffff;
-  --ink: #3a2f22;
-  --muted: #8a6840;
-  --border: #ddc391;
-  --accent: #ae501c;
-  --accent-hover: #963f12;
-  --accent-soft: #fef3e8;
-  --subtle: #fdfbf8;
-  --checker: #f5ede0;
-  --error: #b33240;
-  --error-bg: #fff1f2;
-}
-
-:root[data-theme="dark"][data-theme-pack="desert_temple"] {
-  --bg: #1f1a13;
-  --panel: #2f261b;
-  --ink: #fef3e8;
-  --muted: #ed975f;
-  --border: #4a3d2e;
-  --accent: #ed975f;
-  --accent-hover: #f5af7e;
-  --accent-soft: #3a2f22;
-  --subtle: #3a2f22;
-  --checker: #4a3d2e;
-}
-
-/* ============================================================
-   单色特别主题
-   ============================================================ */
-
-/* 樱花 Cherry */
+/* Cherry (Surface: Cherry Grove + Falling Petals) <-> Amethyst Geode */
 :root[data-theme-pack="cherry"]:not([data-theme="dark"]) {
-  --bg: #fef8fa;
+  --bg: #fdf4f7;
   --panel: #ffffff;
-  --ink: #4a1f2e;
-  --muted: #a85570;
-  --border: #f5d0dc;
-  --accent: #ae3e64;
-  --accent-hover: #963351;
-  --accent-soft: #fef3f6;
-  --subtle: #fffcfd;
-  --checker: #fef8fa;
+  --ink: #3d1b29;
+  --muted: #7e4b5f;
+  --border: #f0cad7;
+  --accent: #a8325c;
+  --accent-hover: #8f284c;
+  --accent-soft: #fcebf1;
+  --subtle: #fff9fb;
+  --checker: #f8e9ef;
+  --button-text: #ffffff;
   --error: #b33240;
   --error-bg: #fff1f2;
+  --mc-sky-top: #ffe0ec;
+  --mc-sky-bottom: #fdf4f7;
+  --mc-strata-tint: #2a183b;
 }
-
 :root[data-theme="dark"][data-theme-pack="cherry"] {
-  --bg: #201015;
-  --panel: #301820;
-  --ink: #fef3f6;
-  --muted: #f5a9b8;
-  --border: #4a1f2e;
-  --accent: #f5a9b8;
-  --accent-hover: #ffc0cc;
-  --accent-soft: #3a1523;
-  --subtle: #3a1523;
-  --checker: #4a1f2e;
+  --bg: #150e1e;
+  --panel: #21172f;
+  --ink: #f4ecfc;
+  --muted: #bca6d6;
+  --border: #412f5c;
+  --accent: #c692f7;
+  --accent-hover: #d8b2fa;
+  --accent-soft: #32204a;
+  --subtle: #2a1e3b;
+  --checker: #35274a;
+  --button-text: #160c21;
+  --error: #ffadb5;
+  --error-bg: #422630;
+  --mc-sky-top: #26183a;
+  --mc-sky-bottom: #150e1e;
+  --mc-strata-tint: #0d0814;
 }
 
-/* ============================================================
-   下界与末地
-   ============================================================ */
+/* ==========================================================================
+   2. MC Dimensions (Nether, End, Deep Dark)
+   ========================================================================== */
 
-/* 下界绯红 Nether Crimson */
-:root[data-theme-pack="nether_crimson"]:not([data-theme="dark"]) {
-  --bg: #f7f0f1;
+/* Nether (Light: Crimson Forest) <-> (Dark: Warped Forest) */
+:root[data-theme-pack="nether"]:not([data-theme="dark"]) {
+  --bg: #faf1f2;
   --panel: #ffffff;
-  --ink: #3a1e1a;
-  --muted: #8e2c3a;
-  --border: #e0b0b8;
-  --accent: #a34532;
-  --accent-hover: #8c3929;
-  --accent-soft: #fef0f2;
-  --subtle: #fffbfc;
-  --checker: #fef8f9;
+  --ink: #36191d;
+  --muted: #7c444c;
+  --border: #e4bcc2;
+  --accent: #9e2a3b;
+  --accent-hover: #82202f;
+  --accent-soft: #fbe8eb;
+  --subtle: #fdf7f8;
+  --checker: #f3e3e6;
+  --button-text: #ffffff;
   --error: #b33240;
   --error-bg: #fff1f2;
+  --mc-sky-top: #f2ccd1;
+  --mc-sky-bottom: #faf1f2;
+  --mc-strata-tint: #132e31;
+}
+:root[data-theme="dark"][data-theme-pack="nether"] {
+  --bg: #0a181b;
+  --panel: #112529;
+  --ink: #e6f6f7;
+  --muted: #8ec1c6;
+  --border: #214950;
+  --accent: #3ec4cb;
+  --accent-hover: #64d6dc;
+  --accent-soft: #13393e;
+  --subtle: #162f34;
+  --checker: #1e3d44;
+  --button-text: #06181a;
+  --error: #ffadb5;
+  --error-bg: #422630;
+  --mc-sky-top: #123036;
+  --mc-sky-bottom: #0a181b;
+  --mc-strata-tint: #060f11;
 }
 
-:root[data-theme="dark"][data-theme-pack="nether_crimson"] {
-  --bg: #1a0d0f;
-  --panel: #2a1518;
-  --ink: #fef0f2;
-  --muted: #e48a76;
-  --border: #3a1e1a;
-  --accent: #e48a76;
-  --accent-hover: #f1a390;
-  --accent-soft: #2a1518;
-  --subtle: #2a1518;
-  --checker: #3a1e1a;
-}
-
-/* 下界诡异 Nether Warped */
-:root[data-theme-pack="nether_warped"]:not([data-theme="dark"]) {
-  --bg: #f0f8f9;
+/* End (Light: End City Purpur & End Stone) <-> (Dark: Outer Void & Obsidian) */
+:root[data-theme-pack="end"]:not([data-theme="dark"]) {
+  --bg: #f6f3fa;
   --panel: #ffffff;
-  --ink: #0d5a5e;
-  --muted: #167e86;
-  --border: #b8e8ec;
-  --accent: #08757c;
-  --accent-hover: #066168;
-  --accent-soft: #e8f8f9;
-  --subtle: #f8fcfd;
-  --checker: #edf6f7;
+  --ink: #2c2238;
+  --muted: #65577a;
+  --border: #d5cae3;
+  --accent: #6c4687;
+  --accent-hover: #583770;
+  --accent-soft: #f0e8f7;
+  --subtle: #faf8fc;
+  --checker: #ece6f4;
+  --button-text: #ffffff;
   --error: #b33240;
   --error-bg: #fff1f2;
+  --mc-sky-top: #e8dff5;
+  --mc-sky-bottom: #f6f3fa;
+  --mc-strata-tint: #120d1c;
+}
+:root[data-theme="dark"][data-theme-pack="end"] {
+  --bg: #0c0a14;
+  --panel: #161224;
+  --ink: #f1ecfa;
+  --muted: #afa3c7;
+  --border: #332a4d;
+  --accent: #b896f0;
+  --accent-hover: #ccb2f7;
+  --accent-soft: #281e42;
+  --subtle: #1e1930;
+  --checker: #28223d;
+  --button-text: #120b1f;
+  --error: #ffadb5;
+  --error-bg: #422630;
+  --mc-sky-top: #1c1530;
+  --mc-sky-bottom: #0c0a14;
+  --mc-strata-tint: #07050c;
 }
 
-:root[data-theme="dark"][data-theme-pack="nether_warped"] {
-  --bg: #0a1f21;
-  --panel: #12282b;
-  --ink: #e8f8f9;
-  --muted: #52b8bf;
-  --border: #0d5a5e;
-  --accent: #52b8bf;
-  --accent-hover: #74cbd0;
-  --accent-soft: #143b40;
-  --subtle: #0d5a5e;
-  --checker: #167e86;
+/* Deep Dark (Dark-only: Ancient City & Sculk) */
+:root[data-theme-pack="deep_dark"] {
+  color-scheme: dark;
+  --bg: #061016;
+  --panel: #0c1c24;
+  --ink: #e4f3f6;
+  --muted: #7db4c0;
+  --border: #1b3a47;
+  --accent: #2cc5d4;
+  --accent-hover: #57d6e3;
+  --accent-soft: #10323e;
+  --subtle: #10242e;
+  --checker: #16303d;
+  --button-text: #041418;
+  --error: #ffadb5;
+  --error-bg: #422630;
+  --mc-sky-top: #0c212c;
+  --mc-sky-bottom: #061016;
+  --mc-strata-tint: #03090c;
 }
 
-/* 深暗之域 Deep Dark */
-:root[data-theme-pack="deep_dark"]:not([data-theme="dark"]) {
-  --bg: #f4f6fa;
-  --panel: #ffffff;
-  --ink: #0a1e27;
-  --muted: #1a2e37;
-  --border: #a8c8d2;
-  --accent: #08748a;
-  --accent-hover: #066176;
-  --accent-soft: #e8f3f6;
-  --subtle: #f8fcfd;
-  --checker: #edf4f7;
-  --error: #b33240;
-  --error-bg: #fff1f2;
+/* ==========================================================================
+   3. MC Community Styles (Official & Wiki - Authentic Layout + Control Polish)
+   ========================================================================== */
+
+/* Minecraft Official Style (minecraft.net / Ore UI cues) */
+:root[data-theme-pack="mc_official"] {
+  --radius-control: 2px;
+  --radius-card: 4px;
+  --radius-dialog: 6px;
 }
-
-:root[data-theme="dark"][data-theme-pack="deep_dark"] {
-  --bg: #050e12;
-  --panel: #0a1e27;
-  --ink: #e8f3f6;
-  --muted: #39b4c8;
-  --border: #1a2e37;
-  --accent: #39b4c8;
-  --accent-hover: #64c7d6;
-  --accent-soft: #0a1e27;
-  --subtle: #0a1e27;
-  --checker: #1a2e37;
-}
-
-/* 末地城 End City */
-:root[data-theme-pack="end_city"]:not([data-theme="dark"]) {
-  --bg: #f5f4f8;
-  --panel: #ffffff;
-  --ink: #3a2e45;
-  --muted: #7a6f8a;
-  --border: #d0c8dc;
-  --accent: #766282;
-  --accent-hover: #65526f;
-  --accent-soft: #f0edf5;
-  --subtle: #fdfcfe;
-  --checker: #f5f3f8;
-  --error: #b33240;
-  --error-bg: #fff1f2;
-}
-
-:root[data-theme="dark"][data-theme-pack="end_city"] {
-  --bg: #1a1520;
-  --panel: #2a1f33;
-  --ink: #f0edf5;
-  --muted: #a89fb8;
-  --border: #3a2e45;
-  --accent: #a89fb8;
-  --accent-hover: #bdb4cc;
-  --accent-soft: #2a1f33;
-  --subtle: #2a1f33;
-  --checker: #3a2e45;
-}
-
-/* 虚空 Void */
-:root[data-theme-pack="void"]:not([data-theme="dark"]) {
-  --bg: #f4f6fa;
-  --panel: #ffffff;
-  --ink: #0d4a5a;
-  --muted: #1a1a1a;
-  --border: #a8b8c0;
-  --accent: #3a3a3a;
-  --accent-hover: #2a2a2a;
-  --accent-soft: #f0f2f4;
-  --subtle: #f8fafc;
-  --checker: #edf0f5;
-  --error: #b33240;
-  --error-bg: #fff1f2;
-}
-
-:root[data-theme="dark"][data-theme-pack="void"] {
-  --bg: #0a0a0a;
-  --panel: #1a1a1a;
-  --ink: #e8e8e8;
-  --muted: #b4b4b4;
-  --border: #2a2a2a;
-  --accent: #b8b8bd;
-  --accent-hover: #d0d0d4;
-  --accent-soft: #1a1a1a;
-  --subtle: #1a1a1a;
-  --checker: #2a2a2a;
-}
-
-/* ============================================================
-   辅助主题
-   ============================================================ */
-
-/* Minecraft 官网配色 */
 :root[data-theme-pack="mc_official"]:not([data-theme="dark"]) {
-  --bg: #f2f2f2;
+  --bg: #f1f0ee;
   --panel: #ffffff;
-  --ink: #262626;
-  --muted: #646464;
-  --border: #d6d6d6;
-  --accent: #447326;
-  --accent-hover: #365d1e;
-  --accent-soft: #edf5e7;
-  --subtle: #f8f8f8;
-  --checker: #e8e8e8;
+  --ink: #1e1d1c;
+  --muted: #5a5754;
+  --border: #d0cdc8;
+  --accent: #3c8527;
+  --accent-hover: #4e9e35;
+  --accent-soft: #e6f2e1;
+  --subtle: #f7f6f4;
+  --checker: #e6e4e0;
+  --button-text: #ffffff;
   --error: #b33240;
   --error-bg: #fff1f2;
 }
-
 :root[data-theme="dark"][data-theme-pack="mc_official"] {
-  --bg: #111111;
-  --panel: #191919;
-  --ink: #eeeeee;
-  --muted: #b4b4b4;
-  --border: #3e3e3e;
-  --accent: #85c165;
-  --accent-hover: #a0d483;
-  --accent-soft: #253b1d;
-  --subtle: #222222;
-  --checker: #2a2a2a;
+  --bg: #171615;
+  --panel: #262423;
+  --ink: #f4f3f1;
+  --muted: #b8b4ae;
+  --border: #43403d;
+  --accent: #6bc349;
+  --accent-hover: #82d462;
+  --accent-soft: #22381c;
+  --subtle: #2f2d2b;
+  --checker: #383533;
+  --button-text: #101d0c;
   --error: #ffadb5;
   --error-bg: #422630;
 }
+:root[data-theme-pack="mc_official"] .topbar {
+  background: #171615;
+  color: #f4f3f1;
+  border-bottom: 3px solid #3c8527;
+}
+:root[data-theme-pack="mc_official"] .topbar :is(.brand, .topbar-link, .icon-button) {
+  color: #f4f3f1;
+}
+:root[data-theme-pack="mc_official"] .topbar .topbar-link:hover,
+:root[data-theme-pack="mc_official"] .topbar .topbar-link.active {
+  background: #2b2927;
+  color: #7ee05a;
+}
+:root[data-theme-pack="mc_official"] .topbar .icon-button:hover {
+  background: #2b2927;
+}
+:root[data-theme-pack="mc_official"] .primary-button {
+  background: #3c8527;
+  color: #ffffff;
+  border-color: #2a641c;
+  border-bottom-width: 3px;
+  border-bottom-color: #265c19;
+  box-shadow: inset 0 2px 0 #6bc349;
+  font-weight: 700;
+  letter-spacing: 0.02em;
+}
+:root[data-theme-pack="mc_official"] .primary-button:hover {
+  background: #4e9e35;
+}
+:root[data-theme-pack="mc_official"] .primary-button:active {
+  border-bottom-width: 1px;
+  box-shadow: inset 0 2px 0 #265c19;
+  transform: translateY(2px);
+}
+:root[data-theme-pack="mc_official"] :is(h1, h2, .brand) {
+  font-weight: 750;
+  letter-spacing: -0.02em;
+}
 
-/* Wiki 配色 */
+/* Minecraft Wiki Style (minecraft.wiki / Vector Encyclopedia cues) */
+:root[data-theme-pack="mc_wiki"] {
+  --radius-control: 2px;
+  --radius-card: 3px;
+  --radius-dialog: 4px;
+  --shadow-card: 0 1px 3px color-mix(in srgb, var(--shadow-ink) 8%, transparent);
+}
 :root[data-theme-pack="mc_wiki"]:not([data-theme="dark"]) {
-  --bg: #e6eff4;
+  --bg: #e7eff4;
   --panel: #ffffff;
   --ink: #202122;
   --muted: #54595d;
-  --border: #c8d6dd;
-  --accent: #4e7517;
-  --accent-hover: #416210;
-  --accent-soft: #edf5e2;
-  --subtle: #f8faf6;
-  --checker: #edf4ea;
+  --border: #a2a9b1;
+  --accent: #295bb5;
+  --accent-hover: #1d4691;
+  --accent-soft: #eaf1fb;
+  --subtle: #f8f9fa;
+  --checker: #eaecf0;
+  --button-text: #ffffff;
   --error: #b33240;
   --error-bg: #fff1f2;
 }
-
 :root[data-theme="dark"][data-theme-pack="mc_wiki"] {
-  --bg: #202020;
-  --panel: #303030;
+  --bg: #1a1c1e;
+  --panel: #25282b;
   --ink: #eaecf0;
-  --muted: #c8ccd1;
-  --border: #54595d;
-  --accent: #b0d780;
-  --accent-hover: #c7e8a1;
-  --accent-soft: #33482a;
-  --subtle: #272727;
-  --checker: #3a3a3a;
+  --muted: #b0b7be;
+  --border: #4d545c;
+  --accent: #69b1ff;
+  --accent-hover: #8cc4ff;
+  --accent-soft: #1f334a;
+  --subtle: #2e3236;
+  --checker: #363b40;
+  --button-text: #0b1624;
   --error: #ffadb5;
   --error-bg: #422630;
+}
+:root[data-theme-pack="mc_wiki"] .topbar {
+  background: linear-gradient(180deg, #43484c 0%, #34383b 100%);
+  color: #f4f6f8;
+  border-bottom: 3px solid #568a24;
+}
+:root[data-theme="dark"][data-theme-pack="mc_wiki"] .topbar {
+  background: linear-gradient(180deg, #272b2e 0%, #1d2022 100%);
+  border-bottom-color: #7ab53f;
+}
+:root[data-theme-pack="mc_wiki"] .topbar :is(.brand, .topbar-link, .icon-button) {
+  color: #f4f6f8;
+}
+:root[data-theme-pack="mc_wiki"] .topbar .topbar-link:hover,
+:root[data-theme-pack="mc_wiki"] .topbar .topbar-link.active {
+  background: rgba(255, 255, 255, 0.14);
+  color: #ffffff;
+}
+:root[data-theme-pack="mc_wiki"] .topbar .icon-button:hover {
+  background: rgba(255, 255, 255, 0.14);
+}
+:root[data-theme-pack="mc_wiki"] .panel-title {
+  background: var(--subtle);
+  border-bottom: 1px solid var(--border);
+  padding-block: 14px;
+}
+:root[data-theme-pack="mc_wiki"] :is(.text-button, .download-link, .homepage-feature a, .homepage-library-link, .notice-content a) {
+  color: var(--accent);
+}
+:root[data-theme-pack="mc_wiki"] .sidebar {
+  background: var(--subtle);
+}
+
+/* ==========================================================================
+   4. Universal Themes (Nord, Paper, High Contrast)
+   ========================================================================== */
+
+/* Nord */
+:root[data-theme-pack="nord"]:not([data-theme="dark"]) {
+  --bg: #eceff4;
+  --panel: #ffffff;
+  --ink: #2e3440;
+  --muted: #4c566a;
+  --border: #d0d7e2;
+  --accent: #4c6d99;
+  --accent-hover: #3f5c82;
+  --accent-soft: #e4ebf4;
+  --subtle: #f5f7fa;
+  --checker: #e5e9f0;
+  --button-text: #ffffff;
+  --error: #bf4450;
+  --error-bg: #fdf0f1;
+}
+:root[data-theme="dark"][data-theme-pack="nord"] {
+  --bg: #242933;
+  --panel: #2e3440;
+  --ink: #eceff4;
+  --muted: #b8c2d4;
+  --border: #434c5e;
+  --accent: #88c0d0;
+  --accent-hover: #9ed0de;
+  --accent-soft: #364556;
+  --subtle: #353c4a;
+  --checker: #3b4252;
+  --button-text: #1c222b;
+  --error: #e89ca4;
+  --error-bg: #452930;
+}
+
+/* Paper (Warm Reading) */
+:root[data-theme-pack="paper"]:not([data-theme="dark"]) {
+  --bg: #f6f1e6;
+  --panel: #fffdf8;
+  --ink: #2b251e;
+  --muted: #695e52;
+  --border: #ddd3c2;
+  --accent: #8c4f24;
+  --accent-hover: #733f1b;
+  --accent-soft: #f5eadf;
+  --subtle: #faf6ed;
+  --checker: #eee7d8;
+  --button-text: #ffffff;
+  --error: #a6343d;
+  --error-bg: #fcf0ef;
+}
+:root[data-theme="dark"][data-theme-pack="paper"] {
+  --bg: #191612;
+  --panel: #24201a;
+  --ink: #efe8dc;
+  --muted: #bcae9c;
+  --border: #423a30;
+  --accent: #dba16a;
+  --accent-hover: #e7b585;
+  --accent-soft: #382a1d;
+  --subtle: #2c2720;
+  --checker: #363028;
+  --button-text: #1c140c;
+  --error: #f2a4ac;
+  --error-bg: #422629;
+}
+
+/* High Contrast (WCAG AAA-oriented accessibility) */
+:root[data-theme-pack="high_contrast"]:not([data-theme="dark"]) {
+  --bg: #ffffff;
+  --panel: #ffffff;
+  --ink: #000000;
+  --muted: #262626;
+  --border: #000000;
+  --accent: #0038a8;
+  --accent-hover: #00277a;
+  --accent-soft: #e6eeff;
+  --subtle: #f2f2f2;
+  --checker: #e0e0e0;
+  --button-text: #ffffff;
+  --error: #9e001c;
+  --error-bg: #ffe6ea;
+}
+:root[data-theme="dark"][data-theme-pack="high_contrast"] {
+  --bg: #000000;
+  --panel: #0a0a0a;
+  --ink: #ffffff;
+  --muted: #e0e0e0;
+  --border: #ffffff;
+  --accent: #6ec1ff;
+  --accent-hover: #9ad4ff;
+  --accent-soft: #00294d;
+  --subtle: #141414;
+  --checker: #222222;
+  --button-text: #000000;
+  --error: #ff8a99;
+  --error-bg: #3d000c;
+}
+:root[data-theme-pack="high_contrast"] :is(.panel, .material-card, .secondary-button, input, select, textarea, .app-modal, .account-menu, .notice-popover) {
+  border-width: 2px;
+}
+:root[data-theme-pack="high_contrast"] :is(button, a, input, select, textarea):focus-visible {
+  outline: 3px solid var(--accent);
+  outline-offset: 3px;
+}
+
+/* ==========================================================================
+   5. Shared MC Biome Craft (Pixel Block Trim, Press Depth, Strata & Petals)
+   ========================================================================== */
+:root[data-mc-biome="1"] {
+  --radius-control: 4px;
+  --radius-card: 8px;
+  --radius-dialog: 12px;
+}
+
+/* Crisp pixel block trim along the bottom of topbar */
+:root[data-mc-biome="1"] .topbar {
+  position: sticky;
+  border-bottom: 0;
+  padding-bottom: 6px;
+}
+:root[data-mc-biome="1"] .topbar::after {
+  content: "";
+  position: absolute;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  height: 6px;
+  background-image: var(--mc-tex-trim);
+  background-repeat: repeat-x;
+  background-size: 24px 24px;
+  background-position: 0 0;
+  image-rendering: pixelated;
+  pointer-events: none;
+  border-top: 1px solid color-mix(in srgb, var(--shadow-ink) 16%, transparent);
+}
+
+/* Subtle tactile Minecraft press bevel on primary buttons */
+:root[data-mc-biome="1"] .primary-button {
+  box-shadow: inset 0 2px 0 color-mix(in srgb, #ffffff 22%, transparent), inset 0 -3px 0 color-mix(in srgb, #000000 26%, transparent);
+}
+:root[data-mc-biome="1"] .primary-button:active {
+  box-shadow: inset 0 2px 0 color-mix(in srgb, #000000 20%, transparent);
+  transform: translateY(1px);
+}
+
+/* Bedrock / foundation block strip above footer */
+:root[data-mc-biome="1"] .site-footer {
+  position: relative;
+  margin-top: 32px;
+  padding-top: 24px;
+}
+:root[data-mc-biome="1"] .site-footer::before {
+  content: "";
+  position: absolute;
+  left: 0;
+  right: 0;
+  top: 0;
+  height: 8px;
+  border-radius: var(--radius-control);
+  background-image: var(--mc-tex-footer);
+  background-repeat: repeat-x;
+  background-size: 24px 24px;
+  image-rendering: pixelated;
+  opacity: 0.9;
+  pointer-events: none;
+}
+
+/* Subtle workspace margin pattern (content panels stay clean and readable) */
+:root[data-mc-biome="1"] .workspace-layout::before {
+  content: "";
+  position: fixed;
+  inset: 0;
+  z-index: -1;
+  background-image: var(--mc-tex-surface);
+  background-size: 32px 32px;
+  image-rendering: pixelated;
+  opacity: 0.045;
+  pointer-events: none;
+}
+
+/* Homepage Strata Scroll (Surface -> Subsoil -> Deep Underground -> Bedrock) */
+.homepage-surface.mc-strata {
+  position: relative;
+  overflow: hidden;
+  background: linear-gradient(
+    180deg,
+    var(--mc-sky-top, var(--bg)) 0%,
+    var(--mc-sky-bottom, var(--bg)) 34%,
+    color-mix(in srgb, var(--bg) 78%, var(--mc-strata-tint, var(--subtle))) 68%,
+    color-mix(in srgb, var(--bg) 52%, var(--mc-strata-tint, var(--subtle))) 100%
+  );
+}
+.homepage-strata-backdrop {
+  position: absolute;
+  inset: 0;
+  pointer-events: none;
+  z-index: 0;
+  display: grid;
+  grid-template-rows: 1.25fr 0.85fr 1fr 0.65fr;
+  transform: translateY(calc(var(--strata-progress, 0) * -18px));
+  will-change: transform;
+}
+.homepage-strata-layer {
+  position: relative;
+  background-repeat: repeat;
+  background-size: 48px 48px;
+  image-rendering: pixelated;
+}
+.homepage-strata-layer.layer-1 {
+  background-image: var(--mc-tex-strata-1);
+  background-repeat: repeat-x;
+  background-position: 0 100%;
+  background-size: 48px 48px;
+  opacity: 0.24;
+  mask-image: linear-gradient(180deg, transparent 55%, #000 100%);
+  -webkit-mask-image: linear-gradient(180deg, transparent 55%, #000 100%);
+}
+.homepage-strata-layer.layer-2 {
+  background-image: var(--mc-tex-strata-2);
+  opacity: 0.14;
+  mask-image: linear-gradient(180deg, #000 0%, rgba(0, 0, 0, 0.75) 80%, transparent 100%);
+  -webkit-mask-image: linear-gradient(180deg, #000 0%, rgba(0, 0, 0, 0.75) 80%, transparent 100%);
+}
+.homepage-strata-layer.layer-3 {
+  background-image: var(--mc-tex-strata-3);
+  opacity: 0.16;
+  mask-image: linear-gradient(180deg, transparent 0%, #000 20%, #000 85%, transparent 100%);
+  -webkit-mask-image: linear-gradient(180deg, transparent 0%, #000 20%, #000 85%, transparent 100%);
+}
+.homepage-strata-layer.layer-4 {
+  background-image: var(--mc-tex-strata-4);
+  opacity: 0.2;
+  mask-image: linear-gradient(180deg, transparent 0%, #000 30%, #000 100%);
+  -webkit-mask-image: linear-gradient(180deg, transparent 0%, #000 30%, #000 100%);
+}
+.homepage-surface.mc-strata .homepage-content {
+  position: relative;
+  z-index: 1;
+}
+.homepage-surface.mc-strata .homepage-cta {
+  background: color-mix(in srgb, var(--panel) 90%, transparent);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-card);
+}
+.homepage-surface.mc-strata .homepage-intro {
+  max-width: none;
+  background: color-mix(in srgb, var(--panel) 84%, transparent);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-card);
+  padding: 36px 36px 40px;
+  box-shadow: var(--shadow-card);
+}
+@media (max-width: 700px) {
+  .homepage-surface.mc-strata .homepage-intro {
+    padding: 24px 20px 28px;
+  }
+}
+
+/* Cherry Blossom Petals (Light mode only, disabled under reduced-motion) */
+.cherry-petals {
+  position: absolute;
+  inset: 0;
+  overflow: hidden;
+  pointer-events: none;
+  z-index: 1;
+}
+.cherry-petal {
+  position: absolute;
+  top: -16px;
+  width: 10px;
+  height: 8px;
+  background: #f5adc4;
+  border-radius: 60% 20% 60% 20%;
+  opacity: 0.72;
+  animation: cherry-fall var(--petal-dur, 11s) linear infinite;
+  animation-delay: var(--petal-delay, 0s);
+  left: var(--petal-left, 10%);
+}
+.cherry-petal:nth-child(even) {
+  width: 8px;
+  height: 6px;
+  background: #fbd0df;
+}
+@keyframes cherry-fall {
+  0% { transform: translate3d(0, -16px, 0) rotate(0deg); opacity: 0; }
+  12% { opacity: 0.78; }
+  85% { opacity: 0.65; }
+  100% { transform: translate3d(72px, 560px, 0) rotate(240deg); opacity: 0; }
+}
+
+/* Footer Minecraft unofficial compliance note */
+.footer-mc-disclaimer {
+  display: block;
+  margin-top: 6px;
+  font-size: var(--font-small);
+  color: var(--muted);
+  opacity: 0.9;
+}
+
+/* ==========================================================================
+   6. Appearance Settings Theme Grid, Font Controls & Resource Pack Importer
+   ========================================================================== */
+.theme-pack-picker {
+  display: grid;
+  gap: 20px;
+  margin: 18px 0 24px;
+}
+.theme-pack-group h4 {
+  font-size: var(--font-small);
+  font-weight: 600;
+  color: var(--muted);
+  margin: 0 0 10px;
+}
+.theme-pack-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(195px, 1fr));
+  gap: 10px;
+}
+.theme-pack-card {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  padding: 12px;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-card);
+  background: var(--panel);
+  color: var(--ink);
+  text-align: left;
+  transition: border-color 150ms ease, background-color 150ms ease, transform 150ms ease;
+}
+.theme-pack-card:hover {
+  border-color: var(--accent);
+  background: var(--subtle);
+}
+.theme-pack-card.selected {
+  border-color: var(--accent);
+  background: var(--accent-soft);
+  box-shadow: inset 0 0 0 1px var(--accent);
+}
+.theme-pack-swatches {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  height: 22px;
+  border-radius: var(--radius-control);
+  overflow: hidden;
+  border: 1px solid color-mix(in srgb, var(--border) 80%, transparent);
+}
+.theme-pack-swatch-half {
+  display: flex;
+  align-items: center;
+  justify-content: flex-end;
+  padding: 0 6px;
+}
+.theme-pack-swatch-dot {
+  width: 10px;
+  height: 10px;
+  border-radius: calc(var(--radius-control) / 2);
+}
+.theme-pack-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+}
+.theme-pack-head strong {
+  font-size: var(--font-body);
+  font-weight: 600;
+}
+.theme-pack-badge {
+  font-size: var(--font-small);
+  color: var(--accent);
+  background: var(--accent-soft);
+  padding: 1px 6px;
+  border-radius: var(--radius-control);
+  white-space: nowrap;
+}
+.theme-pack-scenes {
+  font-size: var(--font-small);
+  color: var(--muted);
+  line-height: 1.5;
+}
+
+.theme-resource-box {
+  margin-top: 24px;
+  padding: 20px;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-card);
+  background: var(--subtle);
+  display: grid;
+  gap: 14px;
+}
+.theme-resource-box h4 {
+  margin: 0;
+  font-size: var(--font-body);
+  font-weight: 650;
+}
+.theme-resource-box p {
+  font-size: var(--font-small);
+  color: var(--muted);
+  line-height: 1.7;
+}
+.theme-tile-strip {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  align-items: center;
+}
+.theme-tile-sample {
+  width: 28px;
+  height: 28px;
+  border-radius: var(--radius-control);
+  border: 1px solid var(--border);
+  image-rendering: pixelated;
+  background: var(--panel);
+  object-fit: cover;
+}
+.theme-resource-actions {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 10px;
+}
+
+/* AccountMenu user theme/font preference controls */
+.account-menu-select {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+  padding: 8px;
+}
+.account-menu-select > span {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  min-width: 0;
+}
+.account-menu-select select {
+  min-width: 112px;
+  max-width: 132px;
+  padding: 6px;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-control);
+  background: var(--panel);
+  color: var(--ink);
+  font-size: var(--font-small);
+}
+.account-menu-note {
+  padding: 6px 8px;
+  font-size: var(--font-small);
+  color: var(--muted);
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .cherry-petals { display: none; }
+  .homepage-strata-backdrop { transform: none; }
+  :root[data-mc-biome="1"] .primary-button:active,
+  :root[data-theme-pack="mc_official"] .primary-button:active { transform: none; }
 }

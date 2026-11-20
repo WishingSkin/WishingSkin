@@ -14,7 +14,9 @@ import (
 	_ "image/jpeg"
 	"image/png"
 	"net/http"
+	"net/url"
 	"strings"
+	"unicode"
 	"unicode/utf8"
 
 	"github.com/microcosm-cc/bluemonday"
@@ -23,12 +25,16 @@ import (
 )
 
 type appearance struct {
-	LogoImage     string             `json:"logoImage"`
-	Accent        string             `json:"accent"`
-	DefaultTheme  string             `json:"defaultTheme"`
-	ThemePack     string             `json:"themePack"`
-	SurfaceEffect string             `json:"surfaceEffect"`
-	Advanced      advancedAppearance `json:"advanced"`
+	LogoImage      string             `json:"logoImage"`
+	Accent         string             `json:"accent"`
+	DefaultTheme   string             `json:"defaultTheme"`
+	ThemePack      string             `json:"themePack"`
+	SurfaceEffect  string             `json:"surfaceEffect"`
+	AllowUserTheme bool               `json:"allowUserTheme"`
+	FontPreset     string             `json:"fontPreset"`
+	FontScope      string             `json:"fontScope"`
+	CustomFontURL  string             `json:"customFontUrl,omitempty"`
+	Advanced       advancedAppearance `json:"advanced"`
 }
 
 func (a *Server) readSetting(ctx context.Context, key string, target any) (bool, error) {
@@ -60,10 +66,16 @@ func (a *Server) putSetting(ctx context.Context, tx *sql.Tx, key string, value a
 }
 
 func (a *Server) appearance(ctx context.Context) (appearance, error) {
-	value := appearance{Accent: "blue", DefaultTheme: "system", ThemePack: "default", SurfaceEffect: "solid"}
+	value := appearance{Accent: "blue", DefaultTheme: "system", ThemePack: "default", SurfaceEffect: "solid", FontPreset: "system", FontScope: "headings"}
 	_, err := a.readSetting(ctx, "site_appearance", &value)
-	if value.ThemePack == "" {
+	if !validThemePack(value.ThemePack) {
 		value.ThemePack = "default"
+	}
+	if !validFontPreset(value.FontPreset) {
+		value.FontPreset = "system"
+	}
+	if !validFontScope(value.FontScope) {
+		value.FontScope = "headings"
 	}
 	value.Advanced.localizeLegacyCopy()
 	return value, err
@@ -213,6 +225,25 @@ func (a *Server) updateAppearance(w http.ResponseWriter, r *http.Request) {
 		failure(w, 400, "主题包无效")
 		return
 	}
+	if body.FontPreset == "" {
+		body.FontPreset = "system"
+	}
+	if !validFontPreset(body.FontPreset) {
+		failure(w, 400, "字体预设无效")
+		return
+	}
+	if body.FontScope == "" {
+		body.FontScope = "headings"
+	}
+	if !validFontScope(body.FontScope) {
+		failure(w, 400, "字体应用范围无效")
+		return
+	}
+	body.CustomFontURL = strings.TrimSpace(body.CustomFontURL)
+	if !validCustomFontURL(body.CustomFontURL) {
+		failure(w, 400, "自定义字体地址须为 HTTPS 链接或以 / 开头的站内路径")
+		return
+	}
 	if !validAccent(body.Accent) || (body.DefaultTheme != "light" && body.DefaultTheme != "dark" && body.DefaultTheme != "system") {
 		failure(w, 400, "个性化设置无效")
 		return
@@ -252,6 +283,14 @@ func (a *Server) updateAppearance(w http.ResponseWriter, r *http.Request) {
 func (a *Server) registerCustomization() {
 	a.mux.HandleFunc("POST /api/admin/notice-preview", a.previewNotice)
 	a.mux.HandleFunc("PATCH /api/admin/appearance", a.updateAppearance)
+	a.mux.HandleFunc("GET /api/admin/theme-assets", a.adminThemeAssets)
+	a.mux.HandleFunc("POST /api/admin/theme-assets", a.uploadThemeAssets)
+	a.mux.HandleFunc("DELETE /api/admin/theme-assets", a.deleteThemeAssets)
+	a.mux.HandleFunc("GET /api/theme-assets/{version}/{key}", a.serveThemeAsset)
+	a.mux.HandleFunc("GET /api/admin/theme-font", a.adminThemeFont)
+	a.mux.HandleFunc("POST /api/admin/theme-font", a.uploadThemeFont)
+	a.mux.HandleFunc("DELETE /api/admin/theme-font", a.deleteThemeFont)
+	a.mux.HandleFunc("GET /api/theme-font/{version}", a.serveThemeFont)
 	a.mux.HandleFunc("PATCH /api/admin/homepage", a.updateHomepage)
 	a.mux.HandleFunc("GET /api/admin/homepage", a.adminHomepage)
 	a.mux.HandleFunc("GET /api/homepage/background", a.homepageBackgroundImage)
@@ -290,11 +329,43 @@ func validAccent(value string) bool {
 
 func validThemePack(value string) bool {
 	switch value {
-	case "default", "plains", "snowy", "jungle", "desert",
-		"cave", "ice_caves", "lush_caves", "desert_temple",
-		"cherry", "nether_crimson", "nether_warped", "deep_dark",
-		"end_city", "void", "mc_official", "mc_wiki":
+	case "default",
+		"plains", "snowy", "jungle", "desert", "cherry",
+		"nether", "end", "deep_dark",
+		"mc_official", "mc_wiki",
+		"nord", "paper", "high_contrast":
 		return true
 	}
 	return false
+}
+
+func validFontPreset(value string) bool {
+	switch value {
+	case "system", "monocraft", "fusion_pixel", "ark_pixel", "custom":
+		return true
+	}
+	return false
+}
+
+func validFontScope(value string) bool {
+	return value == "headings" || value == "all"
+}
+
+func validCustomFontURL(value string) bool {
+	if value == "" {
+		return true
+	}
+	if len(value) > 512 || strings.ContainsAny(value, "\"'()<>\\ \t\r\n") {
+		return false
+	}
+	for _, r := range value {
+		if unicode.IsControl(r) {
+			return false
+		}
+	}
+	if strings.HasPrefix(value, "/") {
+		return !strings.HasPrefix(value, "//") && !strings.Contains(value, "..")
+	}
+	parsed, err := url.Parse(value)
+	return err == nil && parsed.Scheme == "https" && parsed.Host != "" && parsed.User == nil
 }
