@@ -16,9 +16,12 @@
   --font-body:14px;
   --font-title:20px;
   --font-hero:40px;
+  --font-ui:"Microsoft YaHei UI","Microsoft YaHei","PingFang SC",system-ui,sans-serif;
+  --font-display:var(--font-ui);
   --radius-control:6px;
   --radius-card:12px;
   --radius-dialog:16px;
+  --ease-spring:linear(0, 0.012, 0.048, 0.105, 0.178, 0.264, 0.359, 0.459, 0.559, 0.656, 0.745, 0.824, 0.89, 0.943, 0.981, 1.007, 1.02, 1.024, 1.021, 1.015, 1.008, 1.002, 0.999, 0.998, 0.999, 1);
   --shadow-ink:#000;
   --shadow-card:0 2px 12px color-mix(in srgb,var(--shadow-ink) 6%,transparent);
   --shadow-overlay:0 12px 40px color-mix(in srgb,var(--shadow-ink) 20%,transparent);
