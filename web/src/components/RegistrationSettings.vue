@@ -36,7 +36,7 @@ async function submit() {
 <template>
   <section class="account-password registration-settings" aria-labelledby="registration-settings-title">
     <h3 id="registration-settings-title">{{ t('注册') }}</h3>
-    <p>{{ t('选择注册开放状态与邮箱验证方式。') }}</p>
+    <p>{{ t('配置注册开关、邮箱域名规则与验证方式。') }}</p>
     <form class="password-form registration-form" @submit.prevent="submit()">
       <label class="binding-field">
         <span>{{ t('注册模式') }}</span>

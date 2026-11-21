@@ -50,17 +50,17 @@ async function submit() {
       password.value = ''; confirmation.value = ''
       emit('completed', props.mode === 'verify' ? '邮箱已验证，请登录。' : '密码已重设，所有网页会话与游戏令牌已撤销。请用新密码登录。')
     } else {
-      message.value = props.mode === 'register' ? (props.site.manualEmailVerification ? '账号已创建，请等待管理员完成邮箱验证。' : '账号已创建，验证邮件已提交发送。请验证邮箱后登录。') : '如有符合条件的账号，邮件已提交发送，请检查邮箱。'
+      message.value = props.mode === 'register' ? (props.site.manualEmailVerification ? '账号已创建，请等待管理员完成审核激活。' : '账号已创建，验证邮件已发出，请查收并完成验证后登录。') : '若该邮箱已注册，相关邮件将很快送达，请留意收件箱。'
       if (props.mode === 'register') { password.value = ''; confirmation.value = '' }
     }
-  } catch { error.value = '无法确认操作结果，请检查邮箱或稍后重试。' }
+  } catch { error.value = '网络异常，请检查收件箱或稍后重试。' }
   finally { busy.value = false; if (props.mode === 'register') { challengeToken.value = ''; void challenge.value?.reset() } }
 }
 </script>
 
 <template>
   <section class="login-panel access-panel" aria-labelledby="access-title">
-    <div class="login-heading"><h2 id="access-title">{{ t(title) }}</h2><p>{{ mode === 'register' ? t(site.manualEmailVerification ? '创建账号后由管理员完成邮箱验证。' : '验证邮箱后即可使用工作台和游戏认证。') : mode === 'verify' ? t('确认后完成邮箱验证。') : mode === 'reset' ? t('重设后需要重新登录网页和启动器。') : t('选择邮件用途，输入账号邮箱。') }}</p></div>
+    <div class="login-heading"><h2 id="access-title">{{ t(title) }}</h2><p>{{ mode === 'register' ? t(site.manualEmailVerification ? '提交注册后，需等待管理员审核并激活账号。' : '完成邮箱验证后，即可使用工作台和游戏登录。') : mode === 'verify' ? t('点击下方按钮完成邮箱验证。') : mode === 'reset' ? t('重置密码后，网页与游戏启动器均需重新登录。') : t('选择邮件类型并输入你的注册邮箱。') }}</p></div>
     <p v-if="mode === 'register' && site.registration === 'closed'" class="notice" role="status">{{ t('注册当前已关闭') }}</p>
     <form v-else class="access-form" @submit.prevent="submit">
       <fieldset :disabled="busy">
@@ -74,7 +74,7 @@ async function submit() {
         </template>
         <template v-if="mode === 'mail'">
           <label for="mail-purpose">{{ t('邮件用途') }}</label><select id="mail-purpose" v-model="purpose"><option value="verify">{{ t('验证邮箱') }}</option><option value="reset">{{ t('找回密码') }}</option></select>
-          <p class="password-rule">{{ purpose === 'verify' ? t('验证链接 24 小时内有效。') : t('找回链接 30 分钟内有效。') }} {{ t('成功重发会撤销同用途旧链接，请使用最新邮件。') }}</p>
+          <p class="password-rule">{{ purpose === 'verify' ? t('验证链接 24 小时内有效。') : t('找回链接 30 分钟内有效。') }} {{ t('重发后旧链接将失效，请以最新邮件为准。') }}</p>
         </template>
         <template v-if="mode === 'register' || mode === 'reset'">
           <p v-if="mode === 'register' && oidcRegistration" class="password-rule">{{ t('设置本站密码，用于 Minecraft 登录和账号恢复。') }}</p>

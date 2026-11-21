@@ -41,7 +41,7 @@ async function save() {
     const data = await response.json()
     if (!response.ok) { error.value = data.error || '暂时无法保存个人资料'; return }
     draft.value = data; message.value = '个人资料已保存。'; emit('updated')
-  } catch { error.value = '无法确认操作结果，请重新检查个人资料。' }
+  } catch { error.value = '网络异常，请刷新页面确认资料是否已保存。' }
   finally { busy.value = false }
 }
 onMounted(load)
@@ -53,7 +53,7 @@ onMounted(load)
       <label class="binding-field"><span>{{ t('昵称') }} <small>{{ length }}/64</small></span><input v-model="draft.nickname" required autocomplete="nickname" /></label>
       <label class="binding-field"><span>{{ t('头像来源') }}</span><select v-model="draft.avatarMode"><option value="default">{{ t('默认头像') }}</option><option value="upload">{{ t('上传图片') }}</option><option value="character">{{ t('跟随角色皮肤') }}</option></select></label>
       <template v-if="draft.avatarMode === 'upload'"><label class="binding-field"><span>{{ t('头像图片') }}</span><input type="file" accept="image/png,image/jpeg" @change="pick" /></label><img v-if="draft.avatarImage" class="profile-preview" :src="draft.avatarImage" :alt="t('头像预览')" width="64" height="64" /><p class="password-rule">{{ t('PNG 或 JPEG，最大 512 KiB、2048×2048；保存为 64×64 的正方形 PNG。') }}</p></template>
-      <template v-if="draft.avatarMode === 'character'"><label class="binding-field"><span>{{ t('用于头像的角色') }}</span><select v-model="draft.characterUUID" required><option value="" disabled>{{ t('请选择角色') }}</option><option v-if="draft.characterUUID && !characters.some(c => c.uuid === draft.characterUUID)" :value="draft.characterUUID" disabled>{{ t('原角色已不可用，请重新选择') }}</option><option v-for="c in characters" :key="c.uuid" :value="c.uuid">{{ c.name }}</option></select></label><p class="password-rule">{{ t('自动显示该角色当前皮肤的头部；无皮肤、角色删除或图片下架时使用默认头像。') }}</p></template>
+      <template v-if="draft.avatarMode === 'character'"><label class="binding-field"><span>{{ t('用于头像的角色') }}</span><select v-model="draft.characterUUID" required><option value="" disabled>{{ t('请选择角色') }}</option><option v-if="draft.characterUUID && !characters.some(c => c.uuid === draft.characterUUID)" :value="draft.characterUUID" disabled>{{ t('原角色已不可用，请重新选择') }}</option><option v-for="c in characters" :key="c.uuid" :value="c.uuid">{{ c.name }}</option></select></label><p class="password-rule">{{ t('自动截取所选角色的皮肤头像；若角色未穿戴皮肤或已删除，则回退为默认头像。') }}</p></template>
       <button class="primary-button" type="submit" :disabled="length < 1 || length > 64 || (draft.avatarMode === 'character' && !characters.some(c => c.uuid === draft.characterUUID))">{{ busy ? t('正在保存…') : t('保存个人资料') }}</button>
     </fieldset></form>
   </section>

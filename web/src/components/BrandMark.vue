@@ -4,8 +4,9 @@ defineProps<{ size?: number }>()
 <template>
   <svg
     class="brand-mark-svg"
-    :width="size || 30"
-    :height="size || 30"
+    :width="size || 36"
+    :height="size || 36"
+    :style="size ? { '--brand-mark-size': size + 'px' } : undefined"
     viewBox="0 0 64 64"
     fill="none"
     aria-hidden="true"

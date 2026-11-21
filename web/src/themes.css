@@ -583,7 +583,20 @@
 /* Wishing Cube BrandMark SVG (theme-adaptive isometric facets + wishing star) */
 .brand-mark-svg {
   display: block;
+  width: var(--brand-mark-size, 36px);
+  height: var(--brand-mark-size, 36px);
   flex-shrink: 0;
+}
+.topbar .brand-logo {
+  width: 36px;
+  height: 36px;
+}
+@media (max-width: 560px) {
+  .topbar .brand-mark-svg,
+  .topbar .brand-logo {
+    width: 30px;
+    height: 30px;
+  }
 }
 .brand-mark-svg .bm-shell {
   fill: color-mix(in srgb, var(--accent) 44%, #0f1020);

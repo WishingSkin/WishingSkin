@@ -34,7 +34,7 @@ onMounted(load)
 <template>
   <section class="integration-panel panel" :aria-label="t('游戏接入')">
     <h2>{{ t('游戏接入') }}</h2>
-    <p>{{ t('外置登录用于认证；CustomSkinLoader 与传统地址用于加载外观。按客户端说明选择一种方式。') }}</p>
+    <p>{{ t('使用 authlib-injector 进行游戏外置登录，或通过 CustomSkinLoader / 传统链接加载皮肤和披风。') }}</p>
     <LoadingSkeleton v-if="busy" label="正在加载…" :count="2" />
     <div v-else-if="error"><button class="text-button" type="button" @click="load">{{ t('重试') }}</button></div>
     <template v-else-if="config">
@@ -42,9 +42,9 @@ onMounted(load)
         <label class="binding-field"><span>{{ t(item.label) }}</span><input :value="item.value" readonly spellcheck="false" /></label>
         <button class="secondary-button" type="button" :aria-label="t('复制{label}', { label: t(item.label) })" @click="copy(item.value)">{{ t('复制') }}</button>
       </div>
-      <p>{{ t('传统模板中的 {USERNAME} 替换为角色名。') }}</p>
+      <p>{{ t('使用传统链接模板时，请将 {USERNAME} 替换为游戏角色名。') }}</p>
       <button class="secondary-button" type="button" @click="download">{{ t('下载 CustomSkinLoader 配置') }}</button>
-      <p>{{ t('配置优先使用本站外观，再查询 Mojang。合并到现有配置前请先保留副本。') }}</p>
+      <p>{{ t('生成的配置会优先从本站加载外观，未命中时再回退至 Mojang。合并前建议备份原配置。') }}</p>
     </template>
   </section>
 </template>

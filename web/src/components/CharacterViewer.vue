@@ -142,10 +142,10 @@ async function initialize() {
     setView('reset')
   } catch (cause) {
     if (!mounted || run !== generation || request.signal.aborted) return
-    fail(phase === 'dependency' ? '3D 预览组件未能加载。请检查连接后重试，或查看下方 PNG 材质。'
-      : phase === 'webgl' ? '当前浏览器无法开启 3D 预览。可以重试，或查看下方 PNG 材质。'
+    fail(phase === 'dependency' ? '3D 预览组件加载失败，请检查网络后重试，或直接查看下方 PNG 原图。'
+      : phase === 'webgl' ? '当前浏览器暂不支持 WebGL 3D 预览，请查看下方 PNG 原图。'
       : cause instanceof Error && cause.message.includes('材质无法加载') ? cause.message
-      : '材质无法用于 3D 预览。请查看下方 PNG 文件，或重试预览。')
+      : '该材质暂无法进行 3D 预览，请重试或查看下方 PNG 原图。')
   } finally {
     for (const bitmap of bitmaps) bitmap.close()
   }

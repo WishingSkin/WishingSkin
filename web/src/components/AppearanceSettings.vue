@@ -402,7 +402,7 @@ defineExpose({ draft, dirty, busy: computed(() => busy.value || imageBusy.value 
               {{ t('当前已导入 {source}（共 {count} 张方块贴图）。原始文件不会保留在服务器。', { source: themeAssets.sourceName || 'Minecraft pack', count: themeAssets.count }) }}
             </p>
             <p v-else>
-              {{ t('当前使用内置原创像素纹理。上传 Minecraft 客户端 client.jar 或任意资源包 .zip 后，系统会自动提取原版方块并按群系染色。') }}
+              {{ t('当前使用内置像素纹理。上传 Minecraft 客户端 client.jar 或资源包 .zip 后，将自动提取原版方块与粒子贴图并按群系染色，原始文件不会留在服务器。') }}
             </p>
             <div class="theme-tile-strip" :aria-label="t('方块贴图预览')">
               <img

@@ -64,7 +64,7 @@ async function load() {
     total.value = data.total
     if (page.value > 1 && !data.textures.length) { page.value = Math.max(1, Math.ceil(data.total / 24)); void load() }
   } catch {
-    if (!controller.signal.aborted) loadError.value = props.mode === 'library' ? '公开库暂时无法加载，请重试。' : '衣柜暂时无法加载，请重试。'
+    if (!controller.signal.aborted) loadError.value = props.mode === 'library' ? '公开库加载失败，请重试。' : '衣柜加载失败，请重试。'
   } finally {
     if (request === controller) loading.value = false
   }
@@ -123,8 +123,8 @@ onBeforeUnmount(() => { active = false; request?.abort(); lifetime.abort() })
       <section class="material-library panel" :aria-label="mode === 'library' ? t('公开材质列表') : t('收藏列表')" :aria-busy="pending">
         <div class="panel-title"><h2>{{ mode === 'library' ? t('公开材质') : t('收藏的材质') }}</h2><span>{{ t('{count} 份材质', { count: total }) }}</span></div>
         <LoadingSkeleton v-if="pending" layout="cards" label="正在加载材质…" :count="6" />
-        <div v-else-if="error" class="empty-state" role="alert"><h2>{{ t("暂时没有加载出来") }}</h2><button class="secondary-button" type="button" @click="load">{{ t("重新加载") }}</button></div>
-        <div v-else-if="!items.length" class="empty-state"><span class="empty-symbol"><AppIcon name="library" /></span><h2>{{ mode === 'library' ? t('没有找到公开材质') : t('衣柜还是空的') }}</h2><p>{{ mode === 'library' ? t('试试其他名称或类型，或稍后再来看看。') : t('前往公开库，或在我的材质中收藏一份皮肤或披风。') }}</p></div>
+        <div v-else-if="error" class="empty-state" role="alert"><h2>{{ t("加载失败") }}</h2><button class="secondary-button" type="button" @click="load">{{ t("重新加载") }}</button></div>
+        <div v-else-if="!items.length" class="empty-state"><span class="empty-symbol"><AppIcon name="library" /></span><h2>{{ mode === 'library' ? t('没有找到公开材质') : t('衣柜还是空的') }}</h2><p>{{ mode === 'library' ? t('换个关键词或筛选条件试试。') : t('去公开库逛逛，或把你上传的皮肤和披风加入衣柜。') }}</p></div>
         <div v-else class="material-cards"><button v-for="item in items" :key="item.id" type="button" class="material-card" :class="{ selected: item.id === selectedId }" :aria-pressed="item.id === selectedId" @click="selectedId = item.id"><ModelThumbnail class="material-thumbnail" :name="label(item)" :model="item.kind === 'skin' ? item.model : 'default'" :skin-hash="item.kind === 'skin' ? item.fileHash : ''" :cape-hash="item.kind === 'cape' ? item.fileHash : ''" /><span class="material-card-copy"><strong>{{ label(item) }}</strong><span>{{ item.kind === 'cape' ? t('披风') : item.model === 'slim' ? t('纤细手臂') : t('标准手臂') }}<small>{{ item.public ? t('{count} 人收藏', { count: item.collectionCount }) : t('未公开') }}</small></span></span></button></div>
         <nav v-if="total > 24" class="library-pagination" :aria-label="t('公开库分页')"><button class="secondary-button" type="button" :disabled="pending || page === 1" @click="changePage(page - 1)">{{ t("上一页") }}</button><span>{{ t('第 {page} / {total} 页', { page, total: Math.ceil(total / 24) }) }}</span><button class="secondary-button" type="button" :disabled="pending || page * 24 >= total" @click="changePage(page + 1)">{{ t("下一页") }}</button></nav>
       </section>
