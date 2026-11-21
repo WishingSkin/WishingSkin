@@ -73,6 +73,9 @@ func assertEmbeddedSchemasAgree(t *testing.T, migration string) {
 		if migration == "021_oauth_extensions" {
 			source = strings.ReplaceAll(source, "MODIFY COLUMN credential_hash TEXT NOT NULL", "ALTER COLUMN credential_hash TYPE TEXT")
 		}
+		if migration == "023_theme_assets" {
+			source = strings.ReplaceAll(source, "MODIFY COLUMN value MEDIUMTEXT NOT NULL", "ALTER COLUMN value TYPE TEXT")
+		}
 		source = extensionIndex.ReplaceAllString(source, "")
 		source = mysqlOptions.ReplaceAllString(source, "")
 		source = ownerIndex.ReplaceAllString(source, "")
@@ -93,6 +96,9 @@ func assertEmbeddedSchemasAgree(t *testing.T, migration string) {
 		tables = []string{"oauth_access_families", "oauth_refresh_metadata", "web_session_auth"}
 	}
 	if migration == "022_account_verification" {
+		tables = nil
+	}
+	if migration == "023_theme_assets" {
 		tables = nil
 	}
 	if migration == "019_admin_event_changes" {

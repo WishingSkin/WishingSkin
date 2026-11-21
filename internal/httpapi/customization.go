@@ -75,6 +75,7 @@ func (a *Server) putSetting(ctx context.Context, tx *sql.Tx, key string, value a
 func (a *Server) appearance(ctx context.Context) (appearance, error) {
 	value := appearance{Accent: "blue", DefaultTheme: "system", ThemePack: "default", SurfaceEffect: "solid", FontPreset: "system", FontScope: "headings"}
 	_, err := a.readSetting(ctx, "site_appearance", &value)
+	value.ThemePack = canonicalThemePack(value.ThemePack)
 	if !validThemePack(value.ThemePack) {
 		value.ThemePack = "default"
 	}
@@ -236,6 +237,7 @@ func (a *Server) updateAppearance(w http.ResponseWriter, r *http.Request) {
 	if body.ThemePack == "" {
 		body.ThemePack = "default"
 	}
+	body.ThemePack = canonicalThemePack(body.ThemePack)
 	if !validThemePack(body.ThemePack) {
 		failure(w, 400, "主题包无效")
 		return
@@ -352,6 +354,25 @@ func validThemePack(value string) bool {
 		return true
 	}
 	return false
+}
+
+func canonicalThemePack(value string) string {
+	switch value {
+	case "cave":
+		return "plains"
+	case "ice_caves":
+		return "snowy"
+	case "lush_caves":
+		return "jungle"
+	case "desert_temple":
+		return "desert"
+	case "nether_crimson", "nether_warped":
+		return "nether"
+	case "end_city", "void":
+		return "end"
+	default:
+		return value
+	}
 }
 
 func validFontPreset(value string) bool {

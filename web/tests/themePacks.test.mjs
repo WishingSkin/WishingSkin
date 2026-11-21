@@ -1,6 +1,6 @@
 import test from 'node:test'
 import assert from 'node:assert/strict'
-import { allThemePacks, isDarkOnlyTheme, isMCBiomeTheme, isMCFamilyTheme, themePackById } from '../src/themePacks.ts'
+import { allThemePacks, isDarkOnlyTheme, isMCBiomeTheme, isMCFamilyTheme, resolveUserThemePack, themePackById } from '../src/themePacks.ts'
 import { proceduralTileDataUrl, resolveTextureUrl } from '../src/themeTextures.ts'
 
 test('theme packs expose 14 paired themes with scenes and pixel particle profiles', () => {
@@ -23,6 +23,15 @@ test('theme packs expose 14 paired themes with scenes and pixel particle profile
     }
   }
   assert.ok(themePackById.high_contrast)
+})
+
+test('browser preferences for merged themes keep the corresponding biome', () => {
+  assert.equal(resolveUserThemePack('ice_caves'), 'snowy')
+  assert.equal(resolveUserThemePack('nether_warped'), 'nether')
+  assert.equal(resolveUserThemePack('end_city'), 'end')
+  assert.equal(resolveUserThemePack('mc_official'), 'mc_official')
+  assert.equal(resolveUserThemePack('unknown'), '')
+  assert.equal(resolveUserThemePack(null), '')
 })
 
 test('resolveTextureUrl prefers imported jar assets and falls back to procedural SVG tiles and pixel particles', () => {

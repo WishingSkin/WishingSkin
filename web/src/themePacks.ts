@@ -328,6 +328,23 @@ export const themePackNames: Record<string, string> = Object.fromEntries(
   allThemePacks.map(meta => [meta.value, meta.label]),
 )
 
+const legacyThemePacks: Readonly<Partial<Record<string, ThemePack>>> = {
+  cave: 'plains',
+  ice_caves: 'snowy',
+  lush_caves: 'jungle',
+  desert_temple: 'desert',
+  nether_crimson: 'nether',
+  nether_warped: 'nether',
+  end_city: 'end',
+  void: 'end',
+}
+
+export function resolveUserThemePack(value: string | null): ThemePack | '' {
+  if (!value) return ''
+  if (Object.hasOwn(themePackById, value)) return themePackById[value].value
+  return Object.hasOwn(legacyThemePacks, value) ? legacyThemePacks[value] ?? '' : ''
+}
+
 export function isDarkOnlyTheme(pack?: string): boolean {
   return Boolean(pack && themePackById[pack]?.darkOnly)
 }

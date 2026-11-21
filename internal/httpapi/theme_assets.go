@@ -19,6 +19,8 @@ import (
 	"sort"
 	"strings"
 	"time"
+
+	"wishingskin/internal/store"
 )
 
 const (
@@ -26,6 +28,9 @@ const (
 	maxThemeZipEntryBytes   = 2 << 20
 	maxThemeTextureDim      = 64
 	maxThemeAssetsJSONBytes = 4 << 20
+	maxThemePNGPixels       = 4 << 20
+	maxThemePackPixels      = 32 << 20
+	themeArchiveTimeout     = 3 * time.Minute
 )
 
 type storedThemeAssets struct {
@@ -36,13 +41,7 @@ type storedThemeAssets struct {
 	Textures   map[string]string `json:"textures"`
 }
 
-type publicThemeAssets struct {
-	Version    string   `json:"version"`
-	SourceName string   `json:"sourceName,omitempty"`
-	ImportedAt string   `json:"importedAt,omitempty"`
-	Count      int      `json:"count"`
-	Keys       []string `json:"keys"`
-}
+type publicThemeAssets = store.ThemeAssetsMetadata
 
 type tintSpec struct {
 	kind     string // "", "grass", "foliage", "fixed"
@@ -207,13 +206,13 @@ var allowedThemeTextureKeys = func() map[string]bool {
 	return m
 }()
 
-func (a *Server) themeAssets(ctx context.Context) (storedThemeAssets, error) {
-	var value storedThemeAssets
-	found, err := a.readSetting(ctx, "theme_assets", &value)
-	if err != nil || !found {
-		return storedThemeAssets{}, err
+func (a *Server) themeAssets(ctx context.Context) (publicThemeAssets, error) {
+	value := publicThemeAssets{Keys: []string{}}
+	_, err := a.readSetting(ctx, store.ThemeAssetsSetting, &value)
+	if value.Version == "" || len(value.Keys) == 0 {
+		return publicThemeAssets{Keys: []string{}}, err
 	}
-	return value, nil
+	return value, err
 }
 
 func summarizeThemeAssets(stored storedThemeAssets) publicThemeAssets {
@@ -240,12 +239,12 @@ func (a *Server) adminThemeAssets(w http.ResponseWriter, r *http.Request) {
 	if _, ok := a.adminRead(w, r); !ok {
 		return
 	}
-	stored, err := a.themeAssets(r.Context())
+	metadata, err := a.themeAssets(r.Context())
 	if err != nil {
 		failure(w, 503, "暂时无法读取主题材质资源")
 		return
 	}
-	respond(w, 200, summarizeThemeAssets(stored))
+	respond(w, 200, metadata)
 }
 
 func (a *Server) uploadThemeAssets(w http.ResponseWriter, r *http.Request) {
@@ -260,6 +259,10 @@ func (a *Server) uploadThemeAssets(w http.ResponseWriter, r *http.Request) {
 		failure(w, 429, "资源处理繁忙，请稍后重试")
 		return
 	}
+	controller := http.NewResponseController(w)
+	deadline := time.Now().Add(themeArchiveTimeout)
+	_ = controller.SetReadDeadline(deadline)
+	_ = controller.SetWriteDeadline(deadline.Add(30 * time.Second))
 	r.Body = http.MaxBytesReader(w, r.Body, maxThemeArchiveBytes+(1<<20))
 	reader, err := r.MultipartReader()
 	if err != nil {
@@ -325,7 +328,20 @@ func (a *Server) uploadThemeAssets(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	defer tx.Rollback()
-	err = a.putSetting(r.Context(), tx, "theme_assets", stored)
+	metadata := summarizeThemeAssets(stored)
+	ctx := r.Context()
+	_, err = tx.ExecContext(ctx, a.s.Bind("DELETE FROM settings WHERE setting_key LIKE ?"), store.ThemeTextureSettingPrefix+"%")
+	if err == nil {
+		for _, key := range metadata.Keys {
+			err = a.s.PutThemeAsset(ctx, tx, store.ThemeTextureSettingPrefix+key, metadata.Version, stored.Textures[key])
+			if err != nil {
+				break
+			}
+		}
+	}
+	if err == nil {
+		err = a.putSetting(ctx, tx, store.ThemeAssetsSetting, metadata)
+	}
 	if err == nil {
 		err = a.s.RecordAdminEvent(r.Context(), tx, u.ID, "settings.theme_assets", "site", "theme_assets")
 	}
@@ -336,7 +352,7 @@ func (a *Server) uploadThemeAssets(w http.ResponseWriter, r *http.Request) {
 		failure(w, 503, "暂时无法保存主题材质资源")
 		return
 	}
-	respond(w, 200, summarizeThemeAssets(stored))
+	respond(w, 200, metadata)
 }
 
 func (a *Server) deleteThemeAssets(w http.ResponseWriter, r *http.Request) {
@@ -349,7 +365,10 @@ func (a *Server) deleteThemeAssets(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	defer tx.Rollback()
-	err := a.putSetting(r.Context(), tx, "theme_assets", storedThemeAssets{})
+	_, err := tx.ExecContext(r.Context(), a.s.Bind("DELETE FROM settings WHERE setting_key LIKE ?"), store.ThemeTextureSettingPrefix+"%")
+	if err == nil {
+		err = a.putSetting(r.Context(), tx, store.ThemeAssetsSetting, publicThemeAssets{Keys: []string{}})
+	}
 	if err == nil {
 		err = a.s.RecordAdminEvent(r.Context(), tx, u.ID, "settings.theme_assets", "site", "theme_assets")
 	}
@@ -370,13 +389,12 @@ func (a *Server) serveThemeAsset(w http.ResponseWriter, r *http.Request) {
 		http.NotFound(w, r)
 		return
 	}
-	stored, err := a.themeAssets(r.Context())
+	storedVersion, raw, err := a.s.ReadThemeAsset(r.Context(), store.ThemeTextureSettingPrefix+key)
 	if err != nil {
 		failure(w, 503, "暂时无法读取主题材质资源")
 		return
 	}
-	raw, ok := stored.Textures[key]
-	if !ok || raw == "" {
+	if storedVersion == "" || raw == "" {
 		http.NotFound(w, r)
 		return
 	}
@@ -386,7 +404,7 @@ func (a *Server) serveThemeAsset(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	w.Header().Set("Content-Type", "image/png")
-	if version != "" && version == stored.Version {
+	if version != "" && version == storedVersion {
 		w.Header().Set("Cache-Control", "public, max-age=31536000, immutable")
 	} else {
 		w.Header().Set("Cache-Control", "public, max-age=300")
@@ -454,12 +472,24 @@ func extractThemeTexturesFromZip(zipPath, sourceName string) (storedThemeAssets,
 		return storedThemeAssets{}, errors.New("压缩包内未找到 assets/minecraft/textures/block/ 方块材质")
 	}
 
+	pixelsRemaining := maxThemePackPixels
 	var grassCmap, foliageCmap image.Image
+	var limitErr error
+	decode := func(f *zip.File) image.Image {
+		if f == nil || limitErr != nil {
+			return nil
+		}
+		img, err := decodeZipPNG(f, &pixelsRemaining)
+		if errors.Is(err, errThemePNGLimit) {
+			limitErr = err
+		}
+		return img
+	}
 	if grassCmapFile != nil {
-		grassCmap, _ = decodeZipPNG(grassCmapFile)
+		grassCmap = decode(grassCmapFile)
 	}
 	if foliageCmapFile != nil {
-		foliageCmap, _ = decodeZipPNG(foliageCmapFile)
+		foliageCmap = decode(foliageCmapFile)
 	}
 
 	rawCache := map[string]*image.NRGBA{}
@@ -476,8 +506,9 @@ func extractThemeTexturesFromZip(zipPath, sourceName string) (storedThemeAssets,
 		if !ok {
 			return nil
 		}
-		img, err := decodeZipPNG(f)
-		if err != nil {
+		img := decode(f)
+		if img == nil {
+			rawCache[cacheKey] = nil
 			return nil
 		}
 		normalized := normalizeBlockFrame(img)
@@ -522,6 +553,9 @@ func extractThemeTexturesFromZip(zipPath, sourceName string) (storedThemeAssets,
 		hasher.Write(out.Bytes())
 	}
 
+	if limitErr != nil {
+		return storedThemeAssets{}, limitErr
+	}
 	if len(textures) < 8 {
 		return storedThemeAssets{}, errors.New("提取到的有效方块贴图过少，请确认文件是完整的 Minecraft 客户端或方块资源包")
 	}
@@ -535,7 +569,9 @@ func extractThemeTexturesFromZip(zipPath, sourceName string) (storedThemeAssets,
 	}, nil
 }
 
-func decodeZipPNG(f *zip.File) (image.Image, error) {
+var errThemePNGLimit = errors.New("提取的贴图数据过大，请使用标准分辨率资源包")
+
+func decodeZipPNG(f *zip.File, pixelsRemaining *int) (image.Image, error) {
 	rc, err := f.Open()
 	if err != nil {
 		return nil, err
@@ -545,6 +581,14 @@ func decodeZipPNG(f *zip.File) (image.Image, error) {
 	if err != nil || len(data) > maxThemeZipEntryBytes {
 		return nil, errors.New("entry too large")
 	}
+	config, err := png.DecodeConfig(bytes.NewReader(data))
+	if err != nil {
+		return nil, err
+	}
+	if config.Width <= 0 || config.Height <= 0 || config.Width > maxThemePNGPixels/config.Height || config.Width*config.Height > *pixelsRemaining {
+		return nil, errThemePNGLimit
+	}
+	*pixelsRemaining -= config.Width * config.Height
 	return png.Decode(bytes.NewReader(data))
 }
 

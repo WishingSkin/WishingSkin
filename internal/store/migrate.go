@@ -13,12 +13,12 @@ import (
 //go:embed migrations/*.sql
 var migrationFiles embed.FS
 
-const schemaVersion = 22
+const schemaVersion = 23
 
 // CurrentSchemaVersion identifies the schema understood by offline backups.
 const CurrentSchemaVersion = schemaVersion
 
-var schemaMigrations = []string{"001_initial", "002_ygg_sessions", "003_texture_records", "004_wardrobe", "005_account_access", "006_admin_events", "007_reports", "008_points", "009_legacy_reports", "010_user_profiles", "011_site_notices", "012_plugins", "013_invitation_export", "014_homepage_blocks", "015_oidc", "016_totp", "017_account_integrations", "018_content_review", "019_admin_event_changes", "020_extensions", "021_oauth_extensions", "022_account_verification"}
+var schemaMigrations = []string{"001_initial", "002_ygg_sessions", "003_texture_records", "004_wardrobe", "005_account_access", "006_admin_events", "007_reports", "008_points", "009_legacy_reports", "010_user_profiles", "011_site_notices", "012_plugins", "013_invitation_export", "014_homepage_blocks", "015_oidc", "016_totp", "017_account_integrations", "018_content_review", "019_admin_event_changes", "020_extensions", "021_oauth_extensions", "022_account_verification", "023_theme_assets"}
 
 // Migrate serializes initialization across processes using a session lock.
 // Each DDL statement is independently retryable; MySQL DDL is not transactional.
@@ -78,6 +78,11 @@ func (s *Store) Migrate(ctx context.Context) (err error) {
 			}
 			if _, err := conn.ExecContext(ctx, statement); err != nil {
 				return fmt.Errorf("apply schema migration %d: %w", next, err)
+			}
+		}
+		if next == 23 {
+			if err := s.migrateThemeAssetSettings(ctx, conn); err != nil {
+				return fmt.Errorf("split theme asset settings: %w", err)
 			}
 		}
 		if _, err := conn.ExecContext(ctx, s.Bind("INSERT INTO schema_migrations (version) VALUES (?)"), next); err != nil {

@@ -40,7 +40,7 @@ import type { LibraryRecord, TextureRecord } from './textureTypes'
 import { validNewPassword } from './passwordPolicy'
 import { oidcMessages } from './oidcMessages'
 import { locale, t } from './i18n'
-import { fontPresetNames, isDarkOnlyTheme, isMCBiomeTheme, isMCFamilyTheme, themePackById } from './themePacks'
+import { fontPresetNames, isDarkOnlyTheme, isMCBiomeTheme, isMCFamilyTheme, resolveUserThemePack } from './themePacks'
 import { applyThemeTextures } from './themeTextures'
 import { applyThemeFont } from './themeFonts'
 
@@ -284,7 +284,7 @@ let themeTransition: ViewTransition | undefined
 const userThemePack = ref('')
 const userFontPreset = ref('')
 const userParticlesPref = ref<'' | 'on' | 'off'>('')
-const effectiveThemePack = computed(() => (site.value.appearance.allowUserTheme && userThemePack.value && themePackById[userThemePack.value]) ? userThemePack.value : (site.value.appearance.themePack || 'default'))
+const effectiveThemePack = computed(() => (site.value.appearance.allowUserTheme && userThemePack.value) || site.value.appearance.themePack || 'default')
 const effectiveDarkOnly = computed(() => isDarkOnlyTheme(effectiveThemePack.value))
 const effectiveMCBiome = computed(() => isMCBiomeTheme(effectiveThemePack.value))
 const effectiveParticlesEnabled = computed(() => {
@@ -387,7 +387,7 @@ function toggleTheme() {
 }
 
 function setUserThemePack(value: string) {
-  const next = value && themePackById[value] ? value : ''
+  const next = resolveUserThemePack(value)
   userThemePack.value = next
   try {
     if (next) localStorage.setItem('wishingskin-theme-pack', next)
@@ -857,8 +857,7 @@ onMounted(() => {
   let preference: string | null = null
   try {
     preference = localStorage.getItem('wishingskin-theme')
-    const savedPack = localStorage.getItem('wishingskin-theme-pack')
-    if (savedPack && themePackById[savedPack]) userThemePack.value = savedPack
+    userThemePack.value = resolveUserThemePack(localStorage.getItem('wishingskin-theme-pack'))
     const savedFont = localStorage.getItem('wishingskin-font-preset')
     if (savedFont && fontPresetNames[savedFont] && savedFont !== 'custom') userFontPreset.value = savedFont
     const savedParticles = localStorage.getItem('wishingskin-particles')
