@@ -128,7 +128,7 @@ func (a *Server) metadata(w http.ResponseWriter, r *http.Request) {
 	respond(w, 200, map[string]any{"meta": map[string]any{"serverName": brand.Name, "implementationName": "WishingSkin", "implementationVersion": "0.1.0-dev", "feature.non_email_login": false, "feature.username_check": true, "feature.enable_profile_key": false}, "skinDomains": []string{origin.Hostname()}, "signaturePublickey": string(pem.EncodeToMemory(&pem.Block{Type: "PUBLIC KEY", Bytes: pub}))})
 }
 func (a *Server) gameAuthenticate(w http.ResponseWriter, r *http.Request) {
-	if !a.loginLimit.allow(r) {
+	if !a.gameLoginLimit.allow(r) {
 		yfail(w, 429, "TooManyRequestsException", "Please retry later")
 		return
 	}
@@ -403,7 +403,7 @@ func (a *Server) gameRefresh(w http.ResponseWriter, r *http.Request) {
 }
 
 func (a *Server) gameSignout(w http.ResponseWriter, r *http.Request) {
-	if !a.loginLimit.allow(r) {
+	if !a.gameLoginLimit.allow(r) {
 		yfail(w, 429, "TooManyRequestsException", "Please retry later")
 		return
 	}

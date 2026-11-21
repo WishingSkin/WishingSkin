@@ -277,12 +277,9 @@ func TestLoginChallengeAndRecoveryWindowBothDatabases(t *testing.T) {
 				}
 			}
 			webStatus(t, f.call(0, "POST", "/api/auth/login", map[string]string{"email": "1@example.test", "password": "old"}), 403)
-			f.app.cfg.Challenge = nil
-			webStatus(t, f.call(0, "POST", "/api/auth/login", map[string]string{"email": "1@example.test", "password": "old", "turnstileToken": "valid"}), 503)
 			f.app.cfg.Challenge = testChallenge{}
 			webStatus(t, f.call(0, "POST", "/api/auth/login", map[string]string{"email": "1@example.test", "password": "old", "turnstileToken": "valid"}), 200)
 			webStatus(t, f.call(0, "POST", "/api/auth/login", map[string]string{"email": "1@example.test", "password": "old"}), 200)
-			f.app.loginLimit.now = func() time.Time { return time.Now().Add(2 * time.Minute) }
 			webStatus(t, f.call(0, "POST", "/api/auth/login", map[string]string{"email": "1@example.test", "password": "old"}), 200)
 		})
 	}
@@ -307,18 +304,44 @@ func TestLoginChallengeFreshPageAndIPWindowBothDatabases(t *testing.T) {
 					t.Fatal("incorrect challenge threshold")
 				}
 			}
-			for _, provider := range []ChallengeVerifier{nil, unavailableChallenge{}} {
-				f.app.cfg.Challenge = provider
-				w := f.call(0, "POST", "/api/auth/login", map[string]string{"email": "2@example.test", "password": "other"})
-				webStatus(t, w, 503)
-				if !strings.Contains(w.Body.String(), `"captchaRequired":true`) || len(w.Result().Cookies()) != 0 {
-					t.Fatal("fresh page lost challenge or bypassed IP gate")
-				}
+			f.app.cfg.Challenge = unavailableChallenge{}
+			w := f.call(0, "POST", "/api/auth/login", map[string]string{"email": "2@example.test", "password": "other"})
+			webStatus(t, w, 503)
+			if !strings.Contains(w.Body.String(), `"captchaRequired":true`) || len(w.Result().Cookies()) != 0 {
+				t.Fatal("fresh page lost challenge or bypassed IP gate")
 			}
 			f.app.cfg.Challenge = testChallenge{}
 			f.app.loginLimit.now = func() time.Time { return time.Now().Add(16 * time.Minute) }
 			f.app.loginFailures.now = func() time.Time { return time.Now().Add(16 * time.Minute) }
 			webStatus(t, f.call(0, "POST", "/api/auth/login", map[string]string{"email": "1@example.test", "password": "old"}), 200)
+		})
+	}
+}
+
+func TestLoginWithoutTurnstileUsesRetryWindowBothDatabases(t *testing.T) {
+	for _, dialect := range []string{"mysql", "postgres"} {
+		t.Run(dialect, func(t *testing.T) {
+			f := newManagementApp(t, dialect)
+			seedPassword(t, f, 1, "old")
+			now := time.Now()
+			f.app.loginFailures.now = func() time.Time { return now }
+			f.app.loginLimit.now = func() time.Time { return now }
+			for range 5 {
+				w := f.call(0, "POST", "/api/auth/login", map[string]string{"email": "1@example.test", "password": "wrong"})
+				webStatus(t, w, 401)
+				if strings.Contains(w.Body.String(), `"captchaRequired":true`) {
+					t.Fatal("requested an unconfigured challenge")
+				}
+			}
+			now = now.Add(10 * time.Minute)
+			login := map[string]string{"email": "1@example.test", "password": "old"}
+			w := f.call(0, "POST", "/api/auth/login", login)
+			webStatus(t, w, 429)
+			if w.Header().Get("Retry-After") != "300" || strings.Contains(w.Body.String(), `"captchaRequired":true`) {
+				t.Fatal("login did not report the remaining retry window")
+			}
+			now = now.Add(5 * time.Minute)
+			webStatus(t, f.call(0, "POST", "/api/auth/login", login), 200)
 		})
 	}
 }

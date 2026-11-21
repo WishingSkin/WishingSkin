@@ -34,47 +34,61 @@ func (a *Server) oauthDiscovery(w http.ResponseWriter, r *http.Request) {
 	issuer := a.cfg.PublicURL
 	respond(w, 200, map[string]any{"issuer": issuer, "authorization_endpoint": issuer + "/oauth/authorize", "token_endpoint": issuer + "/oauth/token", "revocation_endpoint": issuer + "/oauth/revoke", "introspection_endpoint": issuer + "/oauth/introspect", "userinfo_endpoint": issuer + "/oauth/userinfo", "jwks_uri": issuer + "/oauth/jwks", "response_types_supported": []string{"code"}, "response_modes_supported": []string{"query"}, "grant_types_supported": []string{"authorization_code", "refresh_token"}, "subject_types_supported": []string{"public"}, "id_token_signing_alg_values_supported": []string{"RS256"}, "code_challenge_methods_supported": []string{"S256"}, "scopes_supported": []string{"openid", "profile", "email", "offline_access"}, "token_endpoint_auth_methods_supported": []string{"client_secret_basic", "none"}, "introspection_endpoint_auth_methods_supported": []string{"client_secret_basic"}, "claims_supported": []string{"iss", "sub", "aud", "iat", "exp", "nonce", "auth_time", "at_hash", "name", "email", "email_verified"}})
 }
-func (a *Server) oauthSigningKey(ctx context.Context, tx *sql.Tx) (*rsa.PrivateKey, error) {
+func (a *Server) readOAuthSigningKey(ctx context.Context, reader settingReader) (*rsa.PrivateKey, error) {
 	var encoded, sealed string
-	err := tx.QueryRowContext(ctx, "SELECT value FROM settings WHERE setting_key='oauth_signing_key'").Scan(&encoded)
-	if errors.Is(err, sql.ErrNoRows) {
-		key, e := rsa.GenerateKey(rand.Reader, 2048)
-		if e != nil {
-			return nil, e
-		}
-		sealed, e = a.sealOIDC(x509.MarshalPKCS1PrivateKey(key), "oauth-signing")
-		if e != nil {
-			return nil, e
-		}
-		if e = a.putSetting(ctx, tx, "oauth_signing_key", sealed); e != nil {
-			return nil, e
-		}
-		return key, nil
-	}
-	if err != nil {
+	if err := reader.QueryRowContext(ctx, "SELECT value FROM settings WHERE setting_key='oauth_signing_key'").Scan(&encoded); err != nil {
 		return nil, err
 	}
 	var data []byte
-	if err = json.Unmarshal([]byte(encoded), &sealed); err != nil {
+	if err := json.Unmarshal([]byte(encoded), &sealed); err != nil {
 		return nil, err
 	}
-	if err = a.openOIDC(sealed, &data, "oauth-signing"); err != nil {
+	if err := a.openOIDC(sealed, &data, "oauth-signing"); err != nil {
 		return nil, err
 	}
 	return x509.ParsePKCS1PrivateKey(data)
 }
+
+func (a *Server) oauthSigningKey(ctx context.Context, tx *sql.Tx) (*rsa.PrivateKey, error) {
+	key, err := a.readOAuthSigningKey(ctx, tx)
+	if !errors.Is(err, sql.ErrNoRows) {
+		return key, err
+	}
+	key, err = rsa.GenerateKey(rand.Reader, 2048)
+	if err != nil {
+		return nil, err
+	}
+	sealed, err := a.sealOIDC(x509.MarshalPKCS1PrivateKey(key), "oauth-signing")
+	if err == nil {
+		err = a.putSetting(ctx, tx, "oauth_signing_key", sealed)
+	}
+	return key, err
+}
+
 func oauthKeyID(key *rsa.PrivateKey) string {
 	hash := sha256.Sum256(x509.MarshalPKCS1PublicKey(&key.PublicKey))
 	return hex.EncodeToString(hash[:16])
 }
 func (a *Server) oauthJWKS(w http.ResponseWriter, r *http.Request) {
-	tx, ok := a.beginOAuthWrite(w, r)
-	if !ok {
+	ctx := r.Context()
+	enabled, err := a.storedPluginEnabled(ctx, "wishingskin.oauth2")
+	if err != nil || !enabled {
+		oauthError(w, 503, "temporarily_unavailable")
 		return
 	}
-	defer tx.Rollback()
-	key, err := a.oauthSigningKey(r.Context(), tx)
-	if err != nil || tx.Commit() != nil {
+	key, err := a.readOAuthSigningKey(ctx, a.s.DB)
+	if errors.Is(err, sql.ErrNoRows) {
+		tx, ok := a.beginOAuthWrite(w, r)
+		if !ok {
+			return
+		}
+		defer tx.Rollback()
+		key, err = a.oauthSigningKey(ctx, tx)
+		if err == nil {
+			err = tx.Commit()
+		}
+	}
+	if err != nil {
 		oauthError(w, 503, "temporarily_unavailable")
 		return
 	}
@@ -125,14 +139,21 @@ func (a *Server) revokeOAuthFamily(ctx context.Context, tx *sql.Tx, family strin
 	return nil
 }
 func (a *Server) oauthIntrospect(w http.ResponseWriter, r *http.Request) {
-	if !a.oauthForm(w, r) {
+	if !a.oauthForm(w, r, &a.introspectionLimit) {
 		return
 	}
-	tx, ok := a.beginOAuthWrite(w, r)
-	if !ok {
+	ctx := r.Context()
+	tx, err := a.s.DB.BeginTx(ctx, &sql.TxOptions{ReadOnly: true, Isolation: sql.LevelRepeatableRead})
+	if err != nil {
+		oauthError(w, 503, "temporarily_unavailable")
 		return
 	}
 	defer tx.Rollback()
+	enabled, err := a.readPluginEnabled(ctx, tx, "wishingskin.oauth2")
+	if err != nil || !enabled {
+		oauthError(w, 503, "temporarily_unavailable")
+		return
+	}
 	client, ok := a.oauthAuthenticateClient(w, r, tx)
 	if !ok {
 		return
@@ -143,13 +164,13 @@ func (a *Server) oauthIntrospect(w http.ResponseWriter, r *http.Request) {
 	}
 	var uid, exp int64
 	var scope, credential string
-	err := tx.QueryRowContext(r.Context(), a.s.Bind("SELECT user_id,scope,credential_hash,expires_at FROM oauth_tokens WHERE token_hash=? AND client_id=? AND expires_at>?"), tokenHash(r.PostForm.Get("token")), client.ID, time.Now().Unix()).Scan(&uid, &scope, &credential, &exp)
+	err = tx.QueryRowContext(ctx, a.s.Bind("SELECT user_id,scope,credential_hash,expires_at FROM oauth_tokens WHERE token_hash=? AND client_id=? AND expires_at>?"), tokenHash(r.PostForm.Get("token")), client.ID, time.Now().Unix()).Scan(&uid, &scope, &credential, &exp)
 	if err != nil && !errors.Is(err, sql.ErrNoRows) {
 		oauthError(w, 503, "temporarily_unavailable")
 		return
 	}
 	if err == nil {
-		u, e := a.oidcUser(r.Context(), uid)
+		u, e := a.readOIDCUser(ctx, tx, uid)
 		if e == nil && u.credentialHash == credential {
 			respond(w, 200, map[string]any{"active": true, "client_id": client.ID, "sub": strconv.FormatInt(uid, 10), "scope": scope, "exp": exp, "token_type": "Bearer"})
 			return

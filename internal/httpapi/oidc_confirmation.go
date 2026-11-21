@@ -155,7 +155,7 @@ func (a *Server) confirmOIDC(w http.ResponseWriter, r *http.Request) {
 	if !a.publicWrite(w, r) {
 		return
 	}
-	if !a.loginLimit.allow(r) {
+	if !a.oidcLimit.allow(r) {
 		failure(w, 429, "登录尝试过于频繁，请稍后重试")
 		return
 	}

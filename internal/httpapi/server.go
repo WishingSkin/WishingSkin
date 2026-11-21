@@ -58,12 +58,17 @@ type Server struct {
 	uploadIPLimit      limiter
 	loginLimit         limiter
 	passwordLimit      limiter
+	gameLoginLimit     limiter
+	oidcLimit          limiter
+	oauthLimit         limiter
+	introspectionLimit limiter
 	registrationLimit  limiter
 	mailLimit          limiter
 	mailCooldown       limiter
 	loginFailures      limiter
 	mailSlots          chan struct{}
 	dummy              string
+	connectorSlots     chan struct{}
 	pointsNow          func() time.Time
 	totpNow            func() time.Time
 	totpLimit          limiter
@@ -137,9 +142,14 @@ func New(s *store.Store, cfg Config) (*Server, error) {
 	a.mailCooldown = limiter{entries: map[string]bucket{}, now: time.Now, max: 1}
 	a.loginFailures = limiter{entries: map[string]bucket{}, now: time.Now, max: 5, window: 15 * time.Minute}
 	a.uploadAccountLimit = limiter{entries: map[string]bucket{}, now: time.Now, max: 10}
+	a.gameLoginLimit = limiter{entries: map[string]bucket{}, now: time.Now}
+	a.oidcLimit = limiter{entries: map[string]bucket{}, now: time.Now, max: 20}
+	a.oauthLimit = limiter{entries: map[string]bucket{}, now: time.Now, max: 120}
+	a.introspectionLimit = limiter{entries: map[string]bucket{}, now: time.Now, max: 300}
 	a.uploadIPLimit = limiter{entries: map[string]bucket{}, now: time.Now, max: 30}
 	a.mailSlots = make(chan struct{}, 2)
 	a.mux.HandleFunc("GET /api/site", a.site)
+	a.connectorSlots = make(chan struct{}, 2)
 	a.mux.HandleFunc("GET /api/notices", a.notices)
 	a.registerAccountAccess()
 	a.totpNow = time.Now
@@ -407,16 +417,33 @@ func (a *Server) login(w http.ResponseWriter, r *http.Request) {
 		a.authError(w, errBusy)
 		return
 	}
-	challenged := a.loginFailures.blocked(accountKey) || a.loginFailures.blocked(ipKey)
-	if challenged && !a.challenge(w, r, body.TurnstileToken, "login") {
-		return
+	retryAfter := max(a.loginFailures.retryAfter(accountKey), a.loginFailures.retryAfter(ipKey))
+	challenged := retryAfter > 0
+	if challenged {
+		services, err := a.services(r.Context())
+		if err != nil {
+			failure(w, 503, "人机验证暂不可用，请重试")
+			return
+		}
+		if !services.challengeConfigured() {
+			w.Header().Set("Retry-After", strconv.FormatInt(int64((retryAfter+time.Second-1)/time.Second), 10))
+			failure(w, 429, "登录尝试过于频繁，请稍后重试")
+			return
+		}
+		if !verifyChallenge(w, r, services.Challenge, body.TurnstileToken, "login") {
+			return
+		}
 	}
 	u, err := a.authenticate(r.Context(), body.Email, body.Password)
 	if err != nil {
 		if errors.Is(err, errCredentials) {
 			a.loginFailures.allowKey(accountKey)
 			a.loginFailures.allowKey(ipKey)
-			respond(w, 401, map[string]any{"error": "邮箱或密码不正确", "captchaRequired": a.loginFailures.blocked(accountKey) || a.loginFailures.blocked(ipKey)})
+			if !challenged && (a.loginFailures.retryAfter(accountKey) > 0 || a.loginFailures.retryAfter(ipKey) > 0) {
+				services, err := a.services(r.Context())
+				challenged = err == nil && services.challengeConfigured()
+			}
+			respond(w, 401, map[string]any{"error": "邮箱或密码不正确", "captchaRequired": challenged})
 			return
 		}
 		a.authError(w, err)

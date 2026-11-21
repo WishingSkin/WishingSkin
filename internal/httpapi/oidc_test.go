@@ -88,7 +88,7 @@ func startOIDCTest(t *testing.T, f *managementApp, p *oidcProviderFixture, user 
 func startOIDCTestAt(t *testing.T, f *managementApp, p *oidcProviderFixture, user int, next string, provider ...string) (*url.URL, *http.Cookie) {
 	t.Helper()
 	// Independent authorization scenarios must not consume each other's IP quota.
-	f.app.loginLimit.entries = map[string]bucket{}
+	f.app.oidcLimit.entries = map[string]bucket{}
 	id := ""
 	if len(provider) > 0 {
 		id = provider[0]

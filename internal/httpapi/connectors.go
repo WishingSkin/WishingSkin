@@ -41,8 +41,12 @@ func (a *Server) registerConnectors() {
 	a.mux.HandleFunc("DELETE /api/account/connectors/{id}", a.linkConnector)
 }
 func (a *Server) connectorSettings(ctx context.Context) ([]connectorConfig, error) {
+	return a.readConnectorSettings(ctx, a.s.DB)
+}
+
+func (a *Server) readConnectorSettings(ctx context.Context, reader settingReader) ([]connectorConfig, error) {
 	var sealed string
-	ok, err := a.readSetting(ctx, "external_connectors", &sealed)
+	ok, err := a.readSettingFrom(ctx, reader, "external_connectors", &sealed)
 	values := []connectorConfig{}
 	if err == nil && ok {
 		err = a.openOIDC(sealed, &values, "connectors")
@@ -90,7 +94,7 @@ func (a *Server) updateConnectors(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	defer tx.Rollback()
-	old, err := a.connectorSettings(r.Context())
+	old, err := a.readConnectorSettings(r.Context(), tx)
 	if err != nil {
 		failure(w, 503, "暂时无法读取连接器配置")
 		return
@@ -340,7 +344,7 @@ func (a *Server) linkConnector(w http.ResponseWriter, r *http.Request) {
 	var subject, name string
 	if r.Method == "POST" {
 		select {
-		case a.hashes <- struct{}{}:
+		case a.connectorSlots <- struct{}{}:
 		default:
 			failure(w, 429, "账号验证繁忙，请稍后重试")
 			return
@@ -348,7 +352,7 @@ func (a *Server) linkConnector(w http.ResponseWriter, r *http.Request) {
 		ctx, cancel := context.WithTimeout(r.Context(), 8*time.Second)
 		subject, name, err = verifyConnector(ctx, cfg, strings.TrimSpace(body.Username), body.Password)
 		cancel()
-		<-a.hashes
+		<-a.connectorSlots
 		if err != nil {
 			failure(w, 400, "外部账号验证失败，请检查账号、密码和连接器配置")
 			return
@@ -360,19 +364,18 @@ func (a *Server) linkConnector(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	defer tx.Rollback()
-	var mode string
-	err = tx.QueryRowContext(r.Context(), "SELECT value FROM settings WHERE setting_key='registration_mode' FOR UPDATE").Scan(&mode)
+	_, err = lockRegistrationMode(r.Context(), tx)
 	if err == nil {
 		var current []connectorConfig
-		current, err = a.connectorSettings(r.Context())
+		current, err = a.readConnectorSettings(r.Context(), tx)
 		matched := false
 		for _, v := range current {
 			if oidcConnectorFingerprint(v) == oidcConnectorFingerprint(cfg) {
 				matched = true
 			}
 		}
-		on, e := a.storedPluginEnabled(r.Context(), "wishingskin.connectors")
-		if e != nil || !matched || r.Method == "POST" && !on {
+		on, e := a.readPluginEnabled(r.Context(), tx, "wishingskin.connectors")
+		if err == nil && (e != nil || !matched || r.Method == "POST" && !on) {
 			err = errCredentials
 		}
 	}

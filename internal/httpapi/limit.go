@@ -60,20 +60,24 @@ func (l *limiter) limits() (time.Duration, int) {
 	return window, maximum
 }
 
-func (l *limiter) blocked(key string) bool {
+func (l *limiter) retryAfter(key string) time.Duration {
 	l.mu.Lock()
 	defer l.mu.Unlock()
 	window, maximum := l.limits()
+	now := l.now()
 	for key, b := range l.entries {
-		if l.now().Sub(b.start) >= window {
+		if now.Sub(b.start) >= window {
 			delete(l.entries, key)
 		}
 	}
 	b, exists := l.entries[key]
 	if !exists && len(l.entries) >= 4096 {
-		return true
+		return window
 	}
-	return l.now().Sub(b.start) < window && b.count >= maximum
+	if b.count >= maximum {
+		return b.start.Add(window).Sub(now)
+	}
+	return 0
 }
 
 func (l *limiter) reset(key string) { l.mu.Lock(); delete(l.entries, key); l.mu.Unlock() }

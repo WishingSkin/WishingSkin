@@ -330,8 +330,7 @@ func (a *Server) beginOAuthWrite(w http.ResponseWriter, r *http.Request) (*sql.T
 		failure(w, 503, "授权服务暂不可用")
 		return nil, false
 	}
-	var mode string
-	err = tx.QueryRowContext(r.Context(), "SELECT value FROM settings WHERE setting_key='registration_mode' FOR UPDATE").Scan(&mode)
+	_, err = lockRegistrationMode(r.Context(), tx)
 	if err == nil {
 		var enabled bool
 		err = tx.QueryRowContext(r.Context(), "SELECT enabled FROM plugins WHERE plugin_id='wishingskin.oauth2'").Scan(&enabled)
@@ -349,10 +348,11 @@ func (a *Server) beginOAuthWrite(w http.ResponseWriter, r *http.Request) (*sql.T
 func oauthError(w http.ResponseWriter, status int, code string) {
 	respond(w, status, map[string]string{"error": code})
 }
-func (a *Server) oauthForm(w http.ResponseWriter, r *http.Request) bool {
+func (a *Server) oauthForm(w http.ResponseWriter, r *http.Request, limit *limiter) bool {
 	w.Header().Set("Cache-Control", "no-store")
 	r.Body = http.MaxBytesReader(w, r.Body, 8192)
-	if !a.loginLimit.allow(r) {
+	if !limit.allow(r) {
+		w.Header().Set("Retry-After", "60")
 		oauthError(w, 429, "temporarily_unavailable")
 		return false
 	}
@@ -394,7 +394,7 @@ func (a *Server) oauthAuthenticateClient(w http.ResponseWriter, r *http.Request,
 	return v, true
 }
 func (a *Server) oauthToken(w http.ResponseWriter, r *http.Request) {
-	if !a.oauthForm(w, r) {
+	if !a.oauthForm(w, r, &a.oauthLimit) {
 		return
 	}
 	tx, ok := a.beginOAuthWrite(w, r)
@@ -476,7 +476,7 @@ func (a *Server) oauthToken(w http.ResponseWriter, r *http.Request) {
 		oauthError(w, 400, "unsupported_grant_type")
 		return
 	}
-	u, err := a.oidcUser(r.Context(), userID)
+	u, err := a.readOIDCUser(r.Context(), tx, userID)
 	if err == nil {
 		err = a.lockAuthenticatedUser(r.Context(), tx, u)
 	}
@@ -584,7 +584,7 @@ func (a *Server) oauthUserinfo(w http.ResponseWriter, r *http.Request) {
 	respond(w, 200, result)
 }
 func (a *Server) oauthRevoke(w http.ResponseWriter, r *http.Request) {
-	if !a.oauthForm(w, r) {
+	if !a.oauthForm(w, r, &a.oauthLimit) {
 		return
 	}
 	tx, ok := a.beginOAuthWrite(w, r)
