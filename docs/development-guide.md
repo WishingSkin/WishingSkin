@@ -1,10 +1,10 @@
 # 开发指南
 
-## 工具与构建
+## 环境与构建
 
-使用 Go 1.26.10、Node.js 24.19.0、pnpm 11.24.0，以及 MySQL 8 或 PostgreSQL。版本与 `Dockerfile` 保持一致。
+本地开发使用与 `Dockerfile` 一致的工具版本：Go 1.26.10、Node.js 24.19.0、pnpm 11.24.0，以及 MySQL 8 或 PostgreSQL。
 
-在仓库根目录执行：
+在仓库根目录执行构建：
 
 ```powershell
 pnpm --dir web install --frozen-lockfile
@@ -12,11 +12,12 @@ pnpm --dir web build
 go build -trimpath -o bin/wishingskin.exe ./cmd/wishingskin
 ```
 
-前端构建与 Go 编译、测试、vet 必须串行。Vite 会重建 `web/dist`，Go 的 embed 同时读取该目录时可能失败。
+> [!IMPORTANT]
+> 前端构建与 Go 编译、测试、`go vet` 必须**严格串行**。Vite 构建时会清空并重写 `web/dist`，若与 Go `embed` 并发运行会导致构建报错。
 
-程序从进程环境读取配置，不自动加载 `.env`。配置数据库后，在终端执行 `./bin/wishingskin.exe create-admin` 初始化管理员，再运行 `./bin/wishingskin.exe serve`。环境配置和持久化要求见[部署手册](deployment.md)。
+程序只从进程环境变量读取配置，不会自动加载 `.env`。首次初始化数据库后，在终端运行 `./bin/wishingskin.exe create-admin` 创建管理员，再执行 `./bin/wishingskin.exe serve`。完整配置见[配置与 CLI 参考](configuration.md)。
 
-## 检查
+## 测试与质量检查
 
 ```powershell
 pnpm --dir web test
@@ -26,9 +27,9 @@ go vet ./...
 go build -trimpath -o bin/wishingskin.exe ./cmd/wishingskin
 ```
 
-数据库测试需要 `WS_TEST_MYSQL_DSN` 和 `WS_TEST_POSTGRES_DSN`。未配置时会跳过相应测试；需要数据库覆盖时，检查输出中是否出现 skip。
+### 双数据库集成测试
 
-可使用仓库提供的本地数据库：
+数据库测试依赖环境变量 `WS_TEST_MYSQL_DSN` 与 `WS_TEST_POSTGRES_DSN`；未配置时相关用例会自动跳过。可使用仓库自带的本地测试容器：
 
 ```powershell
 docker compose -f compose.test.yaml up -d --wait
@@ -36,40 +37,35 @@ $env:WS_TEST_MYSQL_DSN='root:wishingskin-local-test-only@tcp(127.0.0.1:33316)/wi
 $env:WS_TEST_POSTGRES_DSN='postgres://wishingskin_test:wishingskin-local-test-only@127.0.0.1:35416/wishingskin_test?sslmode=disable'
 ```
 
-这些是专用测试凭据。测试账号需要创建数据库或 schema 的权限。测试会创建随机命名空间，并清理自己创建的数据；不要指向运营数据库。停止容器可运行 `docker compose -f compose.test.yaml stop`，保留数据卷。
+测试会自动创建并清理随机命名空间或 schema，但切勿指向运营数据库。测试完毕后运行 `docker compose -f compose.test.yaml stop` 即可停止容器并保留数据卷。
 
-修改时运行受影响的现有测试；数据库行为同时检查两种方言。页面改动检查类型构建、相关交互和窄屏布局。无需为纯文案或链接改动重复整套集成流程。
+- 改动数据库逻辑时，需同时验证 MySQL 与 PostgreSQL 两种方言。
+- 改动界面代码时，需通过 `vue-tsc` 类型检查、前端单测、相关交互流程以及桌面（1440px）/ 窄屏（390px）布局检查；纯文案或文档改动无需重复整仓集成测试。
 
-## 数据模型与迁移
+## 数据模型与测试夹具
 
-模块和领域术语见[架构说明](architecture.md)。schema 定义与升级位于 `internal/store/migrate.go`。修改 schema 时同步维护备份表契约、升级手册和恢复规则，避免让新程序直接恢复旧 schema 的备份。
-
-`testdata/bs` 提供合成 BS 快照和 PNG，供迁移、备份及 HTTP 测试使用。仓库快照不含私钥，手动预检查前需生成独立样本：
+- 系统模块与领域概念见[架构与数据模型](architecture.md)。
+- Schema 定义与升级逻辑位于 `internal/store/migrate.go`。调整 schema 时，须同步更新备份表契约、升级手册与恢复校验，避免新程序直接打开或恢复不匹配的旧备份。
+- `testdata/bs` 提供合成 BS 快照与 PNG 样本（不含私钥）。需要手动测试预检查时，可运行以下生成器创建本地测试夹具（目标目录须尚不存在）：
 
 ```powershell
 go run ./testdata/bs/generate.go artifacts/generated-bs-fixture
 ```
 
-目标目录必须尚不存在。生成结果包含测试私钥和可选合成 SQL 种子，应留在本地。生成器不连接或修改真实 BS 站点。`testdata/appearance` 用于生成外观测试图片，`testdata/resourcecheck` 提供资源测量工具。
+`testdata/appearance` 用于生成外观测试图片，`testdata/resourcecheck` 提供资源体积检测工具。
 
-## 插件与前端
+## 前端规范与核心约定
 
-社区插件的注册、配置、页面和任务契约见[插件 SDK](community-plugin-sdk.md)。依赖已有宿主接口，避免直接修改核心表。
-
-界面使用简体中文和 English 文案，个性化覆盖按语言分别保存。复用现有模态弹窗、Toast、表单和主题变量。动画需支持 `prefers-reduced-motion`。用户可配置的图片和文字规则见[界面设置](interface-customization.md)。
-
-视觉 token 位于 `web/src/tokens.css`。字号使用 12、14、20px，首页主标题使用 40px；控件、卡片和弹窗圆角分别为 6、12、16px。阴影分为卡片和浮层两档，空间位移动效使用 `--ease-spring` 并在 `prefers-reduced-motion` 下退化。`themes.css`、`themePacks.ts`、`themeTextures.ts` 与 `themeFonts.ts` 共同提供 13 套主题（含 MC 维度贴图槽位、首页剖面滚动、官网/Wiki 风格与通用主题）及按需加载的 OFL 1.1 开源像素字体。组件引用语义颜色和尺寸变量，二维码使用独立白底变量。
-
-默认图标通过 `AppIcon` 使用 Heroicons outline SVG，许可见[第三方声明](../THIRD_PARTY_NOTICES.md)。`InterfaceIcon` 保留管理员自定义覆盖。加载界面复用 `LoadingSkeleton`；卡片骨架沿用材质列表网格。
-
-页面地址由 `web/src/workspaceRoutes.ts` 统一处理。材质浏览和上传分别使用 `/user/resources`、`/user/resources/upload`；旧 `/user/materials?tab=…` 地址会转换到对应页面。后台使用 `/admin/users`、`/admin/resources`、`/admin/events` 等子页，设置分类和插件配置也有独立地址。子页支持刷新、浏览器前进和后退。
-
-前后端共用 `internal/httpapi/page_routes.json` 中的页面清单和旧地址映射。新增页面时同步更新清单。不存在的页面显示 404，直接请求返回 HTTP 404；拼错的子路径不回退到上级栏目。缺失的 API、脚本和图片仍使用各自的错误响应。
-
-同一工作区切换子页时，只对 `data-panel-region` 标记的内容区播放动画，保留标题和导航。公开库、我的材质和衣柜复用 `ResourceFilters`，使用相同的搜索栏和类型筛选。
-
-管理记录的动作、对象和设置名称共用 `internal/httpapi/admin_event_labels.json`。搜索支持中英文名称及带 `#` 的编号，列表和 CSV 导出使用相同筛选。普通用户按材质名称、描述或收藏名搜索；哈希搜索保留在管理页面。
+- **视觉 Token（`web/src/tokens.css`）**：字号收敛为 12 / 14 / 20 px，首页主标题为 40 px；圆角收敛为控件 6 px、卡片 12 px、弹窗 16 px；阴影分为卡片与浮层两档；空间动效使用 `--ease-spring`，并在 `prefers-reduced-motion: reduce` 下退化。所有组件必须引用语义变量（二维码白底使用独立 `--qr-paper`）。
+- **主题、壁纸与像素粒子**：
+  - `themes.css`、`themePacks.ts`、`themeTextures.ts`、`themeFonts.ts` 与 `BiomeParticles.vue` 共同实现默认 + 13 套主题（含 8 套 MC 主题的 15 张 16:9 体素实景 WebP 壁纸、首页 `sticky` `100dvh` 双幕切换与全群系低密度原版像素粒子）及按需加载的 OFL 1.1 开源像素字体。
+  - 面板半透明/毛玻璃效果由 `--surface-opacity` 与 `--surface-blur` 控制，并在 `prefers-reduced-transparency: reduce` 下回退为实色；CSS 中 `-webkit-backdrop-filter` 须写在标准 `backdrop-filter` 之前，避免压缩后丢失标准属性。
+- **品牌标与图标**：默认品牌标识为自适应主题色的 `BrandMark.vue`（与 `web/public/favicon.svg`、`docs/assets/logo.svg` 保持统一）；界面线条图标由 `AppIcon` 内嵌 Heroicons outline SVG（许可见[第三方声明](../THIRD_PARTY_NOTICES.md)），`InterfaceIcon` 保留管理员短文本覆盖。加载状态复用 `LoadingSkeleton`。
+- **多语言与文案**：界面同时维护简体中文与 English（`web/src/i18n.en.ts`），新增或调整中文 `t('...')` 文案时须同步补齐英文映射。
+- **路由与 404 契约**：前后端共享 `internal/httpapi/page_routes.json`（含旧路径兼容映射，如 `/user/materials` → `/user/resources`），新增页面须同步更新该清单。拼写错误或不存在的子路径统一呈现 404（直接 GET 返回 HTTP 404），不静默回退到父页面。同工作区切换子页仅对 `data-panel-region` 区域播放局部过渡动画。
+- **筛选与管理记录**：公开库、我的材质和衣柜共用 `ResourceFilters`。管理记录的中英文标签共用 `internal/httpapi/admin_event_labels.json`，支持关键词与 `#编号` 搜索，列表和 CSV 导出复用同一筛选逻辑。
+- **社区插件**：接口与运行契约见[社区插件 SDK](community-plugin-sdk.md)，插件应只通过宿主公开接口交互，不直接读写核心业务表。
 
 ## 提交范围
 
-提交源码、必要测试资源、用户手册、架构与接口说明。构建产物、浏览器记录、真实数据、凭据、个人工具配置、实施计划和详细验收流水留在本地。新增依赖时同步核对锁文件和[第三方声明](../THIRD_PARTY_NOTICES.md)。
+版本库只提交源代码、必要合成测试夹具、用户手册、架构与接口文档。构建产物、浏览器截图、真实运营数据、凭据密钥、个人工具配置与临时验收日志留在本地并保持 Git 忽略。引入新第三方依赖或字体时，须同步核对锁文件与[第三方声明](../THIRD_PARTY_NOTICES.md)。

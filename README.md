@@ -1,38 +1,88 @@
 <p align="center">
-  <img src="docs/assets/logo.png" alt="WishingSkin Logo" width="120" height="120" />
+  <img src="docs/assets/logo.svg" alt="WishingSkin Logo" width="112" height="112" />
 </p>
 
 <h1 align="center">WishingSkin</h1>
 
 <p align="center">
-  可自部署的开源 Minecraft 皮肤站，支持角色与皮肤管理、Yggdrasil 外置登录、插件扩展与高完成度主题系统。
+  可自部署的开源 Minecraft 皮肤站与外置登录平台
+</p>
+
+<p align="center">
+  Go 单体后端 · Vue 3 前端 · MySQL 8 / PostgreSQL · Yggdrasil 外置登录 · 插件扩展 · MC 实景主题系统
 </p>
 
 ---
 
-采用 Go 模块化单体与 Vue 3 / TypeScript / Vite，前端静态资源由后端提供，支持 MySQL 8 与 PostgreSQL。
+WishingSkin 是一个面向自托管服主与社区的开源 Minecraft 皮肤站。单个二进制文件即可提供网页端、皮肤与披风管理、Yggdrasil（authlib-injector）认证、CustomSkinLoader 兼容接口、官方/社区插件运行以及完整的备份恢复工具，支持 MySQL 8 与 PostgreSQL（当前数据库 schema 21）。
 
-当前程序使用 schema 21。支持本地账号、邮箱验证与找回、TOTP、角色与材质管理、衣柜和公开库、标签分类、可选上传审核、Yggdrasil 外置登录、浅深主题和个性化设置。新账号默认使用递增 ID，可切换为 10 位随机数字；已有 ID 保持不变。
+## 核心特性
 
-新皮肤接受 64×64、64×32、128×128、128×64 PNG，单个文件最大 8 MiB。披风使用独立尺寸规则，既有和迁入材质不按新上传规则重新校验。
+- **角色与外观管理**：支持多角色、稳定 UUID（改名不变）、3D 实时交互预览与静态模型缩略图、标准/纤细手臂覆盖、公开库与个人衣柜。
+- **游戏接入**：内置 Yggdrasil 外置登录（兼容 PCL2、HMCL、Prism Launcher 及服务端 authlib-injector），同时提供 CustomSkinLoader 配置导出与传统链接模板。
+- **账号与安全**：本地邮箱验证与找回、管理员审核激活、邮箱域名白黑名单、Cloudflare Turnstile、TOTP 两步验证与一次性恢复码、可切换递增或 10 位随机用户 ID。
+- **主题与个性化**：内置默认 + 13 套主题（含 8 套 Minecraft 地上/地下成对群系实景壁纸与全群系原版像素粒子）、支持上传 `client.jar`/材质包服务端白名单提取、内置开源像素字体与自定义 WOFF2、半透明/毛玻璃不透明度与模糊度微调、中英文界面文案覆写与多区块首页。
+- **插件与第三方集成**：内置邀请码、积分签到、多 OIDC 登录、本站 OAuth2/OIDC 授权服务、AuthMe/HTTP 外部账号连接与 S3 兼容对象存储；支持 Go SDK 源码插件和 ZIP / 静态市场源动态可执行插件。
+- **运维与迁移**：支持每日定时备份、完整性校验与隔离恢复、公开材质签名 CDN、孤立文件回收，以及从固定版本 Blessing Skin 6.0.2 迁入账号、角色 UUID、材质与衣柜数据。
 
-官方插件提供邀请码、积分、多 OIDC、本站 OAuth2 授权、AuthMe/HTTP 外部账号连接及 S3 对象存储。社区插件可随源码编译，也可从 ZIP 或静态市场源动态安装和热加载。支持独立配置、路由、页面、任务、持久事件、Webhook 和插件数据迁移。本站授权服务支持 OAuth2、OIDC ID Token 与刷新令牌。
+## 快速开始
 
-支持从固定版本的 Blessing Skin 6.0.2 迁入账号、角色实际 UUID、材质及关系。支持的插件版本和数据范围见迁移手册。报告使用 partial 标明迁移范围，原 PHP 插件需要重新实现。
+### Docker Compose（推荐）
 
-运行时只需程序、一个选定数据库、材质目录和设置密钥。前端构建需要 Node.js 与 pnpm，完整构建步骤见部署手册。新安装没有默认管理员，通过本机 create-admin 初始化；从 BS 迁入时不要先创建管理员。生产使用 HTTPS 反向代理并持久化数据库、材质、备份目录和设置密钥。
+仓库在 `deploy/` 目录提供 PostgreSQL 与 MySQL 两套编排文件（二选一，不要同时启动）：
 
-- [部署手册](docs/deployment.md)
-- [升级与回退](docs/upgrade-runbook.md)
-- [备份与恢复](docs/backup-restore.md)
-- [Blessing Skin 迁移](docs/migration-runbook.md)
-- [BS 来源契约](docs/bs-source-contract.md)
-- [游戏、账号与存储接入](docs/integrations.md)
-- [本站 OAuth2 / OIDC 授权服务](docs/oauth-provider.md)
-- [社区插件 SDK](docs/community-plugin-sdk.md)
-- [界面与首页设置](docs/interface-customization.md)
-- [功能与限制](docs/feature-matrix.md)
-- [架构与数据模型](docs/architecture.md)
-- [开发指南](docs/development-guide.md)
-- [MIT 许可证](LICENSE)
-- [第三方依赖与许可证](THIRD_PARTY_NOTICES.md)
+```powershell
+Copy-Item .env.example .env
+# 编辑 .env，设置 WS_PUBLIC_URL、WS_DATABASE_DSN 及数据库密码
+
+docker compose --env-file .env -f deploy/compose.postgres.yaml build app
+docker compose --env-file .env -f deploy/compose.postgres.yaml up -d postgres
+docker compose --env-file .env -f deploy/compose.postgres.yaml run --rm --no-deps app create-admin
+docker compose --env-file .env -f deploy/compose.postgres.yaml up -d app
+```
+
+> [!NOTE]
+> 如果是新站初始化，使用 `create-admin` 在终端创建首个管理员；如果准备从 Blessing Skin 迁入旧数据，请跳过 `create-admin`，直接按[迁移手册](docs/migration-runbook.md)执行。
+
+### 从源码构建
+
+需要 Go 1.26.10、Node.js 24.19.0、pnpm 11.24.0 以及已创建的 PostgreSQL 或 MySQL 数据库。前端构建与 Go 编译需串行执行：
+
+```powershell
+pnpm --dir web install --frozen-lockfile
+pnpm --dir web build
+go build -trimpath -o bin/wishingskin.exe ./cmd/wishingskin
+```
+
+配置好数据库连接与公开地址环境变量后，先运行 `./bin/wishingskin.exe create-admin` 创建管理员，再执行 `./bin/wishingskin.exe serve` 启动服务。
+
+## 文档导航
+
+### 上手与配置
+
+- [使用指南（玩家与站长）](docs/user-guide.md)：角色管理、皮肤上传规范、启动器与服务端接入、日常后台管理
+- [配置与 CLI 参考](docs/configuration.md)：全部环境变量、默认值与 8 个命令行子命令说明
+- [界面与首页设置](docs/interface-customization.md)：品牌文案、多区块首页、面板效果与高级颜色覆写
+- [主题包、材质与字体指南](docs/themes-and-assets.md)：14 套主题、实景壁纸、`client.jar` 材质提取与像素字体说明
+- [功能与限制](docs/feature-matrix.md)：全量功能清单与明确不支持的边界
+
+### 部署与运维
+
+- [生产自部署手册](docs/deployment.md)：反向代理、TLS、Docker Compose 与原生二进制部署
+- [升级、回退与恢复手册](docs/upgrade-runbook.md)：版本升级前检查、平滑升级与隔离回退流程
+- [备份与恢复](docs/backup-restore.md)：数据保存范围、定时备份、离线 CLI 备份与空目标恢复
+- [游戏、账号与存储接入](docs/integrations.md)：Yggdrasil、OIDC、AuthMe/HTTP 连接器、S3 存储与 CDN
+
+### 扩展、迁移与开发
+
+- [本站 OAuth2 / OIDC 授权服务](docs/oauth-provider.md)：将 WishingSkin 作为第三方应用的身份提供商
+- [社区插件 SDK](docs/community-plugin-sdk.md)：源码插件、动态 ZIP/市场包、iframe 前端与 Webhook 契约
+- [Blessing Skin 迁移手册](docs/migration-runbook.md)：从 BS 6.0.2 导出、预检查到空目标导入的完整步骤
+- [BS 来源契约](docs/bs-source-contract.md)：冻结源码版本、字段映射与预检查校验规则
+- [架构与数据模型](docs/architecture.md)：目录职责、材质分层与系统边界
+- [开发指南](docs/development-guide.md)：本地开发、双库测试与前端视觉规范
+
+## 许可证
+
+- 项目源码采用 [MIT 许可证](LICENSE)。
+- 第三方依赖、图标与开源像素字体许可见 [THIRD_PARTY_NOTICES.md](THIRD_PARTY_NOTICES.md)。

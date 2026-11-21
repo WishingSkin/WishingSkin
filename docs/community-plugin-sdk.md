@@ -1,10 +1,13 @@
 # 社区插件 SDK
 
-社区插件支持随源码编译，也支持独立可执行程序包。公开接口位于 `pkg/plugin`。最小示例位于 `examples/plugins/greeting`。源码插件与服务在同一进程；可执行插件在子进程运行。两者都拥有宿主用户的本机权限。站点维护者需审查并信任插件来源。
+WishingSkin 支持两种社区插件形态：随主程序编译的 **Go 源码插件**，以及通过 ZIP 或静态市场源安装的 **动态可执行插件包**。公开 SDK 位于 `pkg/plugin`，最小参考示例见 `examples/plugins/greeting`。
 
-## 接入
+> [!WARNING]
+> 源码插件与宿主同进程运行，动态插件在独立子进程运行，但两者都具备宿主用户的本机权限，不提供操作系统级沙箱。站点维护者须自行审查并信任插件来源。
 
-插件实现 `Manifest() plugin.Manifest` 和 `Register(plugin.Host) error`。在 `cmd/wishingskin/community.go` 导入插件，再由 `communityPlugins()` 返回实例。例如：
+## Go 源码插件接入
+
+实现 `Manifest() plugin.Manifest` 与 `Register(plugin.Host) error` 接口，然后在 `cmd/wishingskin/community.go` 中导入并注册：
 
 ```go
 import (
@@ -17,67 +20,49 @@ func communityPlugins() []sdk.Plugin {
 }
 ```
 
-先运行 `pnpm --dir web build`，再运行 `go build -trimpath -o bin/wishingskin.exe ./cmd/wishingskin`。两个构建必须串行。重新启动新程序后，后台插件页显示社区插件。社区插件默认停用。管理员可以保存配置并独立启停。源码插件更新需要重新编译；可执行插件包支持后台安装和热加载，见下文。
+按顺序串行执行前端构建与 Go 编译：
 
-## 清单与路由
+```powershell
+pnpm --dir web build
+go build -trimpath -o bin/wishingskin.exe ./cmd/wishingskin
+```
 
-清单必须有唯一 ID、版本号和设置命名空间。ID 仅允许小写字母、数字和单个连接用的 `. _ -`，最长 64 字符。`wishingskin.` 为官方保留前缀。依赖必须先注册，启用时依赖也须启用。缺少依赖时，插件不可用。
+重启后，后台“插件管理”中会出现新插件（默认停用），管理员可单独保存配置并启停。源码插件更新需重新编译宿主；动态插件包支持后台直接安装与热重载。
 
-使用 `host.Handle(plugin.Route{...})` 注册实际路由。`Path` 为以 `/` 开头的固定相对路径。宿主加上 `/api/plugins/{id}` 前缀。当前支持 GET、POST、PATCH、PUT、DELETE，不支持通配符或路径参数。清单中的 `Routes` 仅用于目录展示，不会自动注册接口。
+## 清单、路由与权限
 
-`Access` 支持 `public`、`user`、`admin`。受保护路由由宿主检查会话与管理员权限，并传入 `Principal`。非 GET 请求检查来源；用户和管理员路由还检查 `X-CSRF-Token`。插件负责输入校验、业务权限、响应编码和自身外部请求超时。停用后路由返回 404。
+- **清单规范**：须具备唯一 `ID`、版本号与设置命名空间。`ID` 仅允许小写字母、数字及单个连接符 `. _ -`，最长 64 字符（`wishingskin.` 为官方保留前缀）。声明的依赖须先注册并处于启用状态，否则插件不可用。
+- **路由注册**：通过 `host.Handle(plugin.Route{...})` 注册固定相对路径（以 `/` 开头，宿主自动挂载到 `/api/plugins/{id}` 下），支持 `GET`、`POST`、`PATCH`、`PUT`、`DELETE`，暂不支持通配符或路径参数。清单中的 `Routes` 仅用于元数据展示，不会自动绑定处理器。
+- **访问级别**：`Access` 可选 `public`、`user`、`admin`。受保护路由由宿主校验登录会话、管理员权限并注入 `Principal`；非 GET 请求校验同源，用户与管理员路由同时校验 `X-CSRF-Token`。插件停用后路由统一返回 404；输入校验、业务权限与外部请求超时由插件自行负责。
 
-## 配置
+## 插件配置存储
 
-`Manifest.Settings` 最多声明 32 个字段。每项包含 `Key`、`Label`、`Type`。支持 `text`、`secret`、`boolean`、`number`，文本最长 4096 字节。后台按声明生成表单，拒绝未声明字段。
+- `Manifest.Settings` 最多声明 32 个字段（包含 `Key`、`Label`、`Type`），类型支持 `text`、`secret`、`boolean`、`number`（文本上限 4096 字节）。后台自动按声明生成配置表单，拒绝未声明字段。
+- 插件调用 `host.Settings(ctx, &target)` 读取配置；配置经站点 32 字节设置密钥加密后存入 `plugins.settings_json`。管理员读取接口不回显 `secret` 明文（仅返回是否已配置），更新时留空即保留原值。
+- 管理员读写接口为 `GET/PATCH /api/admin/plugin-settings/{id}`（PATCH 直接传字段键值对象，省略字段保留原值）。保存配置与写入审计在同一事务提交，不改变启停状态。请勿在日志中打印配置。
 
-调用 `host.Settings(ctx, &target)` 读取当前配置。配置整体使用站点设置密钥加密后存入 `plugins.settings_json`。管理员读取接口会移除 secret，只返回是否已配置。secret 留空保留旧值。保存配置不改变启停状态，保存与审计在同一事务提交。请妥善备份设置密钥，禁止在日志中打印配置。
+## 同步事件、管理页面与定时任务（源码插件）
 
-管理员接口为 `GET/PATCH /api/admin/plugin-settings/{id}`。PATCH 请求体直接使用字段键值对象。字段省略时保留原值。
+- **同步事件**：在清单 `Events` 声明并通过 `host.Subscribe(name, handler)` 订阅（当前发布 `character.create` 与 `texture.upload`，携带事件名、用户 ID 与资源 ID）。事件在业务提交后同步通知，无持久队列或投递保证，不适合作为扣费等强一致依据。
+- **管理员内容页面**：`Manifest.Pages` 最多 16 项（`Area` 仅限 `admin.plugins`），需通过 `host.Page` 注册实际处理器（带 5 秒超时 context）。返回的 `PageDocument`（最多 32 个 section，每段 64 个 item，总 JSON 上限 64 KiB，标题 ≤ 256 B，摘要/键值 ≤ 4096 B，正文 ≤ 8192 B）全部按纯文本渲染，不执行 HTML 或脚本。停用后返回 404。
+- **手动与定时任务**：`Manifest.Tasks` 最多 16 项，通过 `host.Task` 注册处理器。`Schedule` 留空为仅手动触发，或填写 `@every 1m` 至 `@every 168h`；`Timeout` 默认 1 分钟（可选 1 秒至 15 分钟），处理器须遵守 `context` 取消。
+  - 状态分为 `idle` / `running` / `succeeded` / `failed`，错误与 panic 不直接回显给前端；每个任务按独立跨进程数据库锁互斥，每进程最多并发运行 2 个社区任务。
+  - 定时任务每分钟巡检，不在重启时补跑全部历史错失次数；协作式任务不提供恰好一次语义，处理器应保持幂等。
+  - 管理员接口：`GET /api/admin/plugin-runtime/{id}`、`GET /api/admin/plugin-runtime/{id}/pages/{page}`、`POST /api/admin/plugin-runtime/{id}/tasks/{task}`。
 
-## 事件与当前边界
+## 官方对象存储扩展契约
 
-插件在清单的 `Events` 声明事件，再用 `host.Subscribe(name, handler)` 订阅。当前宿主发布 `character.create` 和 `texture.upload`，数据只有事件名、用户 ID 和资源 ID。事件在业务提交后同步通知，停用插件不接收通知。通知没有持久队列、重试或投递保证，不能作为扣费或强一致业务的依据。处理器应及时返回，并遵守 context。
+`wishingskin.object-storage` 基于 `pkg/storage.BlobStore` 提供 S3 兼容存储（可选实现 `pkg/storage.InventoryStore` 的 `List` 与 `Stat` 以支持远端孤立对象分页清理）。启用后新上传先落本地再同步远端（远端失败不提交记录），读取优先远端并校验 hash（失败或不一致自动回退本地）；远程读取超时上限 10 秒（8 MiB 内缓冲校验），上传上限 20 秒，最多重试 2 次。站点 Logo 与背景图片不转存对象存储。
 
-源码插件的 Pages 和 Tasks 需要实际调用 host.Page / host.Task 注册处理器；仅声明不会执行。源码插件的 Capabilities、Permissions 和 MigrationVersion 为元数据。可执行插件包会执行下文的权限和迁移检查。Host 不提供核心表或站点密钥。
+## 动态可执行插件包与静态市场
 
-## 管理员内容页面
-
-Manifest.Pages 最多 16 项，ID 在插件内唯一，Area 当前只允许 admin.plugins。host.Page 接受相同 ID 和 Handler。处理器收到带 5 秒期限的 context 与已验证的管理员 Principal，返回 PageDocument。宿主在插件设置中生成入口并渲染标题、摘要、分段和键值列表。所有内容按纯文本显示，不执行 HTML、JavaScript 或远程前端模块。
-
-PageDocument 最多 32 个 section，每段最多 64 个 item。标题最长 256 字节，摘要/键值最长 4096 字节，段落正文最长 8192 字节，完整 JSON 最多 64 KiB。插件负责选择允许管理员查看的内容，不要返回凭据。启用状态与管理员身份由宿主检查，停用后页面返回 404。
-
-## 手动与固定间隔任务
-
-Manifest.Tasks 最多 16 项。Schedule 留空表示仅手动，或使用 @every 1m 到 @every 168h 的固定间隔。host.Task 接受相同 ID、Timeout 和 Handler。Timeout 默认 1 分钟，可选 1 秒到 15 分钟。处理器必须遵守 context 取消；同进程 Go 代码无法被宿主强制终止。
-
-管理员可以查看状态和手动运行。状态为 idle/running/succeeded/failed，包含本次开始和结束时间。处理器错误和 panic 不直接回显，避免凭据泄漏。手动触发先提交审计再执行；停用插件或依赖、停止服务会取消处理器 context。固定间隔任务每分钟检查，不在服务启动时补跑全部错过次数。
-
-每个任务使用数据库命名空间内独立的跨进程锁，不能同时执行两次。当前每进程最多同时运行两个社区任务，以保留数据库连接；任务开始前持注册设置锁复核启用和管理员权限。状态存于 settings，随完整备份保留。进程异常后的 running 状态仅在取得对应任务锁后标记 failed，不自动重试手动任务；定时任务在后续到期间隔重试。
-
-管理员接口：GET /api/admin/plugin-runtime/{id}，GET /api/admin/plugin-runtime/{id}/pages/{page}，POST /api/admin/plugin-runtime/{id}/tasks/{task}。POST 需要同源、会话和 CSRF。示例插件展示概览页与 check-settings 手动任务。它没有加入默认服务端插件列表，需要维护者显式编译注册。
-
-这些任务是进程内的协作式作业，不是持久消息队列，不提供恰好一次语义。任务可能在外部副作用完成后、状态写入前中断，因此处理器须自行保证重试幂等。
-
-## 官方对象存储插件
-
-`wishingskin.object-storage` 提供 S3 兼容材质存储，独立配置与启停。底层契约为 `pkg/storage.BlobStore`。配置使用设置密钥加密，访问凭据不回显。存储桶必须预先创建。
-
-启用后，新上传先完成安全的本地保存，再同步远程。远程写入失败时不提交材质记录。读取优先远程，并校验材质 hash；远程失败或内容不符时回退本地。停用后使用本地文件流。既有材质不自动搬迁，也不删除本地副本。备份仍读取本地目录。站点图片和 Logo 不转存对象存储。
-
-远程读超时上限 10 秒，上传上限 20 秒，SDK 最多两次尝试。远程读取会在 8 MiB 上限内缓冲并校验；默认本地读取保持流式。远程故障可能使回退多等待一次远程超时。后台提供旧材质同步、孤立文件回收和签名 CDN；支持按前缀分页列举和远端孤立对象回收。`pkg/storage.InventoryStore` 是可选扩展，提供 `List` 和 `Stat`；只实现 `BlobStore` 的存储后端仍可同步与读取。
-
-## 动态插件包与市场
-
-管理员可在插件页上传 ZIP，或配置 HTTPS 市场源后选择包安装。本地开发允许 loopback HTTP。市场源只是一份静态 JSON，可以由任意静态站点托管；项目不依赖集中市场服务。
+管理员可在插件页直接上传 ZIP，或配置 HTTPS 市场源（本地开发允许 loopback HTTP）。市场源是一份静态 JSON，可由任意静态托管提供：
 
 ```json
 {"packages":[{"id":"example.greeting","name":"Greeting","version":"1.0.0","url":"https://plugins.example.com/greeting.zip","sha256":"<ZIP 的 SHA-256>"}]}
 ```
 
-下载不跟随重定向。安装前展示清单和权限，确认的 ZIP 摘要必须与安装时一致。升级也重新确认权限。插件以宿主用户的权限运行，必须信任其来源。进程分离、权限声明和 iframe 只约束宿主提供的接口，不限制原生程序访问本机资源。
-
-ZIP 根目录包含 `plugin.json` 和当前平台的程序。最大压缩与展开体积均为 128 MiB，最多 256 个条目。示例：
+下载不跟随重定向；安装与升级前都会展示清单与权限，并核验 ZIP 的 SHA-256 摘要一致。ZIP 压缩与展开上限均为 128 MiB、最多 256 个条目，根目录包含 `plugin.json` 及目标平台可执行文件：
 
 ```json
 {
@@ -94,55 +79,40 @@ ZIP 根目录包含 `plugin.json` 和当前平台的程序。最大压缩与展�
 }
 ```
 
-使用 `plugin.ServeRuntime` 接收 JSON lines 请求并输出结果。程序必须保持运行，日志写 stderr。`health` 请求由 SDK 处理；其他请求按 `RuntimeRequest.Kind` 分派。处理器返回 `RuntimeResponse`，其中 `status` 为 200–599，`body` 为 JSON。路由不允许 3xx，失败响应不提交数据。任务与事件应返回 2xx。单次调用最长 30 秒；事件最多 5 秒。超时会终止插件进程，下次调用重新启动。
+- **运行时协议**：使用 `plugin.ServeRuntime` 持续接收 JSON lines 请求并输出结果（日志写 `stderr`）。`health` 由 SDK 自动处理，其余按 `RuntimeRequest.Kind` 分派并返回 `RuntimeResponse`（`status` 200–599，路由不允许 3xx；任务与事件应返回 2xx）。单次调用超时 30 秒（事件 5 秒），超时会终止子进程并在下次调用时拉起。
+- **权限声明**：可选 `routes.public`、`routes.user`、`routes.admin`、`events`、`pages`、`tasks`、`frontend`、`database`、`webhooks`，实际提供的能力须与声明匹配。依赖不能成环。
+- **目录与热重载**：包存放在 `WS_PLUGIN_DIR`（默认 `<WS_TEXTURE_DIR>/.plugins`）。支持后台免重启重载、升级与卸载（卸载保留数据与已应用迁移，升级保留旧包）。多实例部署应共享包目录与数据库，变更包时先保留单个实例操作，完成后再重启其余实例。
 
-权限列表为 `routes.public`、`routes.user`、`routes.admin`、`events`、`pages`、`tasks`、`frontend`、`database`、`webhooks`。清单中的实际贡献必须声明对应权限。依赖不接受环，运行时还会检查依赖启用状态。包存于 `WS_PLUGIN_DIR`；默认是材质目录下 `.plugins`。热加载作用于接收管理请求的服务实例。多实例部署应共享包目录与数据库；安装、升级或卸载时先保留一个实例，完成后再启动其余实例，使它们读取一致的安装索引。
+### 动态插件 KV 数据与 SQL 迁移
 
-管理界面可以重新加载、升级和卸载包，无需重启主站。卸载保留插件数据及已执行迁移。已安装 ZIP 与解压文件在打开索引、复用包及启动程序时校验。升级保留旧包文件，备份应包含当前启用版本的原包。程序不得修改自身包目录。
+- **KV 存储**：声明 `database` 权限后，请求会注入 `data` 键值集合，响应通过 `writes` 提交更新（置 `null` 删除）。单值 ≤ 64 KiB、单次 ≤ 128 项、单插件总计 ≤ 1 MiB 且 ≤ 1024 项，由数据库锁串行化事务写入。
+- **SQL 迁移**：包内 `migrations` 为版本连续数组，每项同时提供 `mysql` 与 `postgres` SQL 数组（长度与 `migrationVersion` 一致），表名用 `{{prefix}}` 占位由宿主替换为稳定前缀。已执行 SQL 不可修改或删除；由于 MySQL DDL 不可整体回滚，建表语句应保持可重入（如 `CREATE TABLE IF NOT EXISTS`）。
 
-## 动态数据与迁移
+### 动态前端模块（iframe）
 
-`database` 权限会向请求提供 `data` 键值集合，响应 `writes` 提交更新，值为 `null` 时删除。每值最多 64 KiB，每次最多 128 项，插件数据合计最多 1 MiB、1024 项。宿主用数据库锁串行执行插件调用，成功后事务写入数据。
-
-包的 `migrations` 是版本连续的数组，每项含 `version`、`mysql` 和 `postgres` SQL 数组。两种数据库都必须提供，清单 `migrationVersion` 等于数组长度。表名使用 `{{prefix}}`，宿主替换成该插件稳定的表名前缀。迁移不向可执行程序提供数据库连接；运行时数据使用上述键值接口。
-
-安装先停止插件，再逐条执行并记录 SQL 摘要；失败时保持停用。已执行的 SQL 不允许修改或移除。MySQL DDL 不能整体回滚，SQL 应可重入，例如使用 `CREATE TABLE IF NOT EXISTS`。迁移 SQL 由维护者审查，前缀校验不构成 SQL 沙箱。
-
-## 动态前端模块
-
-`frontend` 指定包内单个 HTML 文件，最多 1 MiB。它在管理员插件页的 iframe 中运行，允许脚本，使用独立的 opaque origin，不允许直接网络请求。脚本和样式需内联，图片可使用 data URL。
-
-子页面通过 `parent.postMessage` 请求宿主，只能调用清单中的固定路由。例如：
+`frontend` 指向包内单个 HTML 文件（≤ 1 MiB），在后台插件页的独立 opaque origin `iframe` 中运行（禁止直接发起外部网络请求，脚本与样式需内联，图片可用 data URL）。页面通过 `parent.postMessage` 调用清单内固定路由（最多 4 并发，请求体 ≤ 64 KiB，宿主自动附加会话与 CSRF）：
 
 ```js
 parent.postMessage({type:'wishingskin:request', id:'hello-1', method:'POST', path:'/hello', body:{name:'Alex'}}, '*')
 window.addEventListener('message', event => {
   if (event.source !== parent || event.data?.type !== 'wishingskin:response') return
-  // event.data 为 {type, id, status, body}；按 id 关联请求。
+  // event.data 为 {type, id, status, body}，按 id 关联请求
 })
 ```
 
-宿主只接受当前 iframe 的消息，自动附上会话和 CSRF。最多 4 个并发请求，请求体最多 64 KiB。主站设置、DOM、凭据不直接提供给 iframe。
+## Webhook 与持久事件队列
 
-## Webhook 与持久事件
-
-后台可新增 Webhook，选择 `character.create`、`texture.upload`。关联插件时，该插件必须声明 `webhooks` 权限。新建或轮换时只显示一次签名密钥，配置加密保存。停用订阅或关联插件会暂停投递。后台显示最近 50 次投递，失败后可手动重试。
-
-请求体包含稳定的 `id`、`createdAt` 和 `event`。使用下列头验证签名：
+在后台可创建 Webhook 订阅 `character.create`、`texture.upload`（关联插件时须具备 `webhooks` 权限）。签名密钥新建或轮换时仅展示一次，配置加密保存；后台保留最近 50 条投递并支持失败手动重试。请求头与验签规则：
 
 ```text
 X-WishingSkin-Delivery: <投递 ID>
 X-WishingSkin-Timestamp: <Unix 秒>
-X-WishingSkin-Signature: sha256=<HMAC-SHA256 的十六进制结果>
+X-WishingSkin-Signature: sha256=<HMAC-SHA256 十六进制>
 签名输入 = timestamp + "." + deliveryId + "." + 原始请求体
 ```
 
-接收端应校验时间窗口并按投递 ID 去重。动态插件事件及 Webhook 持久排队，每分钟检查，每批最多各 4 条，失败最多尝试 5 次。完成记录保留 30 天。投递可能重复，处理器须幂等。事件在业务提交后入队，入队失败不会回滚已提交业务；不提供事务性投递或恰好一次语义。源码插件继续使用同步 EventBus。
+动态插件事件与 Webhook 均走持久队列，每分钟巡检、每批最多 4 条、失败最多重试 5 次、完成记录保留 30 天。接收端应校验时间窗口并按投递 ID 做幂等去重。
 
-## 插件备份
+## 插件备份与恢复边界
 
-完整备份保存安装索引引用的 ZIP、权限确认、启停配置、KV 数据和受管理前缀内的 SQL 表。卸载会保留数据和旧包，备份也会保存可匹配已执行迁移的旧包。不要手动删除这些包；缺少重建 SQL 表所需的包时，备份会失败。
-
-恢复先校验全部包与数据，再按迁移记录重建已应用的 SQL 步骤。磁盘上暂存但未安装的升级包不会触发新迁移。恢复不会启动可执行插件。插件 SQL 数据只能恢复到同一数据库引擎；单纯 KV 数据可随核心备份跨引擎恢复。
-
-当前自动表备份支持普通列、NULL、二进制列和自增主键，以及无循环的表间外键依赖。生成列与循环依赖会拒绝导出。SQL 表名和列名需为最多 64 字符的字母、数字及下划线标识符。插件自行创建的其他文件或外部服务数据需另外备份。恢复会执行备份内可信插件包的已应用迁移；MySQL DDL 无法整体回滚，失败后使用新的空目标重试。
+完整备份自动包含安装索引引用的 ZIP、保留旧包、权限确认、配置、KV 数据与受管理前缀内的 SQL 表（请勿手动删旧包）。纯 KV 数据可随核心备份在 MySQL 与 PostgreSQL 间跨引擎恢复；含插件 SQL 表时须恢复到相同数据库引擎。自动表备份支持普通列、NULL、二进制列、自增主键及无环外键（表名与列名限 64 字符内字母/数字/下划线）；含生成列或循环外键的表会拒绝导出，需由插件另行提供备份方案。
