@@ -26,6 +26,7 @@ type homepageBlock struct {
 	Image       string            `json:"image,omitempty"`
 	ImageAlt    string            `json:"imageAlt,omitempty"`
 	IconImage   string            `json:"iconImage,omitempty"`
+	Source      string            `json:"source,omitempty"`
 	ID          string            `json:"id"`
 	Kind        string            `json:"kind"`
 	Enabled     bool              `json:"enabled"`
@@ -182,6 +183,11 @@ func validateHomepage(value homepageSettings) error {
 		}
 		if err := validHomepageHref(block.ButtonHref); err != nil {
 			return err
+		}
+		if block.Source != "" {
+			if block.Kind != "showcase" || (block.Source != "trending" && block.Source != "likes" && block.Source != "collections") {
+				return errors.New("首页展示来源无效")
+			}
 		}
 		if len(block.Features) > 6 {
 			return errors.New("首页功能卡最多 6 个")

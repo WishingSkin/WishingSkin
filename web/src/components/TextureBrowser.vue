@@ -103,6 +103,50 @@ async function change(method: 'PUT' | 'PATCH' | 'DELETE') {
   }
 }
 
+const likeBusy = ref(false)
+const sortPresets = [
+  { value: 'trending', label: '近期热门' },
+  { value: 'likes', label: '点赞最多' },
+  { value: 'collections', label: '收藏最多' },
+  { value: 'name', label: '按名称' },
+] as const
+function selectSort(value: string) {
+  if (sort.value === value) return
+  sort.value = value
+  search()
+}
+async function toggleLike() {
+  if (!props.csrfToken) { emit('login'); return }
+  const item = selected.value
+  if (!item || likeBusy.value || busy.value) return
+  likeBusy.value = true
+  actionError.value = ''
+  try {
+    const method = item.liked ? 'DELETE' : 'PUT'
+    const response = await fetch(`/api/library/${encodeURIComponent(item.id)}/like`, {
+      method,
+      credentials: 'same-origin',
+      signal: lifetime.signal,
+      headers: { 'X-CSRF-Token': props.csrfToken },
+    })
+    if (!active) return
+    if (response.status === 401) { emit('expired'); return }
+    if (!response.ok) {
+      const data: { error?: string } = await response.json().catch(() => ({}))
+      if (active) actionError.value = data.error || '操作未完成，请重试。'
+      return
+    }
+    const result = await response.json() as { liked: boolean; likeCount: number }
+    if (!active) return
+    item.liked = result.liked
+    item.likeCount = result.likeCount
+  } catch {
+    if (active) actionError.value = '无法连接到服务，请重试。'
+  } finally {
+    if (active) likeBusy.value = false
+  }
+}
+
 watch(() => props.mode, () => { selectedId.value = ''; message.value = ''; actionError.value = ''; void load() }, { immediate: true })
 onBeforeUnmount(() => { active = false; request?.abort(); lifetime.abort() })
 </script>
@@ -114,9 +158,27 @@ onBeforeUnmount(() => { active = false; request?.abort(); lifetime.abort() })
       <template v-if="mode === 'library'" #extra>
         <label class="binding-field"><span>{{ t('分类') }}</span><input v-model="category" maxlength="32" :placeholder="t('输入分类')" /></label>
         <label class="binding-field"><span>{{ t('标签') }}</span><input v-model="tag" maxlength="24" :placeholder="t('输入标签')" /></label>
-        <label class="binding-field"><span>{{ t('排序') }}</span><select v-model="sort" @change="search"><option value="name">{{ t('名称升序') }}</option><option value="name-desc">{{ t('名称降序') }}</option><option value="collections">{{ t('收藏最多') }}</option></select></label>
+        <label class="binding-field"><span>{{ t('排序') }}</span><select v-model="sort" @change="search"><option value="name">{{ t('名称升序') }}</option><option value="name-desc">{{ t('名称降序') }}</option><option value="trending">{{ t('近期热门') }}</option><option value="likes">{{ t('点赞最多') }}</option><option value="collections">{{ t('收藏最多') }}</option></select></label>
       </template>
-      <template #summary><p v-if="owner" class="owner-filter">{{ t('上传者：') }}{{ ownerName || t('这位上传者') }} <button type="button" class="text-button" @click="owner = ''; ownerName = ''; search()">{{ t('查看所有上传者') }}</button></p></template>
+      <template #summary>
+        <div v-if="mode === 'library'" class="library-sort-strip" role="group" :aria-label="t('快捷榜单排序')">
+          <button
+            v-for="preset in sortPresets"
+            :key="preset.value"
+            type="button"
+            class="secondary-button library-sort-pill"
+            :class="{ active: sort === preset.value }"
+            :aria-pressed="sort === preset.value"
+            :disabled="pending"
+            @click="selectSort(preset.value)"
+          >
+            <AppIcon v-if="preset.value === 'trending'" name="fire" />
+            <AppIcon v-else-if="preset.value === 'likes'" name="heart" />
+            {{ t(preset.label) }}
+          </button>
+        </div>
+        <p v-if="owner" class="owner-filter">{{ t('上传者：') }}{{ ownerName || t('这位上传者') }} <button type="button" class="text-button" @click="owner = ''; ownerName = ''; search()">{{ t('查看所有上传者') }}</button></p>
+      </template>
     </ResourceFilters>
 
     <div class="materials-workspace browse-list-layout">
@@ -125,16 +187,31 @@ onBeforeUnmount(() => { active = false; request?.abort(); lifetime.abort() })
         <LoadingSkeleton v-if="pending" layout="cards" label="正在加载材质…" :count="6" />
         <div v-else-if="error" class="empty-state" role="alert"><h2>{{ t("加载失败") }}</h2><button class="secondary-button" type="button" @click="load">{{ t("重新加载") }}</button></div>
         <div v-else-if="!items.length" class="empty-state"><span class="empty-symbol"><AppIcon name="library" /></span><h2>{{ mode === 'library' ? t('没有找到公开材质') : t('衣柜还是空的') }}</h2><p>{{ mode === 'library' ? t('换个关键词或筛选条件试试。') : t('去公开库逛逛，或把你上传的皮肤和披风加入衣柜。') }}</p></div>
-        <div v-else class="material-cards"><button v-for="item in items" :key="item.id" type="button" class="material-card" :class="{ selected: item.id === selectedId }" :aria-pressed="item.id === selectedId" @click="selectedId = item.id"><ModelThumbnail class="material-thumbnail" :name="label(item)" :model="item.kind === 'skin' ? item.model : 'default'" :skin-hash="item.kind === 'skin' ? item.fileHash : ''" :cape-hash="item.kind === 'cape' ? item.fileHash : ''" /><span class="material-card-copy"><strong>{{ label(item) }}</strong><span>{{ item.kind === 'cape' ? t('披风') : item.model === 'slim' ? t('纤细手臂') : t('标准手臂') }}<small>{{ item.public ? t('{count} 人收藏', { count: item.collectionCount }) : t('未公开') }}</small></span></span></button></div>
+        <div v-else class="material-cards"><button v-for="item in items" :key="item.id" type="button" class="material-card" :class="{ selected: item.id === selectedId }" :aria-pressed="item.id === selectedId" @click="selectedId = item.id"><ModelThumbnail class="material-thumbnail" :name="label(item)" :model="item.kind === 'skin' ? item.model : 'default'" :skin-hash="item.kind === 'skin' ? item.fileHash : ''" :cape-hash="item.kind === 'cape' ? item.fileHash : ''" /><span class="material-card-copy"><strong>{{ label(item) }}</strong><span>{{ item.kind === 'cape' ? t('披风') : item.model === 'slim' ? t('纤细手臂') : t('标准手臂') }}<small class="material-card-stats"><span class="material-like-stat" :class="{ liked: item.liked }"><AppIcon name="heart" />{{ item.likeCount ?? 0 }}</span><span>{{ item.public ? t('{count} 收藏', { count: item.collectionCount }) : t('未公开') }}</span></small></span></span></button></div>
         <nav v-if="total > 24" class="library-pagination" :aria-label="t('公开库分页')"><button class="secondary-button" type="button" :disabled="pending || page === 1" @click="changePage(page - 1)">{{ t("上一页") }}</button><span>{{ t('第 {page} / {total} 页', { page, total: Math.ceil(total / 24) }) }}</span><button class="secondary-button" type="button" :disabled="pending || page * 24 >= total" @click="changePage(page + 1)">{{ t("下一页") }}</button></nav>
       </section>
       <AppModal v-if="selected" :title="label(selected)" wide :busy="busy" @close="selectedId = ''"><div class="material-preview">
         <div class="material-preview-heading"><h2 id="browser-preview-title">{{ t("材质预览") }}</h2><span>{{ selected.public ? t('公开') : t('未公开') }}</span></div>
         <CharacterViewer :key="selected.id" :name="label(selected)" :model="selected.kind === 'skin' ? selected.model : 'default'" :skin-hash="selected.kind === 'skin' ? selected.fileHash : ''" :cape-hash="selected.kind === 'cape' ? selected.fileHash : ''" @fallback="fallback = selected.id" />
-        <div class="material-description"><h3>{{ label(selected) }}</h3><p v-if="mode === 'wardrobe' && selected.displayName !== selected.name">{{ t("原名：") }}{{ selected.name }}</p><p>{{ selected.description || t('暂无描述。') }}</p><p>{{ t("上传者：") }}{{ selected.ownerName || t('归属未知') }} / {{ t('{count} 人收藏', { count: selected.collectionCount }) }}</p><button v-if="mode === 'library' && selected.ownerId" class="text-button uploader-link" type="button" @click="filterOwner(selected)">{{ t("查看此上传者的材质") }}</button></div>
+        <div class="material-description"><h3>{{ label(selected) }}</h3><p v-if="mode === 'wardrobe' && selected.displayName !== selected.name">{{ t("原名：") }}{{ selected.name }}</p><p>{{ selected.description || t('暂无描述。') }}</p><p>{{ t("上传者：") }}{{ selected.ownerName || t('归属未知') }} / {{ t('{count} 人点赞', { count: selected.likeCount ?? 0 }) }} / {{ t('{count} 人收藏', { count: selected.collectionCount }) }}</p><button v-if="mode === 'library' && selected.ownerId" class="text-button uploader-link" type="button" @click="filterOwner(selected)">{{ t("查看此上传者的材质") }}</button></div>
         <div class="material-editing">
-          <template v-if="mode === 'library'"><button type="button" class="primary-button" :disabled="busy || (collected.has(selected.id) && !!csrfToken)" @click="change('PUT')">{{ !csrfToken ? t('登录后收藏') : collected.has(selected.id) ? t('已在衣柜') : t('收藏到衣柜') }}</button></template>
-          <template v-else><form class="inline-form" @submit.prevent="change('PATCH')"><label for="wardrobe-alias">{{ t("衣柜名称") }}</label><div class="inline-controls"><input id="wardrobe-alias" v-model="alias" maxlength="255" required :disabled="busy" /><button type="submit" class="secondary-button" :disabled="busy || alias.trim() === selected.displayName">{{ t("保存名称") }}</button></div></form><button class="danger-button wardrobe-remove" type="button" :disabled="busy" @click="change('DELETE')">{{ t("移出衣柜") }}</button></template>
+          <div class="material-social-actions">
+            <button
+              v-if="selected.public || selected.owned"
+              type="button"
+              class="secondary-button like-action-button"
+              :class="{ liked: selected.liked }"
+              :aria-pressed="!!selected.liked"
+              :disabled="busy || likeBusy"
+              @click="toggleLike"
+            >
+              <AppIcon name="heart" />
+              {{ !csrfToken ? t('登录后点赞') : selected.liked ? t('已点赞') : t('点赞') }}
+              <span>{{ selected.likeCount ?? 0 }}</span>
+            </button>
+            <button v-if="mode === 'library'" type="button" class="primary-button" :disabled="busy || (collected.has(selected.id) && !!csrfToken)" @click="change('PUT')">{{ !csrfToken ? t('登录后收藏') : collected.has(selected.id) ? t('已在衣柜') : t('收藏到衣柜') }}</button>
+          </div>
+          <template v-if="mode === 'wardrobe'"><form class="inline-form" @submit.prevent="change('PATCH')"><label for="wardrobe-alias">{{ t("衣柜名称") }}</label><div class="inline-controls"><input id="wardrobe-alias" v-model="alias" maxlength="255" required :disabled="busy" /><button type="submit" class="secondary-button" :disabled="busy || alias.trim() === selected.displayName">{{ t("保存名称") }}</button></div></form><button class="danger-button wardrobe-remove" type="button" :disabled="busy" @click="change('DELETE')">{{ t("移出衣柜") }}</button></template>
         </div>
         <details :key="selected.id" class="texture-sources" :open="fallback === selected.id"><summary>{{ t("PNG 材质与下载") }}</summary><div class="texture-preview checkerboard"><img v-if="!failedImages.includes(selected.fileHash)" :src="`/textures/${selected.fileHash}`" :alt="t('“{name}”的 PNG 材质平面图', { name: label(selected) })" @error="failedImages.push(selected.fileHash)" /><p v-else class="texture-placeholder">{{ t("材质预览加载失败，可尝试下载或刷新列表。") }}</p></div><a class="download-link material-download" :href="`/textures/${selected.fileHash}`" :download="`${label(selected)}.png`">{{ t("下载 PNG") }}</a></details>
         <button class="primary-button material-wear" type="button" :disabled="busy" @click="csrfToken ? applying = selected : emit('login')">{{ t("应用到角色") }}</button>

@@ -17,6 +17,7 @@ var tables = []table{
 	{"texture_metadata", "record_id,category,tags,review_state,review_reason", "sssss", "record_id"},
 	{"characters", "id,user_id,uuid,name,name_key,skin_hash,cape_hash,model", "iissssss", "id"},
 	{"wardrobe", "user_id,record_id,display_name,collected_at", "issi", "user_id,record_id"},
+	{"texture_likes", "user_id,record_id,created_at", "isi", "user_id,record_id"},
 	{"account_states", "user_id,email_verified,verification_required", "ibb", "user_id"},
 	{"user_profiles", "user_id,avatar_mode,character_uuid,avatar_image", "isss", "user_id"},
 	{"user_totp", "user_id,secret_encrypted,enabled,created_at,last_used_step", "isbii", "user_id"},

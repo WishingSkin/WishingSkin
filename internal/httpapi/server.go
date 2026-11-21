@@ -186,6 +186,8 @@ func New(s *store.Store, cfg Config) (*Server, error) {
 	a.mux.HandleFunc("DELETE /api/textures/{id}", a.manageTextureRecord)
 	a.mux.HandleFunc("GET /api/library", a.publicLibrary)
 	a.mux.HandleFunc("GET /api/library/{id}", a.publicLibrary)
+	a.mux.HandleFunc("PUT /api/library/{id}/like", a.manageTextureLike)
+	a.mux.HandleFunc("DELETE /api/library/{id}/like", a.manageTextureLike)
 	a.mux.HandleFunc("GET /api/wardrobe", a.wardrobe)
 	a.mux.HandleFunc("PUT /api/wardrobe/{id}", a.manageWardrobe)
 	a.mux.HandleFunc("PATCH /api/wardrobe/{id}", a.manageWardrobe)

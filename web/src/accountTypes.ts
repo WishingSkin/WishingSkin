@@ -43,7 +43,7 @@ export interface AdvancedAppearance {
 }
 
 export interface HomepageFeature { title: string; body: string; href: string; icon?: string; iconImage?: string }
-export interface HomepageBlock { id: string; name?: string; image?: string; imageAlt?: string; kind: 'intro' | 'features' | 'notice' | 'cta' | 'showcase'; enabled: boolean; title: string; body: string; buttonLabel: string; buttonHref: string; features?: HomepageFeature[]; iconImage?: string }
+export interface HomepageBlock { id: string; name?: string; image?: string; imageAlt?: string; source?: '' | 'trending' | 'likes' | 'collections'; kind: 'intro' | 'features' | 'notice' | 'cta' | 'showcase'; enabled: boolean; title: string; body: string; buttonLabel: string; buttonHref: string; features?: HomepageFeature[]; iconImage?: string }
 export interface HomepageSettings { blocks: HomepageBlock[]; background?: { image?: string; imageUrl?: string; overlay: number } }
 
 export interface SiteAccess {

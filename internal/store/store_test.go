@@ -56,6 +56,7 @@ func assertEmbeddedSchemasAgree(t *testing.T, migration string) {
 	wardrobeIndex := regexp.MustCompile(`CREATE INDEX IF NOT EXISTS wardrobe_record_id_idx ON wardrobe\(record_id\);`)
 	oidcIndex := regexp.MustCompile(`, INDEX oidc_flow_expiry\(expires_at\)|CREATE INDEX IF NOT EXISTS oidc_flow_expiry ON oidc_flows\(expires_at\);`)
 	extensionIndex := regexp.MustCompile(`, INDEX (webhook_due|plugin_event_due)\(state,next_at\)|CREATE INDEX IF NOT EXISTS (webhook_due|plugin_event_due) ON (webhook_deliveries|plugin_event_deliveries)\(state,next_at\);`)
+	likesIndex := regexp.MustCompile(`, INDEX texture_likes_record_created_idx \(record_id, created_at\)|CREATE INDEX IF NOT EXISTS texture_likes_record_created_idx ON texture_likes\(record_id, created_at\);`)
 	normalize := func(source string) string {
 		// Compare DDL here; dialect-specific backfill/upsert behavior is tested against both databases.
 		source = strings.SplitN(source, "INSERT INTO", 2)[0]
@@ -83,6 +84,8 @@ func assertEmbeddedSchemasAgree(t *testing.T, migration string) {
 		source = wardrobeIndex.ReplaceAllString(source, "")
 		// The same OIDC expiry index is declared inline on MySQL.
 		source = oidcIndex.ReplaceAllString(source, "")
+		// The same likes index is declared inline on MySQL.
+		source = likesIndex.ReplaceAllString(source, "")
 		return strings.Join(strings.Fields(source), " ")
 	}
 	if normalize(string(mysql)) != normalize(string(postgres)) {
@@ -103,6 +106,12 @@ func assertEmbeddedSchemasAgree(t *testing.T, migration string) {
 	}
 	if migration == "024_storage_integrity" {
 		tables = []string{"texture_file_integrity"}
+	}
+	if migration == "025_texture_likes" {
+		tables = []string{"texture_likes"}
+		if !strings.Contains(string(mysql), "DEFAULT CHARACTER SET utf8mb4 COLLATE utf8mb4_0900_bin") {
+			t.Error("texture_likes table must match the referenced record ID collation")
+		}
 	}
 	if migration == "019_admin_event_changes" {
 		tables = []string{"admin_event_changes"}

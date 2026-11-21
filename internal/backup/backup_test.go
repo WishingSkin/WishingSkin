@@ -64,6 +64,7 @@ func seed(t *testing.T, dialect string) (*store.Store, string) {
 	exec("UPDATE textures SET deleted=?", true)
 	exec("UPDATE texture_records SET owner_id=?,description=?,is_public=?", uid, "原样保留描述 🧥", false)
 	exec("INSERT INTO wardrobe(user_id,record_id,display_name,collected_at) VALUES(?,?,?,?)", uid, record, "旧收藏", 0)
+	exec("INSERT INTO texture_likes(user_id,record_id,created_at) VALUES(?,?,?)", uid, record, 1700000000)
 	exec("INSERT INTO account_states(user_id,email_verified,verification_required) VALUES(?,?,?)", uid, false, false)
 	exec("INSERT INTO user_profiles(user_id,avatar_mode,character_uuid,avatar_image) VALUES(?,?,?,?)", uid, "character", uuid, "")
 	exec("INSERT INTO user_totp(user_id,secret_encrypted,enabled,created_at,last_used_step) VALUES(?,?,TRUE,?,?)", uid, "synthetic-encrypted-totp", 1700000000, 42)

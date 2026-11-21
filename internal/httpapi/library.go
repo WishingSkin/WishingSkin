@@ -18,15 +18,17 @@ type libraryRecord struct {
 	DisplayName     string `json:"displayName"`
 	CollectionCount int64  `json:"collectionCount"`
 	Collected       bool   `json:"collected"`
+	LikeCount       int64  `json:"likeCount"`
+	Liked           bool   `json:"liked"`
 }
 
-const libraryColumns = "r.record_id,r.file_hash,r.name,r.description,r.kind,r.model,r.is_public,r.owner_id,COALESCE(u.nickname,''),(SELECT COUNT(*) FROM wardrobe c WHERE c.record_id=r.record_id),COALESCE(m.category,''),COALESCE(m.tags,'[]'),COALESCE(m.review_state,'approved'),COALESCE(m.review_reason,'')"
+const libraryColumns = "r.record_id,r.file_hash,r.name,r.description,r.kind,r.model,r.is_public,r.owner_id,COALESCE(u.nickname,''),(SELECT COUNT(*) FROM wardrobe c WHERE c.record_id=r.record_id),(SELECT COUNT(*) FROM texture_likes l WHERE l.record_id=r.record_id),COALESCE(m.category,''),COALESCE(m.tags,'[]'),COALESCE(m.review_state,'approved'),COALESCE(m.review_reason,'')"
 const libraryTables = " FROM texture_records r JOIN textures f ON f.hash=r.file_hash LEFT JOIN users u ON u.id=r.owner_id LEFT JOIN texture_metadata m ON m.record_id=r.record_id"
 
 func scanLibraryRecord(row interface{ Scan(...any) error }, item *libraryRecord, wardrobe bool) error {
 	var owner sql.NullInt64
 	var tags string
-	fields := []any{&item.ID, &item.FileHash, &item.Name, &item.Description, &item.Kind, &item.Model, &item.Public, &owner, &item.OwnerName, &item.CollectionCount, &item.Category, &tags, &item.ReviewState, &item.ReviewReason}
+	fields := []any{&item.ID, &item.FileHash, &item.Name, &item.Description, &item.Kind, &item.Model, &item.Public, &owner, &item.OwnerName, &item.CollectionCount, &item.LikeCount, &item.Category, &tags, &item.ReviewState, &item.ReviewReason}
 	if wardrobe {
 		fields = append(fields, &item.DisplayName)
 	}
@@ -121,12 +123,19 @@ func (a *Server) publicLibrary(w http.ResponseWriter, r *http.Request) {
 		args = append(args, string(raw))
 	}
 	order := "r.name,r.record_id"
+	var orderArgs []any
 	switch q.Get("sort") {
 	case "", "name":
 	case "name-desc":
 		order = "r.name DESC,r.record_id"
 	case "collections":
 		order = "(SELECT COUNT(*) FROM wardrobe c WHERE c.record_id=r.record_id) DESC,r.name,r.record_id"
+	case "likes":
+		order = "(SELECT COUNT(*) FROM texture_likes l WHERE l.record_id=r.record_id) DESC,(SELECT COUNT(*) FROM wardrobe c WHERE c.record_id=r.record_id) DESC,r.name,r.record_id"
+	case "trending":
+		cutoff := time.Now().Add(-30 * 24 * time.Hour).Unix()
+		order = "((SELECT COUNT(*) FROM texture_likes l WHERE l.record_id=r.record_id AND l.created_at>=?)*4+(SELECT COUNT(*) FROM wardrobe c WHERE c.record_id=r.record_id AND c.collected_at>=?)*3+(SELECT COUNT(*) FROM texture_likes l WHERE l.record_id=r.record_id)*2+(SELECT COUNT(*) FROM wardrobe c WHERE c.record_id=r.record_id)) DESC,r.record_id DESC"
+		orderArgs = []any{cutoff, cutoff}
 	default:
 		failure(w, 400, "排序方式无效")
 		return
@@ -136,7 +145,9 @@ func (a *Server) publicLibrary(w http.ResponseWriter, r *http.Request) {
 		failure(w, 503, "暂时无法读取公开库")
 		return
 	}
-	rows, err := a.s.DB.QueryContext(r.Context(), a.s.Bind("SELECT "+libraryColumns+libraryTables+where+" ORDER BY "+order+" LIMIT ? OFFSET ?"), append(args, size, (page-1)*size)...)
+	queryArgs := append(append([]any{}, args...), orderArgs...)
+	queryArgs = append(queryArgs, size, (page-1)*size)
+	rows, err := a.s.DB.QueryContext(r.Context(), a.s.Bind("SELECT "+libraryColumns+libraryTables+where+" ORDER BY "+order+" LIMIT ? OFFSET ?"), queryArgs...)
 	if err != nil {
 		failure(w, 503, "暂时无法读取公开库")
 		return
@@ -227,8 +238,17 @@ func (a *Server) wardrobe(w http.ResponseWriter, r *http.Request) {
 		failure(w, 503, "暂时无法读取衣柜")
 		return
 	}
+	rows.Close()
 	if !paginated {
 		total = int64(len(items))
+	}
+	pointers := make([]*libraryRecord, len(items))
+	for i := range items {
+		items[i].Collected = true
+		pointers[i] = &items[i]
+	}
+	if !a.populateUserLikes(w, r, u.ID, pointers) {
+		return
 	}
 	respond(w, 200, map[string]any{"textures": items, "total": total, "page": page, "pageSize": size})
 }
@@ -368,8 +388,115 @@ func (a *Server) libraryMembership(w http.ResponseWriter, r *http.Request, items
 		failure(w, 503, "暂时无法读取衣柜")
 		return false
 	}
+	rows.Close()
 	for _, item := range items {
 		item.Collected = collected[item.ID]
 	}
+	return a.populateUserLikes(w, r, u.ID, items)
+}
+
+func (a *Server) populateUserLikes(w http.ResponseWriter, r *http.Request, userID int64, items []*libraryRecord) bool {
+	if len(items) == 0 {
+		return true
+	}
+	args := []any{userID}
+	marks := make([]string, len(items))
+	for i, item := range items {
+		marks[i] = "?"
+		args = append(args, item.ID)
+	}
+	rows, err := a.s.DB.QueryContext(r.Context(), a.s.Bind("SELECT record_id FROM texture_likes WHERE user_id=? AND record_id IN ("+strings.Join(marks, ",")+")"), args...)
+	if err != nil {
+		failure(w, 503, "暂时无法读取点赞状态")
+		return false
+	}
+	defer rows.Close()
+	liked := map[string]bool{}
+	for rows.Next() {
+		var id string
+		if err := rows.Scan(&id); err != nil {
+			failure(w, 503, "暂时无法读取点赞状态")
+			return false
+		}
+		liked[id] = true
+	}
+	if rows.Err() != nil {
+		failure(w, 503, "暂时无法读取点赞状态")
+		return false
+	}
+	for _, item := range items {
+		item.Liked = liked[item.ID]
+	}
 	return true
+}
+
+func (a *Server) manageTextureLike(w http.ResponseWriter, r *http.Request) {
+	u, token, err := a.current(r)
+	if err != nil {
+		sessionError(w, err)
+		return
+	}
+	if !a.validWriteRequest(w, r, token) {
+		return
+	}
+	id := r.PathValue("id")
+	if !recordIDPattern.MatchString(id) {
+		failure(w, 404, "材质记录不存在")
+		return
+	}
+	tx, err := a.s.DB.BeginTx(r.Context(), nil)
+	if err != nil {
+		failure(w, 503, "暂时无法更新点赞状态")
+		return
+	}
+	defer tx.Rollback()
+	var owner sql.NullInt64
+	var public, removed, disabled bool
+	err = tx.QueryRowContext(r.Context(), a.s.Bind("SELECT r.owner_id,r.is_public,(r.deleted OR NOT "+approvedRecordSQL+"),f.deleted FROM texture_records r JOIN textures f ON f.hash=r.file_hash WHERE r.record_id=? FOR UPDATE"), id).Scan(&owner, &public, &removed, &disabled)
+	if errors.Is(err, sql.ErrNoRows) && r.Method == http.MethodDelete {
+		respond(w, 200, map[string]any{"liked": false, "likeCount": 0})
+		return
+	}
+	if errors.Is(err, sql.ErrNoRows) || (r.Method != http.MethodDelete && (removed || disabled)) {
+		failure(w, 404, "材质记录不存在")
+		return
+	}
+	if err != nil {
+		failure(w, 503, "暂时无法读取材质")
+		return
+	}
+	liked := false
+	switch r.Method {
+	case http.MethodPut:
+		if !public && (!owner.Valid || owner.Int64 != u.ID) {
+			failure(w, 404, "材质记录不存在")
+			return
+		}
+		var exists int
+		if err = tx.QueryRowContext(r.Context(), a.s.Bind("SELECT COUNT(*) FROM texture_likes WHERE user_id=? AND record_id=?"), u.ID, id).Scan(&exists); err != nil {
+			failure(w, 503, "暂时无法更新点赞状态")
+			return
+		}
+		if exists == 0 {
+			_, err = tx.ExecContext(r.Context(), a.s.Bind("INSERT INTO texture_likes(user_id,record_id,created_at) VALUES(?,?,?)"), u.ID, id, time.Now().Unix())
+		}
+		liked = true
+	case http.MethodDelete:
+		_, err = tx.ExecContext(r.Context(), a.s.Bind("DELETE FROM texture_likes WHERE user_id=? AND record_id=?"), u.ID, id)
+		liked = false
+	}
+	if err != nil {
+		failure(w, 503, "暂时无法更新点赞状态")
+		return
+	}
+	var count int64
+	if err = tx.QueryRowContext(r.Context(), a.s.Bind("SELECT COUNT(*) FROM texture_likes WHERE record_id=?"), id).Scan(&count); err != nil {
+		failure(w, 503, "暂时无法更新点赞状态")
+		return
+	}
+	if tx.Commit() != nil {
+		failure(w, 503, "暂时无法更新点赞状态")
+		return
+	}
+	respond(w, 200, map[string]any{"liked": liked, "likeCount": count})
 }

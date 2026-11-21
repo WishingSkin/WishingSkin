@@ -278,3 +278,29 @@ button.admin-overview-card:hover{border-color:var(--accent);transform:translateY
 .admin-overview-meta{font-size:var(--font-small);color:var(--muted);line-height:1.5;overflow-wrap:anywhere}
 .admin-overview-meta.attention{color:var(--danger);font-weight:600}
 @media(prefers-reduced-motion:reduce){.quota-bar-fill{transition:none}button.admin-overview-card{transition:none}button.admin-overview-card:hover{transform:none}}
+
+.library-sort-strip{display:flex;flex-wrap:wrap;gap:8px;margin-top:12px}
+.library-sort-pill{display:inline-flex;align-items:center;gap:6px;min-height:34px;padding:6px 12px;font-size:var(--font-small)}
+.library-sort-pill .app-icon{width:15px;height:15px}
+.library-sort-pill.active{border-color:var(--accent);background:var(--accent-soft);color:var(--accent);font-weight:600}
+.material-card-stats{display:inline-flex;align-items:center;gap:10px}
+.material-like-stat{display:inline-flex;align-items:center;gap:3px;font-variant-numeric:tabular-nums}
+.material-like-stat .app-icon{width:14px;height:14px}
+.material-like-stat.liked{color:var(--danger)}
+.material-social-actions{display:flex;flex-wrap:wrap;gap:10px;align-items:center}
+.like-action-button{display:inline-flex;align-items:center;gap:6px;font-variant-numeric:tabular-nums}
+.like-action-button .app-icon{width:16px;height:16px}
+.like-action-button.liked{border-color:var(--danger);color:var(--danger)}
+.like-action-button.liked .app-icon svg{fill:currentColor}
+.homepage-showcase-feed{display:grid;gap:20px;grid-template-columns:1fr}
+.homepage-showcase-header{display:flex;flex-wrap:wrap;align-items:end;justify-content:space-between;gap:16px}
+.homepage-showcase-grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(160px,1fr));gap:14px}
+.homepage-showcase-item{display:grid;border:1px solid var(--border);border-radius:var(--radius-card);overflow:hidden;background:var(--panel);color:var(--ink);text-decoration:none;transition:border-color 150ms ease,transform 150ms ease}
+.homepage-showcase-item:hover{border-color:var(--accent);transform:translateY(-1px)}
+.homepage-showcase-thumb{height:150px;padding:16px;display:flex;align-items:center;justify-content:center;border-bottom:1px solid var(--border)}
+.homepage-showcase-item-meta{display:grid;gap:4px;padding:12px}
+.homepage-showcase-item-meta strong{font-size:var(--font-body);font-weight:600;overflow-wrap:anywhere}
+.homepage-showcase-item-meta small{display:inline-flex;align-items:center;gap:4px;font-size:var(--font-small);color:var(--muted);font-variant-numeric:tabular-nums}
+.homepage-showcase-item-meta small .app-icon{width:13px;height:13px}
+.homepage-showcase-empty{font-size:var(--font-small);color:var(--muted)}
+@media(prefers-reduced-motion:reduce){.homepage-showcase-item{transition:none}.homepage-showcase-item:hover{transform:none}}

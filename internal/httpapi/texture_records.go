@@ -76,6 +76,9 @@ func (a *Server) manageTextureRecord(w http.ResponseWriter, r *http.Request) {
 	if r.Method == http.MethodDelete {
 		// Keep shared files and existing character bindings. Raw serving checks remaining references.
 		_, err = tx.ExecContext(r.Context(), a.s.Bind("UPDATE texture_records SET deleted=? WHERE record_id=?"), true, id)
+		if err == nil {
+			_, err = tx.ExecContext(r.Context(), a.s.Bind("DELETE FROM texture_likes WHERE record_id=?"), id)
+		}
 	} else {
 		_, err = tx.ExecContext(r.Context(), a.s.Bind("UPDATE texture_records SET name=?,description=?,is_public=? WHERE record_id=?"), body.Name, body.Description, *body.Public, id)
 	}
