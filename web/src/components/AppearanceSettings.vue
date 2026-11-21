@@ -1,6 +1,6 @@
 <script setup lang="ts">
 import { feedbackRef, confirmAction } from '../feedback'
-import { computed, ref, watch } from 'vue'
+import { computed, onBeforeUnmount, ref, watch } from 'vue'
 import type { Appearance, PublicThemeAssets, PublicThemeFont } from '../accountTypes'
 import { t } from '../i18n'
 import { imageData } from './imageInput'
@@ -206,6 +206,35 @@ async function save() {
 const defaultOpacity = computed(() => draft.value.surfaceEffect === 'glass' ? 72 : 86)
 const activeOpacity = computed(() => draft.value.surfaceOpacity || defaultOpacity.value)
 const activeBlur = computed(() => draft.value.surfaceBlur || 16)
+
+function applySurfacePreview(effect?: string, opacity?: number, blur?: number) {
+  if (typeof document === 'undefined') return
+  const root = document.documentElement
+  const surface = effect || 'solid'
+  root.dataset.surface = surface
+  if ((surface === 'translucent' || surface === 'glass') && opacity && opacity >= 35 && opacity <= 98) {
+    root.style.setProperty('--surface-opacity', `${opacity}%`)
+  } else {
+    root.style.removeProperty('--surface-opacity')
+  }
+  if (surface === 'glass' && blur && blur >= 4 && blur <= 36) {
+    root.style.setProperty('--surface-blur', `${blur}px`)
+  } else {
+    root.style.removeProperty('--surface-blur')
+  }
+}
+
+watch(
+  [() => draft.value.surfaceEffect, () => draft.value.surfaceOpacity, () => draft.value.surfaceBlur],
+  ([effect, opacity, blur]) => {
+    if (dirty.value) applySurfacePreview(effect, opacity, blur)
+    else applySurfacePreview(props.appearance.surfaceEffect, props.appearance.surfaceOpacity, props.appearance.surfaceBlur)
+  },
+)
+
+onBeforeUnmount(() => {
+  applySurfacePreview(props.appearance.surfaceEffect, props.appearance.surfaceOpacity, props.appearance.surfaceBlur)
+})
 
 defineExpose({ draft, dirty, busy: computed(() => busy.value || imageBusy.value || assetsBusy.value || fontBusy.value), save })
 </script>

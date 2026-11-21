@@ -15,6 +15,7 @@ import (
 )
 
 func (a *Server) registerAdministration() {
+	a.mux.HandleFunc("GET /api/admin/overview", a.adminOverview)
 	a.mux.HandleFunc("GET /api/admin/users", a.adminUsers)
 	a.mux.HandleFunc("PATCH /api/admin/users/{id}", a.updateAdminUser)
 	a.mux.HandleFunc("GET /api/admin/events", a.adminEvents)
@@ -94,6 +95,86 @@ type adminUser struct {
 	Banned               bool   `json:"banned"`
 	EmailVerified        bool   `json:"emailVerified"`
 	VerificationRequired bool   `json:"verificationRequired"`
+}
+
+func (a *Server) adminOverview(w http.ResponseWriter, r *http.Request) {
+	if _, ok := a.adminRead(w, r); !ok {
+		return
+	}
+	ctx := r.Context()
+	var userTotal, characterTotal, textureTotal, pendingReviews, pendingReports int64
+	if err := a.s.DB.QueryRowContext(ctx, "SELECT COUNT(*) FROM users").Scan(&userTotal); err != nil {
+		failure(w, 503, "暂时无法读取站点概览")
+		return
+	}
+	if err := a.s.DB.QueryRowContext(ctx, "SELECT COUNT(*) FROM characters").Scan(&characterTotal); err != nil {
+		failure(w, 503, "暂时无法读取站点概览")
+		return
+	}
+	if err := a.s.DB.QueryRowContext(ctx, "SELECT COUNT(*) FROM texture_records WHERE deleted=FALSE").Scan(&textureTotal); err != nil {
+		failure(w, 503, "暂时无法读取站点概览")
+		return
+	}
+	if err := a.s.DB.QueryRowContext(ctx, "SELECT COUNT(*) FROM texture_records r JOIN texture_metadata m ON m.record_id=r.record_id WHERE r.deleted=FALSE AND m.review_state='pending'").Scan(&pendingReviews); err != nil {
+		failure(w, 503, "暂时无法读取站点概览")
+		return
+	}
+	if err := a.s.DB.QueryRowContext(ctx, "SELECT COUNT(*) FROM reports WHERE status='pending'").Scan(&pendingReports); err != nil {
+		failure(w, 503, "暂时无法读取站点概览")
+		return
+	}
+	siteUsed, err := a.textureUsage(
+		ctx,
+		a.s.DB,
+		" FROM textures t LEFT JOIN texture_file_integrity i ON i.file_hash=t.hash WHERE TRUE",
+		"t.hash",
+	)
+	if err != nil {
+		failure(w, 503, "暂时无法读取站点概览")
+		return
+	}
+	states := a.plugins.States()
+	enabledPlugins := 0
+	for _, state := range states {
+		on, err := a.storedPluginEnabled(ctx, state.Manifest.ID)
+		if err != nil {
+			failure(w, 503, "暂时无法读取站点概览")
+			return
+		}
+		if on && state.Enabled {
+			enabledPlugins++
+		}
+	}
+	backupInfo := map[string]any{"configured": false, "count": 0}
+	if dir, err := a.backupDirectory(ctx); err == nil {
+		backupInfo["configured"] = true
+		if entries, err := readBackupEntries(dir); err == nil {
+			backupInfo["count"] = len(entries)
+			if len(entries) > 0 {
+				backupInfo["latestId"] = entries[0].ID
+				backupInfo["latestCreatedAt"] = entries[0].CreatedAt
+				backupInfo["latestState"] = entries[0].State
+				backupInfo["latestUnverifiedFiles"] = entries[0].UnverifiedFiles
+			}
+		}
+	}
+	respond(w, 200, map[string]any{
+		"users":          userTotal,
+		"characters":     characterTotal,
+		"textures":       textureTotal,
+		"pendingReviews": pendingReviews,
+		"pendingReports": pendingReports,
+		"storage": map[string]any{
+			"siteUsedBytes":     siteUsed,
+			"siteLimitBytes":    a.cfg.TextureSiteLimitBytes,
+			"accountLimitBytes": a.cfg.TextureAccountLimitBytes,
+		},
+		"plugins": map[string]any{
+			"enabled": enabledPlugins,
+			"total":   len(states),
+		},
+		"backup": backupInfo,
+	})
 }
 
 func (a *Server) adminUsers(w http.ResponseWriter, r *http.Request) {

@@ -43,6 +43,7 @@ import { locale, t } from './i18n'
 import { fontPresetNames, isDarkOnlyTheme, isMCBiomeTheme, isMCFamilyTheme, resolveUserThemePack } from './themePacks'
 import { applyThemeTextures } from './themeTextures'
 import { applyThemeFont } from './themeFonts'
+import { formatBytes, quotaPercent } from './formatBytes'
 
 interface User { id: number; email: string; nickname: string; isAdmin: boolean; emailVerified: boolean; legacyAccount: boolean }
 interface Session { user: User; csrfToken: string }
@@ -120,6 +121,8 @@ const uploadDescription = ref('')
 const uploadFile = ref<File | null>(null)
 const uploadPublic = ref(false)
 const uploadInput = ref<HTMLInputElement | null>(null)
+interface AccountQuota { accountUsedBytes: number; accountLimitBytes: number; siteUsedBytes: number; siteLimitBytes: number; maxFileBytes: number }
+const accountQuota = ref<AccountQuota | null>(null)
 const adminCharacterLimit = ref(1)
 
 const descriptionLength = computed(() => Array.from(uploadDescription.value).length)
@@ -348,6 +351,7 @@ async function profileUpdated() {
 watch(characters, () => { avatarVersion.value++ })
 
 watch([materialTab], () => { texturePage.value = 1; selectedTextureId.value = ''; if (user.value && materialTab.value !== 'upload') void loadTextures() })
+watch([page, materialTab, user], () => { if (user.value && page.value === 'resources' && materialTab.value === 'upload') void loadQuota() }, { immediate: true })
 watch(visibleTextures, items => {
   if (!items.some(texture => texture.id === selectedTextureId.value)) selectedTextureId.value = ''
 })
@@ -518,6 +522,19 @@ async function loadCharacters() {
   }
 }
 
+async function loadQuota() {
+  if (!user.value) return
+  const version = sessionVersion
+  try {
+    const response = await api('/api/account/quota')
+    if (version !== sessionVersion) return
+    if (response.status === 401) { expireSession(); return }
+    if (response.ok) accountQuota.value = await response.json() as AccountQuota
+  } catch {
+    // Non-critical quota indicator; keep upload usable even if temporarily unavailable.
+  }
+}
+
 async function loadTextures() {
   textureRequest?.abort()
   const controller = new AbortController()
@@ -595,8 +612,14 @@ async function mutate(path: string, method: string, body?: BodyInit, contentType
     if (version !== sessionVersion) return false
     if (response.status === 401) { clearSession(); loginError.value = '登录已过期，请重新登录。'; return false }
     if (!response.ok) {
-      const payload = await response.json().catch(() => ({})) as { error?: string; pointsRulesChanged?: boolean }
-      if (version === sessionVersion) actionError.value = payload.error || '操作未完成，请重试。'
+      const payload = await response.json().catch(() => ({})) as { error?: string; code?: string; pointsRulesChanged?: boolean }
+      const friendlyError = payload.code === 'texture_account_capacity'
+        ? '已达到当前账号的材质存储上限，请先清理不需要的旧材质后再上传。'
+        : payload.code === 'texture_site_capacity'
+          ? '站点材质存储空间已满，请联系管理员扩容或清理。'
+          : (payload.error || '操作未完成，请重试。')
+      if (version === sessionVersion) actionError.value = friendlyError
+      if (payload.code === 'texture_account_capacity' || payload.code === 'texture_site_capacity') void loadQuota()
       if (payload.pointsRulesChanged) await loadSite()
       return false
     }
@@ -684,8 +707,9 @@ async function uploadTexture() {
   uploadDescription.value = ''
   uploadFile.value = null
   uploadPublic.value = false
+  accountQuota.value = null
   if (uploadInput.value) uploadInput.value.value = ''
-  await loadTextures()
+  await Promise.all([loadTextures(), loadQuota()])
   if (version === sessionVersion) selectedTextureId.value = uploaded.id
 }
 
@@ -725,7 +749,7 @@ async function deleteTexture() {
   if (!ok) return
   editingTextureId.value = ''
   actionMessage.value = '材质已删除。'
-  await Promise.all([loadTextures(), loadWardrobe()])
+  await Promise.all([loadTextures(), loadWardrobe(), loadQuota()])
 }
 
 async function restoreSession() {
@@ -1021,7 +1045,19 @@ onBeforeUnmount(() => {
                 <p v-if="site.contentPolicy?.reviewUploads" class="password-rule">{{ t('本站已开启上传审核，审核通过后方可穿戴和下载。') }}</p><p v-if="site.points.enabled" class="point-fee">{{ t('每次上传需 {cost} 积分，包括相同图片的新记录；失败不扣费。', { cost: site.points.uploadCost }) }}</p><button class="primary-button" type="submit" :disabled="actionBusy">{{ actionBusy ? t('正在上传…') : t('上传到我的材质') }}</button>
               </fieldset></form>
             </section>
-            <aside class="upload-guide panel" aria-labelledby="upload-guide-title"><h2 id="upload-guide-title">{{ t("上传要求") }}</h2><dl><div><dt>{{ t("文件") }}</dt><dd>{{ t("PNG 格式，最大 8 MiB。") }}</dd></div><div><dt>{{ t("皮肤") }}</dt><dd>{{ t("标准尺寸 64×64，兼容 64×32、128×128 和 128×64 像素。") }}</dd></div><div><dt>{{ t("披风") }}</dt><dd>{{ t("宽度为 64–1024 像素且为 64 的倍数，高度为宽度的 1/2。") }}</dd></div></dl><p>{{ t("上传后可在材质详情中应用到角色。") }}</p></aside>
+            <aside class="upload-guide panel" aria-labelledby="upload-guide-title">
+              <h2 id="upload-guide-title">{{ t("上传要求") }}</h2>
+              <div v-if="accountQuota" class="quota-meter">
+                <div class="quota-meter-head">
+                  <span>{{ t('账号材质空间') }}</span>
+                  <strong>{{ accountQuota.accountLimitBytes > 0 ? `${formatBytes(accountQuota.accountUsedBytes)} / ${formatBytes(accountQuota.accountLimitBytes)}` : formatBytes(accountQuota.accountUsedBytes) }}</strong>
+                </div>
+                <div v-if="accountQuota.accountLimitBytes > 0" class="quota-bar" role="progressbar" :aria-valuenow="quotaPercent(accountQuota.accountUsedBytes, accountQuota.accountLimitBytes)" aria-valuemin="0" aria-valuemax="100" :aria-label="t('账号材质存储使用比例')">
+                  <span class="quota-bar-fill" :class="{ warning: quotaPercent(accountQuota.accountUsedBytes, accountQuota.accountLimitBytes) >= 85 }" :style="{ width: `${quotaPercent(accountQuota.accountUsedBytes, accountQuota.accountLimitBytes)}%` }"></span>
+                </div>
+              </div>
+              <dl><div><dt>{{ t("文件") }}</dt><dd>{{ t("PNG 格式，最大 8 MiB。") }}</dd></div><div><dt>{{ t("皮肤") }}</dt><dd>{{ t("标准尺寸 64×64，兼容 64×32、128×128 和 128×64 像素。") }}</dd></div><div><dt>{{ t("披风") }}</dt><dd>{{ t("宽度为 64–1024 像素且为 64 的倍数，高度为宽度的 1/2。") }}</dd></div></dl><p>{{ t("上传后可在材质详情中应用到角色。") }}</p>
+            </aside>
           </div>
           </div>
         </section>

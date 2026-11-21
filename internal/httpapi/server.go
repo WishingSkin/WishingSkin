@@ -179,6 +179,7 @@ func New(s *store.Store, cfg Config) (*Server, error) {
 	a.mux.HandleFunc("PATCH /api/characters/{id}", a.updateCharacter)
 	a.mux.HandleFunc("DELETE /api/characters/{id}", a.deleteCharacter)
 	a.mux.HandleFunc("PUT /api/characters/{id}/textures/{kind}", a.bindTexture)
+	a.mux.HandleFunc("GET /api/account/quota", a.accountQuota)
 	a.mux.HandleFunc("GET /api/textures", a.listTextures)
 	a.mux.HandleFunc("POST /api/textures", a.uploadTexture)
 	a.mux.HandleFunc("PATCH /api/textures/{id}", a.manageTextureRecord)

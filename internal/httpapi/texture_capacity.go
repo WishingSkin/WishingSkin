@@ -43,6 +43,93 @@ func (a *Server) checkTextureCapacity(w http.ResponseWriter, ctx context.Context
 	return true
 }
 
+func (a *Server) textureUsage(ctx context.Context, q interface {
+	QueryRowContext(context.Context, string, ...any) *sql.Row
+	QueryContext(context.Context, string, ...any) (*sql.Rows, error)
+}, from, hashColumn string, args ...any) (int64, error) {
+	var used int64
+	if err := q.QueryRowContext(ctx, a.s.Bind("SELECT COALESCE(SUM(i.byte_size),0)"+from), args...).Scan(&used); err != nil {
+		return 0, err
+	}
+	rows, err := q.QueryContext(ctx, a.s.Bind("SELECT "+hashColumn+",COUNT(*)"+from+" AND i.file_hash IS NULL GROUP BY "+hashColumn), args...)
+	if err != nil {
+		return 0, err
+	}
+	defer rows.Close()
+	var root *os.Root
+	defer func() {
+		if root != nil {
+			root.Close()
+		}
+	}()
+	for rows.Next() {
+		var hash string
+		var count int64
+		if err := rows.Scan(&hash, &count); err != nil {
+			return 0, err
+		}
+		if !validHash.MatchString(strings.ToLower(hash)) {
+			return 0, errors.New("invalid stored texture hash")
+		}
+		if root == nil {
+			root, err = os.OpenRoot(a.cfg.TextureDir)
+			if err != nil && !errors.Is(err, os.ErrNotExist) {
+				return 0, err
+			}
+		}
+		size := int64(maxTextureBytes)
+		if root != nil {
+			info, err := root.Lstat(hash)
+			if err == nil && info.Mode().IsRegular() {
+				size = info.Size()
+			} else if !errors.Is(err, os.ErrNotExist) {
+				return 0, errors.New("cannot read stored texture size")
+			}
+		}
+		used += size * count
+	}
+	if err := rows.Err(); err != nil {
+		return 0, err
+	}
+	return used, nil
+}
+
+func (a *Server) accountQuota(w http.ResponseWriter, r *http.Request) {
+	u, _, err := a.current(r)
+	if err != nil {
+		sessionError(w, err)
+		return
+	}
+	accountUsed, err := a.textureUsage(
+		r.Context(),
+		a.s.DB,
+		" FROM texture_records t LEFT JOIN texture_file_integrity i ON i.file_hash=t.file_hash WHERE t.owner_id=? AND t.deleted=FALSE",
+		"t.file_hash",
+		u.ID,
+	)
+	if err != nil {
+		failure(w, 503, "暂时无法读取材质存储用量")
+		return
+	}
+	siteUsed, err := a.textureUsage(
+		r.Context(),
+		a.s.DB,
+		" FROM textures t LEFT JOIN texture_file_integrity i ON i.file_hash=t.hash WHERE TRUE",
+		"t.hash",
+	)
+	if err != nil {
+		failure(w, 503, "暂时无法读取材质存储用量")
+		return
+	}
+	respond(w, 200, map[string]any{
+		"accountUsedBytes":  accountUsed,
+		"accountLimitBytes": a.cfg.TextureAccountLimitBytes,
+		"siteUsedBytes":     siteUsed,
+		"siteLimitBytes":    a.cfg.TextureSiteLimitBytes,
+		"maxFileBytes":      int64(maxTextureBytes),
+	})
+}
+
 func (a *Server) withinTextureCapacity(ctx context.Context, tx *sql.Tx, remaining int64, from, hashColumn string, args ...any) (bool, error) {
 	if remaining < 0 {
 		return false, nil

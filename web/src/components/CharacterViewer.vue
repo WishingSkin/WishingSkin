@@ -14,7 +14,9 @@ const canvas = ref<HTMLCanvasElement>()
 const state = ref<'loading' | 'ready' | 'error'>('loading')
 const attempt = ref(0)
 const rotating = ref(false)
-const walking = ref(false)
+const pose = ref<'none' | 'idle' | 'walk' | 'run'>('none')
+const outerLayer = ref(true)
+const backEquipment = ref<'cape' | 'elytra'>('cape')
 const reducedMotion = ref(false)
 let viewer: SkinViewer | undefined
 let controller: AbortController | undefined
@@ -24,7 +26,9 @@ let inView = true
 let resizeObserver: ResizeObserver | undefined
 let intersectionObserver: IntersectionObserver | undefined
 let motionQuery: MediaQueryList | undefined
+let IdleAnimationClass: typeof import('skinview3d').IdleAnimation | undefined
 let WalkingAnimationClass: typeof import('skinview3d').WalkingAnimation | undefined
+let RunningAnimationClass: typeof import('skinview3d').RunningAnimation | undefined
 
 function draw() {
   if (viewer && state.value === 'ready' && !document.hidden && inView) viewer.render()
@@ -33,11 +37,49 @@ function draw() {
 function updateMotion() {
   if (!viewer) return
   viewer.autoRotate = rotating.value && !reducedMotion.value && !document.hidden && inView
-	const shouldWalk = walking.value && !reducedMotion.value && !document.hidden && inView
-	if (shouldWalk && WalkingAnimationClass && !viewer.animation) viewer.animation = new WalkingAnimationClass()
-	if (!shouldWalk) viewer.animation = null
-	viewer.renderPaused = !(viewer.autoRotate || shouldWalk)
+  const activePose = !reducedMotion.value && !document.hidden && inView ? pose.value : 'none'
+  if (activePose === 'idle' && IdleAnimationClass) {
+    if (!(viewer.animation instanceof IdleAnimationClass)) viewer.animation = new IdleAnimationClass()
+  } else if (activePose === 'walk' && WalkingAnimationClass) {
+    if (!(viewer.animation instanceof WalkingAnimationClass)) viewer.animation = new WalkingAnimationClass()
+  } else if (activePose === 'run' && RunningAnimationClass) {
+    if (!(viewer.animation instanceof RunningAnimationClass)) viewer.animation = new RunningAnimationClass()
+  } else {
+    viewer.animation = null
+    viewer.playerObject.resetJoints()
+  }
+  viewer.renderPaused = !(viewer.autoRotate || activePose !== 'none')
   draw()
+}
+
+function applyAppearanceOptions() {
+  if (!viewer || state.value !== 'ready') return
+  viewer.playerObject.skin.setOuterLayerVisible(outerLayer.value)
+  if (props.capeHash) {
+    viewer.playerObject.backEquipment = backEquipment.value
+  }
+  draw()
+}
+
+function exportSnapshot() {
+  if (!viewer || !canvas.value || state.value !== 'ready') return
+  const prevRatio = viewer.pixelRatio
+  try {
+    viewer.pixelRatio = Math.max(window.devicePixelRatio || 1, 2)
+    viewer.render()
+    const dataUrl = canvas.value.toDataURL('image/png')
+    const link = document.createElement('a')
+    const safeName = (props.name || 'character').replace(/[\\/:*?"<>|]+/g, '_').trim() || 'character'
+    link.href = dataUrl
+    link.download = `${safeName}-3d.png`
+    link.click()
+    toast('已导出 3D 立绘 PNG。')
+  } catch {
+    toast('导出立绘失败，请重试。', 'error')
+  } finally {
+    viewer.pixelRatio = prevRatio
+    draw()
+  }
 }
 
 function stopRotation() {
@@ -68,7 +110,7 @@ function fail(message: string) {
   state.value = 'error'
   toast(message, 'error')
   rotating.value = false
-	walking.value = false
+  pose.value = 'none'
   controller?.abort()
   releaseViewer()
   emit('fallback')
@@ -115,8 +157,10 @@ async function initialize() {
       fail('此角色的模型类型暂不受支持。可查看下方 PNG 材质。')
       return
     }
-		const { SkinViewer, WalkingAnimation } = await import('skinview3d')
-		WalkingAnimationClass = WalkingAnimation
+    const { SkinViewer, IdleAnimation, WalkingAnimation, RunningAnimation } = await import('skinview3d')
+    IdleAnimationClass = IdleAnimation
+    WalkingAnimationClass = WalkingAnimation
+    RunningAnimationClass = RunningAnimation
     if (!mounted || run !== generation) return
     phase = 'webgl'
     const current = new SkinViewer({ canvas: canvas.value, pixelRatio: Math.min(window.devicePixelRatio || 1, 2), renderPaused: true, zoom: 0.78 })
@@ -135,7 +179,8 @@ async function initialize() {
     ])
     if (!mounted || run !== generation || request.signal.aborted) return
     current.loadSkin(skin, { model: props.model })
-    if (cape) current.loadCape(cape, { backEquipment: 'cape' })
+    current.playerObject.skin.setOuterLayerVisible(outerLayer.value)
+    if (cape) current.loadCape(cape, { backEquipment: backEquipment.value })
     state.value = 'ready'
     await nextTick()
     if (!mounted || run !== generation) return
@@ -187,7 +232,8 @@ function motionChanged() {
 }
 
 watch(rotating, updateMotion)
-watch(walking, updateMotion)
+watch(pose, updateMotion)
+watch([outerLayer, backEquipment], applyAppearanceOptions)
 onMounted(() => {
   mounted = true
   motionQuery = window.matchMedia('(prefers-reduced-motion: reduce)')
@@ -229,8 +275,28 @@ onBeforeUnmount(() => {
       <span v-if="state === 'ready'" class="viewer-interaction-hint">{{ t("拖动旋转，滚轮或双指缩放") }}</span>
     </div>
     <div class="viewer-controls" role="group" :aria-label="t('外观视角控制')">
-      <div class="view-buttons"><button class="secondary-button" type="button" :disabled="state !== 'ready'" @click="setView('front')">{{ t("正面") }}</button><button class="secondary-button" type="button" :disabled="state !== 'ready'" @click="setView('back')">{{ t("背面") }}</button><button class="secondary-button" type="button" :disabled="state !== 'ready'" @click="setView('reset')">{{ t("重置视角") }}</button><button class="secondary-button zoom-button" type="button" :aria-label="t('放大角色')" :disabled="state !== 'ready'" @click="zoom(0.85)"><AppIcon name="plus" /></button><button class="secondary-button zoom-button" type="button" :aria-label="t('缩小角色')" :disabled="state !== 'ready'" @click="zoom(1.15)"><AppIcon name="minus" /></button></div>
-      <div class="viewer-motion-buttons"><button class="secondary-button rotation-button" type="button" :aria-pressed="rotating" :disabled="state !== 'ready' || reducedMotion" @click="rotating = !rotating">{{ rotating ? t('停止旋转') : t('自动旋转') }}</button><button class="secondary-button rotation-button" type="button" :aria-pressed="walking" :disabled="state !== 'ready' || reducedMotion" @click="walking = !walking">{{ walking ? t('停止走动') : t('走动') }}</button></div>
+      <div class="view-buttons">
+        <button class="secondary-button" type="button" :disabled="state !== 'ready'" @click="setView('front')">{{ t("正面") }}</button>
+        <button class="secondary-button" type="button" :disabled="state !== 'ready'" @click="setView('back')">{{ t("背面") }}</button>
+        <button class="secondary-button" type="button" :disabled="state !== 'ready'" @click="setView('reset')">{{ t("重置视角") }}</button>
+        <button class="secondary-button zoom-button" type="button" :aria-label="t('放大角色')" :disabled="state !== 'ready'" @click="zoom(0.85)"><AppIcon name="plus" /></button>
+        <button class="secondary-button zoom-button" type="button" :aria-label="t('缩小角色')" :disabled="state !== 'ready'" @click="zoom(1.15)"><AppIcon name="minus" /></button>
+        <button class="secondary-button" type="button" :disabled="state !== 'ready'" @click="exportSnapshot">{{ t("导出立绘") }}</button>
+      </div>
+      <div class="viewer-motion-buttons">
+        <button class="secondary-button rotation-button" type="button" :aria-pressed="outerLayer" :disabled="state !== 'ready'" @click="outerLayer = !outerLayer">{{ t('外层饰品') }}</button>
+        <button v-if="capeHash" class="secondary-button rotation-button" type="button" :aria-pressed="backEquipment === 'elytra'" :disabled="state !== 'ready'" @click="backEquipment = backEquipment === 'cape' ? 'elytra' : 'cape'">{{ backEquipment === 'elytra' ? t('切换披风') : t('切换鞘翅') }}</button>
+        <button class="secondary-button rotation-button" type="button" :aria-pressed="rotating" :disabled="state !== 'ready' || reducedMotion" @click="rotating = !rotating">{{ rotating ? t('停止旋转') : t('自动旋转') }}</button>
+        <label class="viewer-pose-select">
+          <span class="sr-only">{{ t('动作') }}</span>
+          <select v-model="pose" :disabled="state !== 'ready' || reducedMotion" :aria-label="t('角色动作')">
+            <option value="none">{{ t('静止') }}</option>
+            <option value="idle">{{ t('待机') }}</option>
+            <option value="walk">{{ t('行走') }}</option>
+            <option value="run">{{ t('奔跑') }}</option>
+          </select>
+        </label>
+      </div>
     </div>
     <p v-if="state === 'ready' && !skinHash" class="viewer-note">{{ t('默认皮肤：{name}', { name: model === 'slim' ? 'Alex' : 'Steve' }) }}</p>
     <p v-if="reducedMotion" class="viewer-note">{{ t("已启用减少动态效果。") }}</p>
@@ -238,7 +304,7 @@ onBeforeUnmount(() => {
 </template>
 
 <style scoped>
-.character-viewer{margin-top:24px}.appearance-heading{display:flex;align-items:center;justify-content:space-between;margin-bottom:12px}.appearance-heading h3{font-size:var(--font-body);font-weight:600}.appearance-heading>span{font-size:var(--font-small);color:var(--muted)}.viewer-stage{height:420px;position:relative;overflow:hidden;border:1px solid var(--border);border-radius:var(--radius-card);background:radial-gradient(ellipse at 50% 85%,var(--accent-soft),transparent 62%),var(--subtle)}.viewer-stage::after{content:"";position:absolute;left:22%;right:22%;bottom:36px;height:1px;background:var(--border);pointer-events:none}.character-canvas{display:block;visibility:hidden;touch-action:none;cursor:grab;max-width:100%}.character-canvas:active{cursor:grabbing}.canvas-ready{visibility:visible}.viewer-message{position:absolute;inset:0;display:flex;align-items:center;justify-content:center;flex-direction:column;gap:15px;padding:30px;text-align:center;color:var(--muted);font-size:var(--font-body);line-height:1.9}.viewer-error{max-width:420px;margin:auto}.viewer-error-symbol{font-size:var(--font-title);color:var(--muted)}.viewer-message .secondary-button{margin-top:4px}.viewer-interaction-hint{position:absolute;bottom:14px;left:12px;right:12px;text-align:center;font-size:var(--font-small);color:var(--muted);pointer-events:none}.viewer-motion-buttons{display:flex;gap:12px;flex-wrap:wrap}.viewer-controls{display:flex;align-items:center;justify-content:space-between;flex-wrap:wrap;gap:14px;padding-top:13px}.view-buttons{display:flex;gap:7px;flex-wrap:wrap}.view-buttons .secondary-button{font-size:var(--font-small);min-height:33px;padding:7px 11px}.view-buttons .zoom-button{font-size:var(--font-body);width:33px;padding:4px}.rotation-button{font-size:var(--font-small);min-height:33px;padding:7px 11px}.rotation-button[aria-pressed=true]{border-color:var(--accent);background:var(--accent-soft);color:var(--accent)}.rotation-button:disabled{color:var(--muted);cursor:default}.viewer-note{font-size:var(--font-small);line-height:1.8;margin-top:12px;color:var(--muted)}
+.character-viewer{margin-top:24px}.appearance-heading{display:flex;align-items:center;justify-content:space-between;margin-bottom:12px}.appearance-heading h3{font-size:var(--font-body);font-weight:600}.appearance-heading>span{font-size:var(--font-small);color:var(--muted)}.viewer-stage{height:420px;position:relative;overflow:hidden;border:1px solid var(--border);border-radius:var(--radius-card);background:radial-gradient(ellipse at 50% 85%,var(--accent-soft),transparent 62%),var(--subtle)}.viewer-stage::after{content:"";position:absolute;left:22%;right:22%;bottom:36px;height:1px;background:var(--border);pointer-events:none}.character-canvas{display:block;visibility:hidden;touch-action:none;cursor:grab;max-width:100%}.character-canvas:active{cursor:grabbing}.canvas-ready{visibility:visible}.viewer-message{position:absolute;inset:0;display:flex;align-items:center;justify-content:center;flex-direction:column;gap:15px;padding:30px;text-align:center;color:var(--muted);font-size:var(--font-body);line-height:1.9}.viewer-error{max-width:420px;margin:auto}.viewer-error-symbol{font-size:var(--font-title);color:var(--muted)}.viewer-message .secondary-button{margin-top:4px}.viewer-interaction-hint{position:absolute;bottom:14px;left:12px;right:12px;text-align:center;font-size:var(--font-small);color:var(--muted);pointer-events:none}.viewer-motion-buttons{display:flex;gap:8px;flex-wrap:wrap;align-items:center}.viewer-pose-select select{min-height:33px;padding:6px 10px;border:1px solid var(--border);border-radius:var(--radius-control);background:var(--panel);color:var(--ink);font:inherit;font-size:var(--font-small)}.viewer-pose-select select:disabled{color:var(--muted);opacity:.65}.viewer-controls{display:flex;align-items:center;justify-content:space-between;flex-wrap:wrap;gap:14px;padding-top:13px}.view-buttons{display:flex;gap:7px;flex-wrap:wrap}.view-buttons .secondary-button{font-size:var(--font-small);min-height:33px;padding:7px 11px}.view-buttons .zoom-button{font-size:var(--font-body);width:33px;padding:4px}.rotation-button{font-size:var(--font-small);min-height:33px;padding:7px 11px}.rotation-button[aria-pressed=true]{border-color:var(--accent);background:var(--accent-soft);color:var(--accent)}.rotation-button:disabled{color:var(--muted);cursor:default}.viewer-note{font-size:var(--font-small);line-height:1.8;margin-top:12px;color:var(--muted)}
 @media(max-width:1100px){.viewer-stage{height:370px}}
 @media(max-width:560px){.viewer-stage{height:340px}.viewer-controls{gap:7px}.view-buttons{gap:5px}.view-buttons .secondary-button{padding:6px 9px}.view-buttons .zoom-button{width:30px}.viewer-interaction-hint{font-size:var(--font-small)}.viewer-note{font-size:var(--font-small)}.viewer-message{padding:22px;font-size:var(--font-small)}}
 </style>

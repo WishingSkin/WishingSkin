@@ -1,10 +1,12 @@
 <script setup lang="ts">
 import LoadingSkeleton from './LoadingSkeleton.vue'
 import { feedbackRef, toast } from '../feedback'
-import { onMounted, ref } from 'vue'
+import { computed, onMounted, ref } from 'vue'
+import { authlibInjectorDragUrl } from '../formatBytes'
 import { t } from '../i18n'
 interface Configuration { authlibInjector: string; cslRoot: string; skinTemplate: string; capeTemplate: string; customSkinLoader: object }
 const config = ref<Configuration | null>(null)
+const dragAuthlibUrl = computed(() => config.value ? authlibInjectorDragUrl(config.value.authlibInjector) : '')
 const busy = ref(false)
 const error = feedbackRef('error')
 async function load() {
@@ -38,6 +40,15 @@ onMounted(load)
     <LoadingSkeleton v-if="busy" label="正在加载…" :count="2" />
     <div v-else-if="error"><button class="text-button" type="button" @click="load">{{ t('重试') }}</button></div>
     <template v-else-if="config">
+      <div v-if="dragAuthlibUrl" class="integration-drag-box">
+        <a
+          class="primary-button authlib-drag-link"
+          :href="dragAuthlibUrl"
+          draggable="true"
+          @click.prevent="copy(config.authlibInjector)"
+        >{{ t('拖拽到启动器快捷接入') }}</a>
+        <p>{{ t('将上方按钮直接拖入 HMCL、PCL2 或 BakaXL 等启动器即可自动配置外置登录；点击则复制地址。') }}</p>
+      </div>
       <div v-for="item in [{ label: '外置登录地址', value: config.authlibInjector }, { label: 'CustomSkinLoader 根地址', value: config.cslRoot }, { label: '传统皮肤地址模板', value: config.skinTemplate }, { label: '传统披风地址模板', value: config.capeTemplate }]" :key="item.label" class="integration-address">
         <label class="binding-field"><span>{{ t(item.label) }}</span><input :value="item.value" readonly spellcheck="false" /></label>
         <button class="secondary-button" type="button" :aria-label="t('复制{label}', { label: t(item.label) })" @click="copy(item.value)">{{ t('复制') }}</button>
