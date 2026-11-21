@@ -1,0 +1,110 @@
+name: Release
+
+on:
+  push:
+    tags:
+      - 'v*'
+
+permissions:
+  contents: write
+  packages: write
+
+jobs:
+  binaries:
+    name: Build Binaries & Publish Release
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: pnpm/action-setup@v4
+        with:
+          version: 11.24.0
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 24.19.0
+          cache: pnpm
+          cache-dependency-path: web/pnpm-lock.yaml
+      - uses: actions/setup-go@v5
+        with:
+          go-version-file: go.mod
+          cache: true
+      - run: pnpm --dir web install --frozen-lockfile
+      - run: pnpm --dir web test
+      - run: pnpm --dir web build
+      - run: go vet ./...
+      - name: Cross-compile release archives
+        shell: bash
+        run: |
+          set -euo pipefail
+          VERSION="${GITHUB_REF_NAME#v}"
+          mkdir -p dist
+          TARGETS=(
+            "linux amd64"
+            "linux arm64"
+            "windows amd64"
+            "darwin amd64"
+            "darwin arm64"
+          )
+          for target in "${TARGETS[@]}"; do
+            read -r GOOS GOARCH <<< "${target}"
+            EXT=""
+            if [ "${GOOS}" = "windows" ]; then
+              EXT=".exe"
+            fi
+            STAGE="dist/stage-${GOOS}-${GOARCH}"
+            mkdir -p "${STAGE}"
+            CGO_ENABLED=0 GOOS="${GOOS}" GOARCH="${GOARCH}" go build \
+              -trimpath \
+              -ldflags "-s -w -X main.buildVersion=${VERSION}" \
+              -o "${STAGE}/wishingskin${EXT}" \
+              ./cmd/wishingskin
+            cp LICENSE THIRD_PARTY_NOTICES.md "${STAGE}/"
+            NAME="wishingskin_${VERSION}_${GOOS}_${GOARCH}"
+            if [ "${GOOS}" = "windows" ]; then
+              (cd "${STAGE}" && zip -q -r "../${NAME}.zip" .)
+            else
+              tar -C "${STAGE}" -czf "dist/${NAME}.tar.gz" .
+            fi
+            rm -rf "${STAGE}"
+          done
+          (cd dist && sha256sum wishingskin_* > SHA256SUMS.txt)
+      - name: Publish GitHub Release
+        uses: softprops/action-gh-release@v2
+        with:
+          prerelease: ${{ contains(github.ref_name, '-') }}
+          generate_release_notes: true
+          files: |
+            dist/wishingskin_*
+            dist/SHA256SUMS.txt
+
+  docker:
+    name: Build & Push GHCR Image
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: docker/setup-qemu-action@v3
+      - uses: docker/setup-buildx-action@v3
+      - uses: docker/login-action@v3
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+      - id: meta
+        uses: docker/metadata-action@v5
+        with:
+          images: ghcr.io/wishingskin/wishingskin
+          tags: |
+            type=semver,pattern={{version}}
+            type=semver,pattern={{major}}.{{minor}}
+            type=raw,value=latest,enable=${{ !contains(github.ref_name, '-') }}
+      - name: Build and push image
+        uses: docker/build-push-action@v6
+        with:
+          context: .
+          platforms: linux/amd64,linux/arm64
+          push: true
+          tags: ${{ steps.meta.outputs.tags }}
+          labels: ${{ steps.meta.outputs.labels }}
+          build-args: |
+            VERSION=${{ steps.meta.outputs.version }}
+          cache-from: type=gha
+          cache-to: type=gha,mode=max

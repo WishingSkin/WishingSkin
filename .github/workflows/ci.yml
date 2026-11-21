@@ -1,0 +1,81 @@
+name: CI
+
+on:
+  push:
+    branches: [master]
+  pull_request:
+
+concurrency:
+  group: ci-${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  frontend:
+    name: Frontend Test & Build
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: pnpm/action-setup@v4
+        with:
+          version: 11.24.0
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 24.19.0
+          cache: pnpm
+          cache-dependency-path: web/pnpm-lock.yaml
+      - run: pnpm --dir web install --frozen-lockfile
+      - run: pnpm --dir web test
+      - run: pnpm --dir web build
+
+  backend:
+    name: Go Vet & Dual-DB Test
+    runs-on: ubuntu-latest
+    services:
+      mysql:
+        image: mysql:8.4
+        env:
+          MYSQL_ROOT_PASSWORD: wishingskin-ci-test-only
+          MYSQL_DATABASE: wishingskin_test
+        ports:
+          - 33316:3306
+        options: >-
+          --health-cmd="mysqladmin ping -h 127.0.0.1 -u root -pwishingskin-ci-test-only"
+          --health-interval=5s
+          --health-timeout=3s
+          --health-retries=30
+      postgres:
+        image: postgres:16-alpine
+        env:
+          POSTGRES_USER: wishingskin_test
+          POSTGRES_PASSWORD: wishingskin-ci-test-only
+          POSTGRES_DB: wishingskin_test
+        ports:
+          - 35416:5432
+        options: >-
+          --health-cmd="pg_isready -U wishingskin_test -d wishingskin_test"
+          --health-interval=5s
+          --health-timeout=3s
+          --health-retries=30
+    steps:
+      - uses: actions/checkout@v4
+      - uses: pnpm/action-setup@v4
+        with:
+          version: 11.24.0
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 24.19.0
+          cache: pnpm
+          cache-dependency-path: web/pnpm-lock.yaml
+      - uses: actions/setup-go@v5
+        with:
+          go-version-file: go.mod
+          cache: true
+      - run: pnpm --dir web install --frozen-lockfile
+      - run: pnpm --dir web build
+      - run: go vet ./...
+      - name: Run dual-DB Go test suite
+        env:
+          WS_TEST_MYSQL_DSN: root:wishingskin-ci-test-only@tcp(127.0.0.1:33316)/wishingskin_test?parseTime=true&multiStatements=true
+          WS_TEST_POSTGRES_DSN: postgres://wishingskin_test:wishingskin-ci-test-only@127.0.0.1:35416/wishingskin_test?sslmode=disable
+        run: go test -timeout 20m ./... -count=1
+      - run: CGO_ENABLED=0 go build -trimpath -o /tmp/wishingskin ./cmd/wishingskin
