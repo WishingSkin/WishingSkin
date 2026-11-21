@@ -1,6 +1,14 @@
-# WishingSkin
+<p align="center">
+  <img src="docs/assets/logo.png" alt="WishingSkin Logo" width="120" height="120" />
+</p>
 
-可自部署的开源 Minecraft 皮肤站，支持角色与皮肤管理、外置登录、插件扩展和界面个性化。
+<h1 align="center">WishingSkin</h1>
+
+<p align="center">
+  可自部署的开源 Minecraft 皮肤站，支持角色与皮肤管理、Yggdrasil 外置登录、插件扩展与高完成度主题系统。
+</p>
+
+---
 
 采用 Go 模块化单体与 Vue 3 / TypeScript / Vite，前端静态资源由后端提供，支持 MySQL 8 与 PostgreSQL。
 

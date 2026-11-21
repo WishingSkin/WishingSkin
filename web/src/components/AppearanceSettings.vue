@@ -8,6 +8,7 @@ import { cloneAdvanced } from '../interfaceAppearance'
 import { settingsSnapshot } from '../settingsDraft'
 import { defaultThemeMeta, fontPresets, fontScopes, themePackById, themePackGroups } from '../themePacks'
 import { resolveTextureUrl } from '../themeTextures'
+import BrandMark from './BrandMark.vue'
 
 const props = defineProps<{
   appearance: Appearance
@@ -23,6 +24,8 @@ function cloneDraft() {
     ...props.appearance,
     themePack: props.appearance.themePack || 'default',
     surfaceEffect: props.appearance.surfaceEffect || 'solid',
+    surfaceOpacity: props.appearance.surfaceOpacity || 0,
+    surfaceBlur: props.appearance.surfaceBlur || 0,
     allowUserTheme: Boolean(props.appearance.allowUserTheme),
     disableParticles: Boolean(props.appearance.disableParticles),
     fontPreset: props.appearance.fontPreset || 'system',
@@ -178,6 +181,8 @@ async function save() {
       ...data,
       themePack: data.themePack || 'default',
       surfaceEffect: data.surfaceEffect || 'solid',
+      surfaceOpacity: data.surfaceOpacity || 0,
+      surfaceBlur: data.surfaceBlur || 0,
       allowUserTheme: Boolean(data.allowUserTheme),
       disableParticles: Boolean(data.disableParticles),
       fontPreset: data.fontPreset || 'system',
@@ -196,6 +201,10 @@ async function save() {
   }
 }
 
+const defaultOpacity = computed(() => draft.value.surfaceEffect === 'glass' ? 72 : 86)
+const activeOpacity = computed(() => draft.value.surfaceOpacity || defaultOpacity.value)
+const activeBlur = computed(() => draft.value.surfaceBlur || 16)
+
 defineExpose({ draft, dirty, busy: computed(() => busy.value || imageBusy.value || assetsBusy.value || fontBusy.value), save })
 </script>
 <template>
@@ -205,7 +214,7 @@ defineExpose({ draft, dirty, busy: computed(() => busy.value || imageBusy.value 
       <fieldset :disabled="busy || imageBusy">
         <div class="image-setting">
           <img v-if="draft.logoImage" :src="draft.logoImage" :alt="t('Logo 预览')" width="96" height="96" />
-          <span v-else class="image-placeholder large">W</span>
+          <span v-else class="image-placeholder large"><BrandMark :size="52" /></span>
           <div>
             <label class="binding-field"><span>{{ t('站点 Logo') }}</span><input type="file" accept="image/png,image/jpeg" @change="pick" /></label>
             <button class="text-button" type="button" :disabled="!draft.logoImage" @click="draft.logoImage = ''">{{ t('恢复默认标识') }}</button>
@@ -254,8 +263,26 @@ defineExpose({ draft, dirty, busy: computed(() => busy.value || imageBusy.value 
                 </span>
                 <span class="theme-pack-head">
                   <strong>{{ t(option.label) }}</strong>
-                  <span v-if="option.darkOnly" class="theme-pack-badge">{{ t('仅深色') }}</span>
+                  <span v-if="option.textures" class="theme-pack-tiles" aria-hidden="true">
+                    <img
+                      v-if="!option.darkOnly"
+                      class="theme-pack-tile"
+                      :src="resolveTextureUrl(option.textures.lightTrim, themeAssets)"
+                      alt=""
+                      width="20"
+                      height="20"
+                    />
+                    <img
+                      class="theme-pack-tile"
+                      :src="resolveTextureUrl(option.textures.darkTrim, themeAssets)"
+                      alt=""
+                      width="20"
+                      height="20"
+                    />
+                  </span>
+                  <span v-else-if="option.darkOnly" class="theme-pack-badge">{{ t('仅深色') }}</span>
                 </span>
+                <span v-if="option.darkOnly && option.textures" class="theme-pack-badge theme-pack-badge-inline">{{ t('仅深色') }}</span>
                 <span class="theme-pack-scenes">{{ option.darkOnly ? t(option.darkScene) : `${t(option.lightScene)} / ${t(option.darkScene)}` }}</span>
               </button>
             </div>
@@ -292,6 +319,42 @@ defineExpose({ draft, dirty, busy: computed(() => busy.value || imageBusy.value 
               <option value="glass">{{ t('毛玻璃') }}</option>
             </select>
           </label>
+          <div v-if="draft.surfaceEffect === 'translucent' || draft.surfaceEffect === 'glass'" class="surface-tuning">
+            <label class="surface-slider-field">
+              <span class="surface-slider-head">
+                <span>{{ t('面板不透明度') }}</span>
+                <strong>{{ activeOpacity }}%</strong>
+              </span>
+              <input
+                type="range"
+                min="35"
+                max="98"
+                step="1"
+                :value="activeOpacity"
+                @input="draft.surfaceOpacity = Number(($event.target as HTMLInputElement).value)"
+              />
+            </label>
+            <label v-if="draft.surfaceEffect === 'glass'" class="surface-slider-field">
+              <span class="surface-slider-head">
+                <span>{{ t('毛玻璃模糊度') }}</span>
+                <strong>{{ activeBlur }} px</strong>
+              </span>
+              <input
+                type="range"
+                min="4"
+                max="36"
+                step="1"
+                :value="activeBlur"
+                @input="draft.surfaceBlur = Number(($event.target as HTMLInputElement).value)"
+              />
+            </label>
+            <button
+              v-if="draft.surfaceOpacity || draft.surfaceBlur"
+              class="text-button"
+              type="button"
+              @click="draft.surfaceOpacity = 0; draft.surfaceBlur = 0"
+            >{{ t('恢复默认透明与模糊参数') }}</button>
+          </div>
 
           <label class="settings-check">
             <input v-model="draft.allowUserTheme" type="checkbox" />
@@ -349,8 +412,8 @@ defineExpose({ draft, dirty, busy: computed(() => busy.value || imageBusy.value 
                 :src="resolveTextureUrl(key, themeAssets)"
                 :alt="key"
                 :title="key"
-                width="28"
-                height="28"
+                width="36"
+                height="36"
               />
             </div>
             <div class="theme-resource-actions">

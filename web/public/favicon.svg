@@ -1,1 +1,36 @@
-<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 32 32"><path fill="#3867d6" d="M2 2h8v20H2zm10 8h8v20h-8zM22 2h8v20h-8z"/></svg>
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 64 64" fill="none">
+  <defs>
+    <linearGradient id="ws-top" x1="14" y1="8" x2="50" y2="30" gradientUnits="userSpaceOnUse">
+      <stop offset="0%" stop-color="#8b5cf6"/>
+      <stop offset="58%" stop-color="#c061cb"/>
+      <stop offset="100%" stop-color="#f4729b"/>
+    </linearGradient>
+    <linearGradient id="ws-left" x1="10" y1="20" x2="32" y2="56" gradientUnits="userSpaceOnUse">
+      <stop offset="0%" stop-color="#4338ca"/>
+      <stop offset="100%" stop-color="#312e81"/>
+    </linearGradient>
+    <linearGradient id="ws-right" x1="54" y1="20" x2="32" y2="56" gradientUnits="userSpaceOnUse">
+      <stop offset="0%" stop-color="#a855f7"/>
+      <stop offset="100%" stop-color="#6d28d9"/>
+    </linearGradient>
+    <linearGradient id="ws-star" x1="32" y1="12" x2="32" y2="28" gradientUnits="userSpaceOnUse">
+      <stop offset="0%" stop-color="#ffffff"/>
+      <stop offset="100%" stop-color="#fef08a"/>
+    </linearGradient>
+  </defs>
+  <!-- Outer subtle frame for sharp 16px-32px silhouette -->
+  <path d="M32 6L55 19.2V45.6L32 58.8L9 45.6V19.2L32 6Z" fill="#2e1065"/>
+  <!-- Top diamond face -->
+  <path d="M32 9L52.2 20.6L32 32.2L11.8 20.6L32 9Z" fill="url(#ws-top)"/>
+  <!-- Left isometric face -->
+  <path d="M11.8 22.8L30.8 33.8V55.2L11.8 44.2V22.8Z" fill="url(#ws-left)"/>
+  <!-- Right isometric face -->
+  <path d="M52.2 22.8L33.2 33.8V55.2L52.2 44.2V22.8Z" fill="url(#ws-right)"/>
+  <!-- Subtle glass specular diagonal on right face -->
+  <path d="M52.2 22.8L33.2 33.8V42.4L52.2 31.4V22.8Z" fill="#ffffff" fill-opacity="0.12"/>
+  <!-- 4-point Wishing Star carved into top face -->
+  <path d="M32 13.4L34.7 18.6L41.6 20.6L34.7 22.6L32 27.8L29.3 22.6L22.4 20.6L29.3 18.6L32 13.4Z" fill="url(#ws-star)"/>
+  <!-- Pixel sparkles -->
+  <rect x="52" y="7" width="4" height="4" rx="0.8" fill="#c084fc"/>
+  <rect x="57" y="13" width="3" height="3" rx="0.6" fill="#f4729b"/>
+</svg>

@@ -38,6 +38,8 @@ func TestThemePacksBothDatabases(t *testing.T) {
 				DefaultTheme:   "dark",
 				ThemePack:      "cherry",
 				SurfaceEffect:  "glass",
+				SurfaceOpacity: 74,
+				SurfaceBlur:    20,
 				AllowUserTheme: true,
 				FontPreset:     "fusion_pixel",
 				FontScope:      "all",
@@ -56,10 +58,19 @@ func TestThemePacksBothDatabases(t *testing.T) {
 				body.ThemePack = pack
 				webStatus(t, f.call(3, "PATCH", "/api/admin/appearance", body), 200)
 				got := read()
-				if got.ThemePack != pack || got.Accent != "violet" || got.DefaultTheme != "dark" || got.SurfaceEffect != "glass" || !got.AllowUserTheme || got.FontPreset != "fusion_pixel" || got.FontScope != "all" || got.CustomFontURL != "https://fonts.example.com/pixel.css" || got.Advanced.Light["heading"] != "#123456" || got.Advanced.Dark["heading"] != "#abcdef" {
+				if got.ThemePack != pack || got.Accent != "violet" || got.DefaultTheme != "dark" || got.SurfaceEffect != "glass" || got.SurfaceOpacity != 74 || got.SurfaceBlur != 20 || !got.AllowUserTheme || got.FontPreset != "fusion_pixel" || got.FontScope != "all" || got.CustomFontURL != "https://fonts.example.com/pixel.css" || got.Advanced.Light["heading"] != "#123456" || got.Advanced.Dark["heading"] != "#abcdef" {
 					t.Fatalf("theme settings did not roundtrip for %s: %+v", pack, got)
 				}
 			}
+			body.ThemePack = "plains"
+			body.SurfaceOpacity = 20
+			webStatus(t, f.call(3, "PATCH", "/api/admin/appearance", body), 400)
+			body.SurfaceOpacity = 74
+			body.SurfaceBlur = 60
+			webStatus(t, f.call(3, "PATCH", "/api/admin/appearance", body), 400)
+			body.SurfaceBlur = 20
+			body.ThemePack = "high_contrast"
+			webStatus(t, f.call(3, "PATCH", "/api/admin/appearance", body), 200)
 			body.ThemePack = "unknown"
 			webStatus(t, f.call(3, "PATCH", "/api/admin/appearance", body), 400)
 			if read().ThemePack != "high_contrast" {

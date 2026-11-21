@@ -30,6 +30,8 @@ type appearance struct {
 	DefaultTheme     string             `json:"defaultTheme"`
 	ThemePack        string             `json:"themePack"`
 	SurfaceEffect    string             `json:"surfaceEffect"`
+	SurfaceOpacity   int                `json:"surfaceOpacity,omitempty"`
+	SurfaceBlur      int                `json:"surfaceBlur,omitempty"`
 	AllowUserTheme   bool               `json:"allowUserTheme"`
 	DisableParticles bool               `json:"disableParticles,omitempty"`
 	FontPreset       string             `json:"fontPreset"`
@@ -217,6 +219,14 @@ func (a *Server) updateAppearance(w http.ResponseWriter, r *http.Request) {
 	}
 	if body.SurfaceEffect != "solid" && body.SurfaceEffect != "translucent" && body.SurfaceEffect != "glass" {
 		failure(w, 400, "面板效果无效")
+		return
+	}
+	if body.SurfaceOpacity != 0 && (body.SurfaceOpacity < 35 || body.SurfaceOpacity > 98) {
+		failure(w, 400, "面板不透明度须在 35%–98% 之间")
+		return
+	}
+	if body.SurfaceBlur != 0 && (body.SurfaceBlur < 4 || body.SurfaceBlur > 36) {
+		failure(w, 400, "毛玻璃模糊度须在 4–36 px 之间")
 		return
 	}
 	if body.ThemePack == "" {

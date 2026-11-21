@@ -18,23 +18,21 @@ const profile = computed(() => {
   return props.dark ? meta.particles.dark || null : meta.particles.light || null
 })
 
-// Deterministic low-density layout so particles stay subtle and never crowd text.
+// Edge-framed low-density layout so particles stay atmospheric and clear of center Hero copy.
 const tracks = [
-  { left: '6%', top: '18%', dur: '13s', delay: '-2.2s', drift: '44px' },
-  { left: '16%', top: '62%', dur: '16s', delay: '-7.5s', drift: '62px' },
-  { left: '29%', top: '34%', dur: '14.5s', delay: '-4.1s', drift: '38px' },
-  { left: '44%', top: '74%', dur: '17.5s', delay: '-10.3s', drift: '54px' },
-  { left: '58%', top: '24%', dur: '13.8s', delay: '-1.4s', drift: '48px' },
-  { left: '72%', top: '56%', dur: '15.2s', delay: '-8.6s', drift: '58px' },
-  { left: '84%', top: '30%', dur: '14.2s', delay: '-5.0s', drift: '40px' },
-  { left: '92%', top: '68%', dur: '16.8s', delay: '-11.8s', drift: '50px' },
-  { left: '38%', top: '48%', dur: '15.8s', delay: '-6.4s', drift: '36px' },
+  { left: '4%', top: '18%', dur: '14s', delay: '-2.2s', drift: '36px' },
+  { left: '12%', top: '62%', dur: '16.5s', delay: '-7.5s', drift: '44px' },
+  { left: '84%', top: '26%', dur: '15s', delay: '-4.1s', drift: '-34px' },
+  { left: '92%', top: '68%', dur: '17.2s', delay: '-10.3s', drift: '-42px' },
+  { left: '20%', top: '36%', dur: '15.8s', delay: '-1.4s', drift: '38px' },
+  { left: '78%', top: '54%', dur: '16s', delay: '-8.6s', drift: '-38px' },
+  { left: '8%', top: '78%', dur: '18s', delay: '-5.0s', drift: '32px' },
 ]
 
 const items = computed(() => {
   const current = profile.value
   if (!current || !current.keys.length) return []
-  const count = Math.min(current.count, tracks.length)
+  const count = Math.min(Math.max(4, Math.round(current.count * 0.72)), tracks.length)
   return Array.from({ length: count }, (_, idx) => {
     const key = current.keys[idx % current.keys.length]
     const track = tracks[idx]

@@ -273,30 +273,22 @@ export function resolveTextureUrl(key: string, assets?: PublicThemeAssets | null
 }
 
 const cssVars = [
-  '--mc-tex-trim',
-  '--mc-tex-footer',
   '--mc-scene-active',
   '--mc-scene-light',
   '--mc-scene-dark',
 ] as const
 
-export function applyThemeTextures(pack: string, dark: boolean, assets?: PublicThemeAssets | null) {
+export function applyThemeTextures(pack: string, dark: boolean, _assets?: PublicThemeAssets | null) {
   const root = document.documentElement
   const meta = themePackById[pack]
-  if (!meta?.mcBiome || !meta.textures) {
+  if (!meta?.mcBiome || !meta.scenes) {
     delete root.dataset.mcBiome
     for (const name of cssVars) root.style.removeProperty(name)
     return
   }
   root.dataset.mcBiome = '1'
-  const slots = meta.textures
-  const setUrl = (prop: string, key: string) => root.style.setProperty(prop, `url("${resolveTextureUrl(key, assets)}")`)
-  setUrl('--mc-tex-trim', dark ? slots.darkTrim : slots.lightTrim)
-  setUrl('--mc-tex-footer', dark ? slots.darkFooter : slots.lightFooter)
-  if (meta.scenes) {
-    const activeScene = dark ? meta.scenes.dark : (meta.scenes.light || meta.scenes.dark)
-    root.style.setProperty('--mc-scene-active', `url("${activeScene}")`)
-    root.style.setProperty('--mc-scene-light', `url("${meta.scenes.light || meta.scenes.dark}")`)
-    root.style.setProperty('--mc-scene-dark', `url("${meta.scenes.dark}")`)
-  }
+  const activeScene = dark ? meta.scenes.dark : (meta.scenes.light || meta.scenes.dark)
+  root.style.setProperty('--mc-scene-active', `url("${activeScene}")`)
+  root.style.setProperty('--mc-scene-light', `url("${meta.scenes.light || meta.scenes.dark}")`)
+  root.style.setProperty('--mc-scene-dark', `url("${meta.scenes.dark}")`)
 }

@@ -1606,4 +1606,9 @@ export const english: Record<string, string> = {
   "后台任务": "Background tasks",
   "自定义界面": "Custom interface",
   "插件数据与数据库迁移": "Plugin data and database migrations",
+  "面板不透明度": "Panel opacity",
+  "毛玻璃模糊度": "Glass blur radius",
+  "恢复默认透明与模糊参数": "Reset opacity and blur defaults",
+  "面板不透明度须在 35%–98% 之间": "Panel opacity must be between 35% and 98%.",
+  "毛玻璃模糊度须在 4–36 px 之间": "Glass blur radius must be between 4 and 36 px.",
 }

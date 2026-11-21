@@ -2,6 +2,7 @@
 import { feedbackRef, confirmAction, clearFeedback, toast } from './feedback'
 import { computed, nextTick, onBeforeUnmount, onMounted, ref, watch } from 'vue'
 import FeedbackHost from './components/FeedbackHost.vue'
+import BrandMark from './components/BrandMark.vue'
 import AppIcon from './components/AppIcon.vue'
 import AccountMenu from './components/AccountMenu.vue'
 import LoadingSkeleton from './components/LoadingSkeleton.vue'
@@ -298,7 +299,20 @@ const effectiveFontPreset = computed(() => (site.value.appearance.allowUserTheme
 function siteTheme() {
   setInterfaceAppearance(site.value.appearance.advanced)
   document.documentElement.dataset.accent = site.value.appearance.accent
-  document.documentElement.dataset.surface = site.value.appearance.surfaceEffect || 'solid'
+  const surface = site.value.appearance.surfaceEffect || 'solid'
+  document.documentElement.dataset.surface = surface
+  const opacity = site.value.appearance.surfaceOpacity
+  const blur = site.value.appearance.surfaceBlur
+  if ((surface === 'translucent' || surface === 'glass') && opacity && opacity >= 35 && opacity <= 98) {
+    document.documentElement.style.setProperty('--surface-opacity', `${opacity}%`)
+  } else {
+    document.documentElement.style.removeProperty('--surface-opacity')
+  }
+  if (surface === 'glass' && blur && blur >= 4 && blur <= 36) {
+    document.documentElement.style.setProperty('--surface-blur', `${blur}px`)
+  } else {
+    document.documentElement.style.removeProperty('--surface-blur')
+  }
   const pack = effectiveThemePack.value
   if (pack === 'default') {
     delete document.documentElement.dataset.themePack
@@ -870,7 +884,7 @@ onBeforeUnmount(() => {
   <ApplyTextureDialog v-if="applyingTexture && user" :texture="applyingTexture" :csrf-token="csrfToken" @close="applyingTexture = undefined" @applied="loadCharacters" @expired="expireSession" />
   <div class="app-shell">
     <header class="topbar">
-      <a class="brand" href="/" :aria-label="t('{name} 首页', { name: site.name })" :title="site.name"><img v-if="site.appearance.logoImage" class="brand-logo" :src="site.appearance.logoImage" alt="" width="32" height="32" /><span v-else class="brand-mark" aria-hidden="true"><i></i><i></i><i></i></span><span class="brand-name"><template v-if="site.name === 'WishingSkin'">Wishing<span class="brand-light">Skin</span></template><template v-else>{{ site.name }}</template></span></a>
+      <a class="brand" href="/" :aria-label="t('{name} 首页', { name: site.name })" :title="site.name"><img v-if="site.appearance.logoImage" class="brand-logo" :src="site.appearance.logoImage" alt="" width="32" height="32" /><BrandMark v-else :size="30" /><span class="brand-name"><template v-if="site.name === 'WishingSkin'">Wishing<span class="brand-light">Skin</span></template><template v-else>{{ site.name }}</template></span></a>
       <div class="topbar-actions">
         <button class="topbar-link" :class="{ active: routePath === '/library' }" type="button" :aria-current="routePath === '/library' ? 'page' : undefined" @click="navigate('/library')"><InterfaceIcon name="library" />{{ t('公开库') }}</button>
         <NoticeCenter :notice="site.notice" :format="site.noticeFormat" />

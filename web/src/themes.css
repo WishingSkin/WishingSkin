@@ -580,72 +580,87 @@
   --radius-dialog: 12px;
 }
 
-/* Crisp pixel block trim along the bottom of topbar */
+/* Wishing Cube BrandMark SVG (theme-adaptive isometric facets + wishing star) */
+.brand-mark-svg {
+  display: block;
+  flex-shrink: 0;
+}
+.brand-mark-svg .bm-shell {
+  fill: color-mix(in srgb, var(--accent) 44%, #0f1020);
+}
+.brand-mark-svg .bm-top {
+  fill: color-mix(in srgb, var(--accent) 68%, #ffffff);
+}
+.brand-mark-svg .bm-left {
+  fill: color-mix(in srgb, var(--accent) 88%, #101224);
+}
+.brand-mark-svg .bm-right {
+  fill: var(--accent);
+}
+.brand-mark-svg .bm-sheen {
+  fill: #ffffff;
+  fill-opacity: 0.16;
+}
+.brand-mark-svg .bm-star {
+  fill: #fffef2;
+}
+.brand-mark-svg .bm-spark-a {
+  fill: color-mix(in srgb, var(--accent) 72%, #ffffff);
+}
+.brand-mark-svg .bm-spark-b {
+  fill: color-mix(in srgb, var(--accent) 55%, #fef08a);
+}
+
+/* Refined biome-tinted hairline topbar (replaces sliced tiled block strip) */
 :root[data-mc-biome="1"] .topbar {
   position: sticky;
-  border-bottom: 0;
-  padding-bottom: 6px;
-}
-:root[data-mc-biome="1"] .topbar::after {
-  content: "";
-  position: absolute;
-  left: 0;
-  right: 0;
-  bottom: 0;
-  height: 6px;
-  background-image: var(--mc-tex-trim);
-  background-repeat: repeat-x;
-  background-size: 24px 24px;
-  background-position: 0 0;
-  image-rendering: pixelated;
-  pointer-events: none;
-  border-top: 1px solid color-mix(in srgb, var(--shadow-ink) 16%, transparent);
+  border-bottom: 1px solid color-mix(in srgb, var(--accent) 32%, var(--border));
+  box-shadow: 0 2px 12px color-mix(in srgb, var(--shadow-ink) 8%, transparent);
 }
 
 /* Subtle tactile Minecraft press bevel on primary buttons */
 :root[data-mc-biome="1"] .primary-button {
-  box-shadow: inset 0 2px 0 color-mix(in srgb, #ffffff 22%, transparent), inset 0 -3px 0 color-mix(in srgb, #000000 26%, transparent);
+  box-shadow: inset 0 1px 0 color-mix(in srgb, #ffffff 24%, transparent), inset 0 -2px 0 color-mix(in srgb, #000000 22%, transparent);
 }
 :root[data-mc-biome="1"] .primary-button:active {
-  box-shadow: inset 0 2px 0 color-mix(in srgb, #000000 20%, transparent);
+  box-shadow: inset 0 1px 0 color-mix(in srgb, #000000 18%, transparent);
   transform: translateY(1px);
 }
 
-/* Bedrock / foundation block strip above footer */
+/* Compact, seamless frosted footer (no harsh sliced block strip) */
+.footer-primary {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  min-width: 0;
+}
+.footer-main-row {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  gap: 6px 14px;
+}
+.footer-main-row .footer-custom,
+.footer-main-row .footer-powered {
+  display: inline;
+  margin-top: 0;
+}
 :root[data-mc-biome="1"] .site-footer {
   position: relative;
-  margin-top: 32px;
-  padding-top: 24px;
-}
-:root[data-mc-biome="1"] .site-footer::before {
-  content: "";
-  position: absolute;
-  left: 0;
-  right: 0;
-  top: 0;
-  height: 8px;
-  border-radius: var(--radius-control);
-  background-image: var(--mc-tex-footer);
-  background-repeat: repeat-x;
-  background-size: 24px 24px;
-  image-rendering: pixelated;
-  opacity: 0.9;
-  pointer-events: none;
+  margin-top: 24px;
+  padding-top: 20px;
 }
 :root[data-mc-biome="1"] .public-site-footer {
   max-width: none;
   margin-top: 0;
-  padding: 26px max(48px, calc((100% - 1224px) / 2)) 32px;
-  background: color-mix(in srgb, var(--bg) 90%, transparent);
-  -webkit-backdrop-filter: blur(12px);
-  backdrop-filter: blur(12px);
-}
-:root[data-mc-biome="1"] .public-site-footer::before {
-  border-radius: 0;
+  padding: 20px max(48px, calc((100% - 1224px) / 2)) 24px;
+  background: color-mix(in srgb, var(--bg) 82%, transparent);
+  -webkit-backdrop-filter: blur(14px) saturate(115%);
+  backdrop-filter: blur(14px) saturate(115%);
 }
 @media (max-width: 560px) {
   :root[data-mc-biome="1"] .public-site-footer {
-    padding: 22px 18px 26px;
+    padding: 18px 16px 22px;
   }
 }
 
@@ -755,27 +770,37 @@
 }
 .homepage-surface.mc-scene .homepage-intro {
   max-width: none;
-  background: color-mix(in srgb, var(--panel) 84%, transparent);
-  -webkit-backdrop-filter: blur(10px) saturate(112%);
-  backdrop-filter: blur(10px) saturate(112%);
-  border: 1px solid var(--border);
+  background: color-mix(in srgb, var(--panel) var(--surface-opacity, 68%), transparent);
+  -webkit-backdrop-filter: blur(var(--surface-blur, 18px)) saturate(132%);
+  backdrop-filter: blur(var(--surface-blur, 18px)) saturate(132%);
+  border: 1px solid color-mix(in srgb, var(--border) 78%, #ffffff);
   border-radius: var(--radius-card);
   padding: 36px 36px 40px;
-  box-shadow: var(--shadow-card);
+  box-shadow: var(--shadow-card), inset 0 1px 0 color-mix(in srgb, #ffffff 55%, transparent);
+}
+.homepage-surface.mc-scene-dark .homepage-intro {
+  background: color-mix(in srgb, var(--panel) var(--surface-opacity, 80%), transparent);
+  border-color: var(--border);
+  box-shadow: var(--shadow-card), inset 0 1px 0 color-mix(in srgb, #ffffff 10%, transparent);
 }
 .homepage-surface.mc-scene .homepage-features > header {
-  display: inline-block;
-  padding: 10px 16px;
-  border-radius: var(--radius-control);
-  background: color-mix(in srgb, var(--panel) 84%, transparent);
-  -webkit-backdrop-filter: blur(8px);
-  backdrop-filter: blur(8px);
-  border: 1px solid color-mix(in srgb, var(--border) 75%, transparent);
+  display: block;
+  padding: 0 2px;
+  background: transparent;
+  border: 0;
+}
+.homepage-surface.mc-scene .homepage-features > header :is(h2, p) {
+  text-shadow: 0 1px 10px color-mix(in srgb, var(--bg) 88%, transparent), 0 0 2px color-mix(in srgb, var(--bg) 72%, transparent);
 }
 .homepage-surface.mc-scene :is(.homepage-features-grid, .homepage-notice, .homepage-showcase, .homepage-cta) {
-  background: color-mix(in srgb, var(--panel) 88%, transparent);
-  -webkit-backdrop-filter: blur(10px) saturate(112%);
-  backdrop-filter: blur(10px) saturate(112%);
+  background: color-mix(in srgb, var(--panel) var(--surface-opacity, 74%), transparent);
+  -webkit-backdrop-filter: blur(var(--surface-blur, 18px)) saturate(128%);
+  backdrop-filter: blur(var(--surface-blur, 18px)) saturate(128%);
+  box-shadow: var(--shadow-card), inset 0 1px 0 color-mix(in srgb, #ffffff 42%, transparent);
+}
+.homepage-surface.mc-scene-dark :is(.homepage-features-grid, .homepage-notice, .homepage-showcase, .homepage-cta) {
+  background: color-mix(in srgb, var(--panel) var(--surface-opacity, 82%), transparent);
+  box-shadow: var(--shadow-card), inset 0 1px 0 color-mix(in srgb, #ffffff 8%, transparent);
 }
 .homepage-surface.mc-scene .homepage-cta {
   border: 1px solid var(--border);
@@ -913,6 +938,21 @@
   font-size: var(--font-body);
   font-weight: 600;
 }
+.theme-pack-tiles {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  flex-shrink: 0;
+}
+.theme-pack-tile {
+  width: 22px;
+  height: 22px;
+  border-radius: calc(var(--radius-control) / 2);
+  border: 1px solid color-mix(in srgb, var(--border) 85%, transparent);
+  image-rendering: pixelated;
+  object-fit: cover;
+  background: var(--subtle);
+}
 .theme-pack-badge {
   font-size: var(--font-small);
   color: var(--accent);
@@ -920,6 +960,42 @@
   padding: 1px 6px;
   border-radius: var(--radius-control);
   white-space: nowrap;
+}
+.theme-pack-badge-inline {
+  align-self: flex-start;
+}
+.surface-tuning {
+  display: grid;
+  gap: 12px;
+  margin: 12px 0 18px;
+  padding: 14px 16px;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-card);
+  background: var(--subtle);
+}
+.surface-slider-field {
+  display: grid;
+  gap: 6px;
+}
+.surface-slider-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  font-size: var(--font-small);
+  color: var(--ink);
+}
+.surface-slider-head strong {
+  font-variant-numeric: tabular-nums;
+  color: var(--accent);
+}
+.surface-slider-field input[type="range"] {
+  width: 100%;
+  accent-color: var(--accent);
+  cursor: pointer;
+}
+.surface-tuning .text-button {
+  justify-self: start;
 }
 .theme-pack-scenes {
   font-size: var(--font-small);
@@ -953,8 +1029,8 @@
   align-items: center;
 }
 .theme-tile-sample {
-  width: 28px;
-  height: 28px;
+  width: 36px;
+  height: 36px;
   border-radius: var(--radius-control);
   border: 1px solid var(--border);
   image-rendering: pixelated;
@@ -1005,7 +1081,8 @@
   :root[data-theme-pack="mc_official"] .primary-button:active { transform: none; }
 }
 @media (prefers-reduced-transparency: reduce) {
-  .homepage-surface.mc-scene :is(.homepage-intro, .homepage-features > header, .homepage-features-grid, .homepage-notice, .homepage-showcase, .homepage-cta) {
+  .homepage-surface.mc-scene :is(.homepage-intro, .homepage-features-grid, .homepage-notice, .homepage-showcase, .homepage-cta),
+  :root[data-mc-biome="1"] .public-site-footer {
     background: var(--panel);
     -webkit-backdrop-filter: none;
     backdrop-filter: none;

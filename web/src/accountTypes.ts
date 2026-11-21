@@ -23,6 +23,8 @@ export interface Appearance {
   defaultTheme: 'light' | 'dark' | 'system'
   themePack?: ThemePack
   surfaceEffect?: 'solid' | 'translucent' | 'glass'
+  surfaceOpacity?: number
+  surfaceBlur?: number
   allowUserTheme?: boolean
   disableParticles?: boolean
   fontPreset?: FontPreset

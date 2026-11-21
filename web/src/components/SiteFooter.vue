@@ -4,12 +4,14 @@ defineProps<{ name: string; tagline: string; footer?: string; showMcDisclaimer?:
 </script>
 <template>
   <footer class="workspace-footer site-footer">
-    <span>
-      {{ name }}
-      <span v-if="footer" class="footer-custom">{{ footer }}</span>
-      <span class="footer-powered">Powered by <a href="https://github.com/KyanOWO1107/WishingSkin" target="_blank" rel="noopener noreferrer"><strong>WishingSkin</strong></a></span>
+    <div class="footer-primary">
+      <div class="footer-main-row">
+        <span class="footer-site-name">{{ name }}</span>
+        <span v-if="footer" class="footer-custom">{{ footer }}</span>
+        <span class="footer-powered">Powered by <a href="https://github.com/KyanOWO1107/WishingSkin" target="_blank" rel="noopener noreferrer"><strong>WishingSkin</strong></a></span>
+      </div>
       <span v-if="showMcDisclaimer" class="footer-mc-disclaimer">{{ t('非 Minecraft 官方产品，未获 Mojang 或 Microsoft 批准或关联。') }}</span>
-    </span>
-    <span>{{ tagline }}</span>
+    </div>
+    <span v-if="tagline" class="footer-tagline">{{ tagline }}</span>
   </footer>
 </template>
