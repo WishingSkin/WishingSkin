@@ -101,6 +101,9 @@ func assertEmbeddedSchemasAgree(t *testing.T, migration string) {
 	if migration == "023_theme_assets" {
 		tables = nil
 	}
+	if migration == "024_storage_integrity" {
+		tables = []string{"texture_file_integrity"}
+	}
 	if migration == "019_admin_event_changes" {
 		tables = []string{"admin_event_changes"}
 	}

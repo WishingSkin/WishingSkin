@@ -31,18 +31,19 @@ import (
 )
 
 type Config struct {
-	PublicURL, TextureDir string
-	PluginDir             string
-	Assets                fs.FS
-	MailSender            MailSender
-	Challenge             ChallengeVerifier
-	TurnstileSiteKey      string
-	TrustedProxies        []netip.Prefix
-	SettingsKey           []byte
-	SMTP                  *mailer.SMTP
-	TurnstileSecret       string
-	OIDC                  OIDCSettings
-	CommunityPlugins      []sdk.Plugin
+	PublicURL, TextureDir                           string
+	TextureAccountLimitBytes, TextureSiteLimitBytes int64
+	PluginDir                                       string
+	Assets                                          fs.FS
+	MailSender                                      MailSender
+	Challenge                                       ChallengeVerifier
+	TurnstileSiteKey                                string
+	TrustedProxies                                  []netip.Prefix
+	SettingsKey                                     []byte
+	SMTP                                            *mailer.SMTP
+	TurnstileSecret                                 string
+	OIDC                                            OIDCSettings
+	CommunityPlugins                                []sdk.Plugin
 }
 type Server struct {
 	communityRuntime   communityRuntime
@@ -57,18 +58,18 @@ type Server struct {
 	uploadAccountLimit limiter
 	uploadIPLimit      limiter
 	loginLimit         limiter
-	passwordLimit      limiter
 	gameLoginLimit     limiter
 	oidcLimit          limiter
 	oauthLimit         limiter
 	introspectionLimit limiter
+	passwordLimit      limiter
 	registrationLimit  limiter
 	mailLimit          limiter
 	mailCooldown       limiter
 	loginFailures      limiter
 	mailSlots          chan struct{}
-	dummy              string
 	connectorSlots     chan struct{}
+	dummy              string
 	pointsNow          func() time.Time
 	totpNow            func() time.Time
 	totpLimit          limiter
@@ -141,15 +142,15 @@ func New(s *store.Store, cfg Config) (*Server, error) {
 	a.mailLimit = limiter{entries: map[string]bucket{}, now: time.Now, max: 3, window: time.Hour}
 	a.mailCooldown = limiter{entries: map[string]bucket{}, now: time.Now, max: 1}
 	a.loginFailures = limiter{entries: map[string]bucket{}, now: time.Now, max: 5, window: 15 * time.Minute}
-	a.uploadAccountLimit = limiter{entries: map[string]bucket{}, now: time.Now, max: 10}
 	a.gameLoginLimit = limiter{entries: map[string]bucket{}, now: time.Now}
 	a.oidcLimit = limiter{entries: map[string]bucket{}, now: time.Now, max: 20}
 	a.oauthLimit = limiter{entries: map[string]bucket{}, now: time.Now, max: 120}
 	a.introspectionLimit = limiter{entries: map[string]bucket{}, now: time.Now, max: 300}
+	a.uploadAccountLimit = limiter{entries: map[string]bucket{}, now: time.Now, max: 10}
 	a.uploadIPLimit = limiter{entries: map[string]bucket{}, now: time.Now, max: 30}
 	a.mailSlots = make(chan struct{}, 2)
-	a.mux.HandleFunc("GET /api/site", a.site)
 	a.connectorSlots = make(chan struct{}, 2)
+	a.mux.HandleFunc("GET /api/site", a.site)
 	a.mux.HandleFunc("GET /api/notices", a.notices)
 	a.registerAccountAccess()
 	a.totpNow = time.Now

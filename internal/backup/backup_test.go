@@ -141,6 +141,52 @@ func saveManifest(t *testing.T, dir string, m Manifest) {
 	}
 }
 
+func TestBackupVerifiesImportedCustomDigestBothDatabases(t *testing.T) {
+	for _, dialect := range []string{"mysql", "postgres"} {
+		t.Run(dialect, func(t *testing.T) {
+			ctx := context.Background()
+			db := testutil.Database(t, dialect)
+			snapshot, err := bsmigration.Load("../../testdata/bs/snapshot.json")
+			if err != nil {
+				t.Fatal(err)
+			}
+			snapshot.SignaturePrivateKey, err = fixtureKey()
+			if err != nil {
+				t.Fatal(err)
+			}
+			source := t.TempDir()
+			data, err := os.ReadFile(filepath.Join("../../testdata/bs", snapshot.Textures[0].Hash))
+			if err != nil {
+				t.Fatal(err)
+			}
+			snapshot.Source.HashMode = "preserve-custom"
+			snapshot.Source.HashExplanation = "synthetic legacy identifier"
+			legacyHash := strings.Repeat("a", 64)
+			snapshot.Textures[0].Hash = legacyHash
+			if err := os.WriteFile(filepath.Join(source, legacyHash), data, 0600); err != nil {
+				t.Fatal(err)
+			}
+			destination := filepath.Join(t.TempDir(), "import")
+			if _, err := bsmigration.Import(ctx, db, snapshot, source, destination); err != nil {
+				t.Fatal(err)
+			}
+			good := filepath.Join(t.TempDir(), "good-backup")
+			if _, err := Export(ctx, db, destination, good); err != nil {
+				t.Fatal(err)
+			}
+			if _, err := Verify(ctx, good); err != nil {
+				t.Fatalf("valid custom-ID backup did not verify: %v", err)
+			}
+			if err := os.WriteFile(filepath.Join(destination, legacyHash), append(data, '\n'), 0600); err != nil {
+				t.Fatal(err)
+			}
+			if _, err := Export(ctx, db, destination, filepath.Join(t.TempDir(), "damaged-backup")); err == nil {
+				t.Fatal("backup accepted damaged bytes under a preserved custom identifier")
+			}
+		})
+	}
+}
+
 func TestRoundTripBothDatabases(t *testing.T) {
 	for _, from := range []string{"mysql", "postgres"} {
 		t.Run(from, func(t *testing.T) {

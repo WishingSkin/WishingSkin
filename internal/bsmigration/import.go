@@ -21,6 +21,7 @@ var importMutex sync.Mutex
 type fileJournal struct {
 	Fingerprint string            `json:"fingerprint"`
 	Files       map[string]string `json:"files"`
+	Sizes       map[string]int64  `json:"-"`
 }
 
 // Import keeps business inserts in one transaction and records a pending task
@@ -107,6 +108,9 @@ func ImportWithSettingsKey(ctx context.Context, db *store.Store, snapshot *Snaps
 			_, err = tx.ExecContext(ctx, db.Bind("INSERT INTO textures(hash,name,kind,model,is_public,deleted) VALUES(?,?,?,?,?,?)"), t.Hash, t.Name, kind, model, t.Public, false)
 			if err != nil {
 				return r, fmt.Errorf("insert migrated texture file: %w", err)
+			}
+			if _, err := tx.ExecContext(ctx, db.Bind("INSERT INTO texture_file_integrity(file_hash,byte_size,sha256) VALUES(?,?,?)"), t.Hash, journal.Sizes[t.Hash], journal.Files[t.Hash]); err != nil {
+				return r, fmt.Errorf("insert migrated texture integrity: %w", err)
 			}
 			files[t.Hash] = true
 		}
@@ -259,7 +263,7 @@ func claimTask(ctx context.Context, s *store.Store, fp string) error {
 }
 
 func emptyBusiness(ctx context.Context, tx *sql.Tx) error {
-	for _, table := range []string{"users", "characters", "textures", "texture_records", "wardrobe", "settings", "web_sessions", "game_tokens", "ygg_join_sessions", "account_states", "user_profiles", "account_tokens", "invitation_codes", "admin_events", "reports", "point_entries", "legacy_reports"} {
+	for _, table := range []string{"users", "characters", "textures", "texture_file_integrity", "texture_records", "wardrobe", "settings", "web_sessions", "game_tokens", "ygg_join_sessions", "account_states", "user_profiles", "account_tokens", "invitation_codes", "admin_events", "reports", "point_entries", "legacy_reports"} {
 		var count int64
 		query := "SELECT COUNT(*) FROM " + table
 		if table == "settings" {
@@ -310,14 +314,18 @@ func prepareDirectory(s *Snapshot, source, target, fp string) (*fileJournal, err
 	if err := os.MkdirAll(target, 0700); err != nil {
 		return nil, err
 	}
-	journal := &fileJournal{Fingerprint: fp, Files: map[string]string{}}
+	journal := &fileJournal{Fingerprint: fp, Files: map[string]string{}, Sizes: map[string]int64{}}
 	for _, t := range s.Textures {
+		if _, seen := journal.Files[t.Hash]; seen {
+			continue
+		}
 		b, err := readTexture(source, t.Hash)
 		if err != nil {
 			return nil, err
 		}
 		sum := sha256.Sum256(b)
 		journal.Files[t.Hash] = hex.EncodeToString(sum[:])
+		journal.Sizes[t.Hash] = int64(len(b))
 	}
 	path := filepath.Join(target, ".wishingskin-migration.json")
 	entries, err := os.ReadDir(target)

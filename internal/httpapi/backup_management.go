@@ -17,11 +17,12 @@ import (
 var managedBackupName = regexp.MustCompile(`^wishingskin-backup-[0-9]{8}T[0-9]{6}Z-[a-f0-9]{8}$`)
 
 type backupEntry struct {
-	ID        string `json:"id"`
-	CreatedAt string `json:"createdAt"`
-	Schema    int    `json:"schema"`
-	Files     int    `json:"files"`
-	State     string `json:"state"`
+	ID              string `json:"id"`
+	CreatedAt       string `json:"createdAt"`
+	Schema          int    `json:"schema"`
+	Files           int    `json:"files"`
+	UnverifiedFiles int    `json:"unverifiedFiles"`
+	State           string `json:"state"`
 }
 
 func (a *Server) registerBackupManagement() {
@@ -69,6 +70,7 @@ func readBackupEntries(directory string) ([]backupEntry, error) {
 					item.CreatedAt = m.CreatedAt
 					item.Schema = m.SchemaVersion
 					item.Files = len(m.Files)
+					item.UnverifiedFiles = m.UnverifiedFiles
 					item.State = "unchecked"
 				}
 			}
@@ -131,21 +133,22 @@ func (a *Server) verifyBackup(w http.ResponseWriter, r *http.Request) {
 		failure(w, 409, "备份校验未通过，请检查完整性和程序版本")
 		return
 	}
-	respond(w, 200, map[string]any{"valid": true, "schema": m.SchemaVersion, "files": len(m.Files), "plugins": len(m.PluginBundles), "createdAt": m.CreatedAt})
+	respond(w, 200, map[string]any{"valid": true, "schema": m.SchemaVersion, "files": len(m.Files), "unverifiedFiles": m.UnverifiedFiles, "plugins": len(m.PluginBundles), "createdAt": m.CreatedAt})
 }
 func (a *Server) backupRestorePlan(w http.ResponseWriter, r *http.Request) {
 	if _, ok := a.adminRequest(w, r); !ok {
 		return
 	}
 	path, err := a.selectedBackup(r.Context(), r.PathValue("id"))
+	var manifest backup.Manifest
 	if err == nil {
-		_, err = backup.Verify(r.Context(), path)
+		manifest, err = backup.Verify(r.Context(), path)
 	}
 	if err != nil {
 		failure(w, 409, "请先选择完整且版本匹配的备份")
 		return
 	}
-	respond(w, 200, map[string]any{"directory": path, "arguments": []string{"restore", "--offline", "--directory", path}, "requiresOffline": true})
+	respond(w, 200, map[string]any{"directory": path, "arguments": []string{"restore", "--offline", "--directory", path}, "requiresOffline": true, "unverifiedFiles": manifest.UnverifiedFiles})
 }
 func (a *Server) exportBackup(ctx context.Context, destination string) (backup.Report, error) {
 	a.dynamicMu.Lock()
@@ -154,16 +157,24 @@ func (a *Server) exportBackup(ctx context.Context, destination string) (backup.R
 }
 
 // Caller holds the storage lease; only validated application-generated siblings
-// are eligible. Unknown, incomplete and corrupt directories remain untouched.
-func (a *Server) pruneBackups(ctx context.Context, schedule backupSchedule) error {
+// with verified source files are eligible. Verify the new backup before
+// removing anything and keep it even if timestamps tie at second precision.
+func (a *Server) pruneBackups(ctx context.Context, schedule backupSchedule, newest string) error {
 	if schedule.Keep <= 0 {
+		return nil
+	}
+	manifest, err := backup.Verify(ctx, newest)
+	if err != nil {
+		return err
+	}
+	if manifest.UnverifiedFiles > 0 {
 		return nil
 	}
 	items, err := readBackupEntries(schedule.Directory)
 	if err != nil {
 		return err
 	}
-	valid := 0
+	valid := 1
 	root, err := os.OpenRoot(schedule.Directory)
 	if err != nil {
 		return err
@@ -173,11 +184,12 @@ func (a *Server) pruneBackups(ctx context.Context, schedule backupSchedule) erro
 		if err = ctx.Err(); err != nil {
 			return err
 		}
-		if item.State != "unchecked" {
+		if item.ID == filepath.Base(newest) || item.State != "unchecked" || item.UnverifiedFiles > 0 {
 			continue
 		}
 		path := filepath.Join(schedule.Directory, item.ID)
-		if _, err = backup.Verify(ctx, path); err != nil {
+		manifest, err := backup.Verify(ctx, path)
+		if err != nil || manifest.UnverifiedFiles > 0 {
 			continue
 		}
 		valid++

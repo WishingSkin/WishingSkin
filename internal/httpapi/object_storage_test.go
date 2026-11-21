@@ -2,6 +2,8 @@ package httpapi
 
 import (
 	"bytes"
+	"crypto/sha256"
+	"encoding/hex"
 	"encoding/json"
 	"io"
 	"net/http"
@@ -88,7 +90,7 @@ func TestObjectStorageTextureFlowBothDatabases(t *testing.T) {
 			if !bytes.Equal(w.Body.Bytes(), png) {
 				t.Fatal("remote read differs")
 			}
-			if err := saveTexture(f.app.cfg.TextureDir, hash, png); err != nil {
+			if _, err := saveTexture(f.app.cfg.TextureDir, hash, png); err != nil {
 				t.Fatal(err)
 			}
 			mu.Lock()
@@ -111,6 +113,13 @@ func TestObjectStorageTextureFlowBothDatabases(t *testing.T) {
 			var before, after int
 			_ = f.db.DB.QueryRow("SELECT COUNT(*) FROM texture_records").Scan(&before)
 			webStatus(t, f.upload(1, png, nil), 503)
+			fresh := testPNG(t, 128, 64)
+			sum := sha256.Sum256(fresh)
+			freshHash := hex.EncodeToString(sum[:])
+			webStatus(t, f.upload(1, fresh, nil), 503)
+			if _, err := os.Stat(filepath.Join(f.app.cfg.TextureDir, freshHash)); !os.IsNotExist(err) {
+				t.Fatalf("failed S3 upload did not remove its new local file: %v", err)
+			}
 			_ = f.db.DB.QueryRow("SELECT COUNT(*) FROM texture_records").Scan(&after)
 			if before != after {
 				t.Fatal("failed remote upload committed a record")

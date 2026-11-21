@@ -26,18 +26,19 @@ type backupSchedule struct {
 	Keep      int    `json:"keep"`
 }
 type operationStatus struct {
-	ID            string `json:"id"`
-	Kind          string `json:"kind"`
-	State         string `json:"state"`
-	StartedAt     int64  `json:"startedAt"`
-	FinishedAt    int64  `json:"finishedAt"`
-	Total         int    `json:"total"`
-	Completed     int    `json:"completed"`
-	Failed        int    `json:"failed"`
-	Bytes         int64  `json:"bytes"`
-	Destination   string `json:"destination,omitempty"`
-	Message       string `json:"message,omitempty"`
-	ScheduledSlot string `json:"scheduledSlot,omitempty"`
+	ID              string `json:"id"`
+	Kind            string `json:"kind"`
+	State           string `json:"state"`
+	StartedAt       int64  `json:"startedAt"`
+	FinishedAt      int64  `json:"finishedAt"`
+	Total           int    `json:"total"`
+	Completed       int    `json:"completed"`
+	Failed          int    `json:"failed"`
+	UnverifiedFiles int    `json:"unverifiedFiles,omitempty"`
+	Bytes           int64  `json:"bytes"`
+	Destination     string `json:"destination,omitempty"`
+	Message         string `json:"message,omitempty"`
+	ScheduledSlot   string `json:"scheduledSlot,omitempty"`
 }
 type orphanFile struct {
 	Hash  string `json:"hash"`
@@ -381,9 +382,11 @@ func (a *Server) launchOperation(ctx context.Context, kind string, hashes []stri
 			var report backup.Report
 			report, err = a.exportBackup(jobCtx, job.Destination)
 			job.Total = report.Files
-			job.Completed = report.Files
-			if err == nil && schedule.Keep > 0 {
-				err = a.pruneBackups(jobCtx, schedule)
+			job.Completed = report.Files - report.UnverifiedFiles
+			job.Failed = report.UnverifiedFiles
+			job.UnverifiedFiles = report.UnverifiedFiles
+			if err == nil && job.UnverifiedFiles == 0 && schedule.Keep > 0 {
+				err = a.pruneBackups(jobCtx, schedule, job.Destination)
 			}
 		}
 		job.State = "completed"

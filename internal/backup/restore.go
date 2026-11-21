@@ -129,7 +129,7 @@ func verify(ctx context.Context, root *os.Root) (Manifest, error) {
 	if m.FormatVersion != formatVersion || m.SchemaVersion != store.CurrentSchemaVersion || len(m.Tables) != len(tables) {
 		return m, fmt.Errorf("unsupported backup format or schema")
 	}
-	fileHashes := map[string]bool{}
+	fileHashes := map[string]string{}
 	for i, t := range tables {
 		info := m.Tables[i]
 		if info.Name != t.name || info.Rows < 0 || !sha256Text.MatchString(info.SHA256) {
@@ -138,10 +138,10 @@ func verify(ctx context.Context, root *os.Root) (Manifest, error) {
 		err := walkTable(ctx, root, t, info, func(row []*string) error {
 			if t.name == "textures" {
 				hash := *row[0]
-				if !hashName.MatchString(hash) || fileHashes[strings.ToLower(hash)] {
+				if !hashName.MatchString(hash) || fileHashes[strings.ToLower(hash)] != "" {
 					return fmt.Errorf("invalid or colliding texture hashes")
 				}
-				fileHashes[strings.ToLower(hash)] = true
+				fileHashes[strings.ToLower(hash)] = hash
 			}
 			if t.name == "migration_state" && *row[2] != "partial" {
 				return fmt.Errorf("unsupported or pending migration state")
@@ -155,15 +155,39 @@ func verify(ctx context.Context, root *os.Root) (Manifest, error) {
 	if len(fileHashes) != len(m.Files) {
 		return m, fmt.Errorf("texture inventory mismatch")
 	}
+	sources, legacyCustom, err := textureSourceIntegrity(ctx, root, m)
+	if err != nil {
+		return m, err
+	}
+	for hash := range sources {
+		if fileHashes[strings.ToLower(hash)] != hash {
+			return m, fmt.Errorf("texture source inventory mismatch")
+		}
+	}
+	unverified := 0
 	for _, file := range m.Files {
 		key := strings.ToLower(file.Hash)
-		if !hashName.MatchString(file.Hash) || !fileHashes[key] || file.Bytes < 0 || !sha256Text.MatchString(file.SHA256) {
+		if !hashName.MatchString(file.Hash) || fileHashes[key] != file.Hash || file.Bytes < 0 || !sha256Text.MatchString(file.SHA256) {
 			return m, fmt.Errorf("invalid texture inventory")
 		}
-		delete(fileHashes, key)
-		if _, err := copyTexture(ctx, root, "textures/"+file.Hash, nil, "", &file); err != nil {
+		copied, err := copyTexture(ctx, root, "textures/"+file.Hash, nil, "", &file)
+		if err != nil {
 			return m, err
 		}
+		sourceUnverified, err := verifyTextureSource(copied, sources[file.Hash], legacyCustom)
+		if err != nil {
+			return m, err
+		}
+		if sourceUnverified != file.SourceUnverified {
+			return m, fmt.Errorf("inconsistent texture source verification")
+		}
+		if sourceUnverified {
+			unverified++
+		}
+		delete(fileHashes, key)
+	}
+	if m.UnverifiedFiles != unverified {
+		return m, fmt.Errorf("texture source verification count mismatch")
 	}
 	if err := verifyPlugins(ctx, root, m); err != nil {
 		return m, err

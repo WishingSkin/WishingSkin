@@ -17,6 +17,7 @@ import (
 	"io"
 	"net/http"
 	"os"
+	"path/filepath"
 	"regexp"
 	"slices"
 	"strconv"
@@ -480,22 +481,23 @@ func (a *Server) uploadTexture(w http.ResponseWriter, r *http.Request) {
 	}
 	sum := sha256.Sum256(data)
 	hash := hex.EncodeToString(sum[:])
-	releaseStorage, err := a.s.LeaseStorage(r.Context())
+	provider, err := a.objectStore(r.Context())
+	if err != nil {
+		failure(w, 503, "无法保存材质文件")
+		return
+	}
+	conn, releaseStorage, err := a.s.LeaseStorageConn(r.Context())
 	if err != nil {
 		failure(w, 503, "存储正在维护，请稍后重试")
 		return
 	}
 	defer releaseStorage()
-	if err := a.saveTextureFile(r.Context(), hash, data); err != nil {
-		failure(w, 503, "无法保存材质文件")
-		return
-	}
 	recordID, err := randomUUID()
 	if err != nil {
 		failure(w, 500, "无法创建材质记录")
 		return
 	}
-	tx, err := a.s.DB.BeginTx(r.Context(), nil)
+	tx, err := conn.BeginTx(r.Context(), nil)
 	if err != nil {
 		failure(w, 503, "暂时无法保存材质记录")
 		return
@@ -519,29 +521,37 @@ func (a *Server) uploadTexture(w http.ResponseWriter, r *http.Request) {
 	if policy.ReviewUploads {
 		reviewState = "pending"
 	}
-	baseInsert := "INSERT INTO textures(hash,name,kind,model,is_public,deleted) VALUES(?,?,?,?,?,?) ON CONFLICT(hash) DO NOTHING"
 	if err := a.lockWebAccount(r.Context(), tx, u.ID, token); err != nil {
 		sessionError(w, err)
+		return
+	}
+	var deleted bool
+	err = tx.QueryRowContext(r.Context(), a.s.Bind("SELECT deleted FROM textures WHERE hash=? FOR UPDATE"), hash).Scan(&deleted)
+	existing := err == nil
+	if err != nil && !errors.Is(err, sql.ErrNoRows) {
+		failure(w, 503, "暂时无法读取材质文件记录")
+		return
+	}
+	if deleted {
+		failure(w, 409, "这份材质文件已被停用")
+		return
+	}
+	size := int64(len(data))
+	if !a.checkTextureCapacity(w, r.Context(), tx, u.ID, size, existing) {
 		return
 	}
 	if err := a.chargePoints(r.Context(), tx, u.ID, "upload", recordID, expectedCost); err != nil {
 		pointError(w, err)
 		return
 	}
-	if a.s.Dialect == "mysql" {
-		baseInsert = "INSERT INTO textures(hash,name,kind,model,is_public,deleted) VALUES(?,?,?,?,?,?) ON DUPLICATE KEY UPDATE hash=VALUES(hash)"
+	if !existing {
+		if _, err := tx.ExecContext(r.Context(), a.s.Bind("INSERT INTO textures(hash,name,kind,model,is_public,deleted) VALUES(?,?,?,?,?,?)"), hash, name, kind, model, false, false); err != nil {
+			failure(w, 503, "暂时无法保存材质文件记录")
+			return
+		}
 	}
-	if _, err := tx.ExecContext(r.Context(), a.s.Bind(baseInsert), hash, name, kind, model, false, false); err != nil {
+	if err := a.recordTextureIntegrity(r.Context(), tx, hash, size); err != nil {
 		failure(w, 503, "暂时无法保存材质文件记录")
-		return
-	}
-	var deleted bool
-	if err := tx.QueryRowContext(r.Context(), a.s.Bind("SELECT deleted FROM textures WHERE hash=? FOR UPDATE"), hash).Scan(&deleted); err != nil {
-		failure(w, 503, "暂时无法读取材质文件记录")
-		return
-	}
-	if deleted {
-		failure(w, 409, "这份材质文件已被停用")
 		return
 	}
 	if _, err := tx.ExecContext(r.Context(), a.s.Bind("INSERT INTO texture_records(record_id,file_hash,owner_id,name,description,kind,model,is_public,deleted) VALUES(?,?,?,?,?,?,?,?,?)"), recordID, hash, u.ID, name, description, kind, model, isPublic, false); err != nil {
@@ -552,10 +562,19 @@ func (a *Server) uploadTexture(w http.ResponseWriter, r *http.Request) {
 		failure(w, 503, "暂时无法保存材质信息")
 		return
 	}
+	created, err := a.saveTextureFile(r.Context(), provider, hash, data)
+	if err != nil {
+		if created && !existing {
+			_ = os.Remove(filepath.Join(a.cfg.TextureDir, hash))
+		}
+		failure(w, 503, "无法保存材质文件")
+		return
+	}
 	if err := tx.Commit(); err != nil {
 		failure(w, 503, "暂时无法保存材质记录")
 		return
 	}
+	releaseStorage()
 	a.publishPluginEvent(r.Context(), "texture.upload", u.ID, recordID)
 	respond(w, 201, textureRecord{ID: recordID, FileHash: hash, Name: name, Description: description, Kind: kind, Model: model, Public: isPublic, Owned: true, Category: category, Tags: tags, ReviewState: reviewState})
 }
@@ -723,23 +742,23 @@ func validTextureDimensions(kind string, width, height int) bool {
 	return (width == 64 || width == 128) && (height == width || height*2 == width)
 }
 
-func saveTexture(directory, hash string, data []byte) error {
+func saveTexture(directory, hash string, data []byte) (bool, error) {
 	if err := os.MkdirAll(directory, 0700); err != nil {
-		return err
+		return false, err
 	}
 	root, err := os.OpenRoot(directory)
 	if err != nil {
-		return err
+		return false, err
 	}
 	defer root.Close()
 	id, err := randomUUID()
 	if err != nil {
-		return err
+		return false, err
 	}
 	stage := ".upload-" + id
 	f, err := root.OpenFile(stage, os.O_CREATE|os.O_EXCL|os.O_WRONLY, 0600)
 	if err != nil {
-		return err
+		return false, err
 	}
 	defer root.Remove(stage)
 	_, writeErr := f.Write(data)
@@ -748,26 +767,26 @@ func saveTexture(directory, hash string, data []byte) error {
 	}
 	closeErr := f.Close()
 	if writeErr != nil {
-		return writeErr
+		return false, writeErr
 	}
 	if closeErr != nil {
-		return closeErr
+		return false, closeErr
 	}
 	// Publish only a complete file, without replacing an existing hash path.
 	if err = root.Link(stage, hash); err == nil {
-		return nil
+		return true, nil
 	}
 	if !errors.Is(err, os.ErrExist) {
-		return err
+		return false, err
 	}
 	existing, err := root.Open(hash)
 	if err != nil {
-		return err
+		return false, err
 	}
 	defer existing.Close()
 	previous, err := io.ReadAll(io.LimitReader(existing, maxTextureBytes+1))
 	if err != nil || len(previous) > maxTextureBytes || !bytes.Equal(previous, data) {
-		return errors.New("existing texture file does not match its content hash")
+		return false, errors.New("existing texture file does not match its content hash")
 	}
-	return nil
+	return false, nil
 }

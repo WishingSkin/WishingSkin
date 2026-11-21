@@ -6,26 +6,31 @@ import (
 	"crypto/sha256"
 	"crypto/sha512"
 	"encoding/hex"
+	"hash"
 	"strings"
 )
 
-func MatchesContentHash(data []byte, expected string) bool {
-	var digest []byte
+// ContentHasher selects the digest used by recognized texture filenames.
+func ContentHasher(expected string) hash.Hash {
 	switch len(expected) {
 	case 32:
-		v := md5.Sum(data)
-		digest = v[:]
+		return md5.New()
 	case 40:
-		v := sha1.Sum(data)
-		digest = v[:]
+		return sha1.New()
 	case 64:
-		v := sha256.Sum256(data)
-		digest = v[:]
+		return sha256.New()
 	case 128:
-		v := sha512.Sum512(data)
-		digest = v[:]
+		return sha512.New()
 	default:
+		return nil
+	}
+}
+
+func MatchesContentHash(data []byte, expected string) bool {
+	h := ContentHasher(expected)
+	if h == nil {
 		return false
 	}
-	return hex.EncodeToString(digest) == strings.ToLower(expected)
+	h.Write(data)
+	return strings.EqualFold(hex.EncodeToString(h.Sum(nil)), expected)
 }

@@ -16,6 +16,7 @@ import (
 	"strings"
 	"time"
 
+	localstorage "wishingskin/internal/storage"
 	"wishingskin/internal/store"
 )
 
@@ -33,20 +34,23 @@ type TableInfo struct {
 }
 
 type FileInfo struct {
-	Hash   string `json:"hash"`
-	Bytes  int64  `json:"bytes"`
-	SHA256 string `json:"sha256"`
+	Hash             string `json:"hash"`
+	Bytes            int64  `json:"bytes"`
+	SHA256           string `json:"sha256"`
+	SourceUnverified bool   `json:"sourceUnverified,omitempty"`
+	contentMatch     bool
 }
 
 type Manifest struct {
-	FormatVersion int            `json:"formatVersion"`
-	SchemaVersion int            `json:"schemaVersion"`
-	CreatedAt     string         `json:"createdAt"`
-	Tables        []TableInfo    `json:"tables"`
-	Files         []FileInfo     `json:"files"`
-	PluginBundles []PluginBundle `json:"pluginBundles,omitempty"`
-	PluginTables  []PluginTable  `json:"pluginTables,omitempty"`
-	PluginDialect string         `json:"pluginDialect,omitempty"`
+	FormatVersion   int            `json:"formatVersion"`
+	SchemaVersion   int            `json:"schemaVersion"`
+	CreatedAt       string         `json:"createdAt"`
+	Tables          []TableInfo    `json:"tables"`
+	Files           []FileInfo     `json:"files"`
+	UnverifiedFiles int            `json:"unverifiedFiles,omitempty"`
+	PluginBundles   []PluginBundle `json:"pluginBundles,omitempty"`
+	PluginTables    []PluginTable  `json:"pluginTables,omitempty"`
+	PluginDialect   string         `json:"pluginDialect,omitempty"`
 }
 
 // Report contains counts only; table rows, configuration and keys never enter logs.
@@ -54,6 +58,7 @@ type Report struct {
 	SchemaVersion      int              `json:"schemaVersion"`
 	Rows               map[string]int64 `json:"rows"`
 	Files              int              `json:"files"`
+	UnverifiedFiles    int              `json:"unverifiedFiles"`
 	CredentialsRevoked bool             `json:"credentialsRevoked"`
 }
 
@@ -122,7 +127,11 @@ func ExportWithStorageLease(ctx context.Context, db *store.Store, textureDir, de
 		}
 		m.Tables = append(m.Tables, info)
 	}
-	// Read the already-exported texture inventory, so files and rows share a snapshot.
+	integrity, legacyCustom, err := textureSourceIntegrity(ctx, root, m)
+	if err != nil {
+		return report, err
+	}
+	// The exported inventory and source digests share the database snapshot.
 	seenHashes := map[string]bool{}
 	if err := walkTable(ctx, root, tables[1], m.Tables[1], func(row []*string) error {
 		hash := *row[0]
@@ -131,10 +140,18 @@ func ExportWithStorageLease(ctx context.Context, db *store.Store, textureDir, de
 		}
 		seenHashes[strings.ToLower(hash)] = true
 		info, err := copyTexture(ctx, source, hash, root, "textures/"+hash, nil)
-		if err == nil {
-			m.Files = append(m.Files, info)
+		if err != nil {
+			return err
 		}
-		return err
+		info.SourceUnverified, err = verifyTextureSource(info, integrity[hash], legacyCustom)
+		if err != nil {
+			return err
+		}
+		if info.SourceUnverified {
+			m.UnverifiedFiles++
+		}
+		m.Files = append(m.Files, info)
+		return nil
 	}); err != nil {
 		return report, err
 	}
@@ -365,6 +382,11 @@ func copyTexture(ctx context.Context, source *os.Root, sourceName string, target
 		w = out
 	}
 	h := sha256.New()
+	multi := io.MultiWriter(w, h)
+	legacyHash := localstorage.ContentHasher(info.Hash)
+	if legacyHash != nil && len(info.Hash) != 64 {
+		multi = io.MultiWriter(w, h, legacyHash)
+	}
 	buffer := make([]byte, 64<<10)
 	for {
 		if err := ctx.Err(); err != nil {
@@ -372,7 +394,7 @@ func copyTexture(ctx context.Context, source *os.Root, sourceName string, target
 		}
 		n, readErr := f.Read(buffer)
 		if n > 0 {
-			if _, err := io.MultiWriter(w, h).Write(buffer[:n]); err != nil {
+			if _, err := multi.Write(buffer[:n]); err != nil {
 				return info, err
 			}
 			info.Bytes += int64(n)
@@ -385,6 +407,11 @@ func copyTexture(ctx context.Context, source *os.Root, sourceName string, target
 		}
 	}
 	info.SHA256 = hex.EncodeToString(h.Sum(nil))
+	if len(info.Hash) == 64 {
+		info.contentMatch = strings.EqualFold(info.Hash, info.SHA256)
+	} else if legacyHash != nil {
+		info.contentMatch = strings.EqualFold(info.Hash, hex.EncodeToString(legacyHash.Sum(nil)))
+	}
 	if expected != nil && (info.Bytes != expected.Bytes || info.SHA256 != expected.SHA256) {
 		return info, fmt.Errorf("texture %s checksum mismatch", info.Hash)
 	}
@@ -398,7 +425,7 @@ func copyTexture(ctx context.Context, source *os.Root, sourceName string, target
 }
 
 func makeReport(m Manifest, revoked bool) Report {
-	r := Report{SchemaVersion: m.SchemaVersion, Rows: map[string]int64{}, Files: len(m.Files), CredentialsRevoked: revoked}
+	r := Report{SchemaVersion: m.SchemaVersion, Rows: map[string]int64{}, Files: len(m.Files), UnverifiedFiles: m.UnverifiedFiles, CredentialsRevoked: revoked}
 	for _, t := range m.Tables {
 		r.Rows[t.Name] = t.Rows
 	}

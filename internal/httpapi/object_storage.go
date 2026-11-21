@@ -120,20 +120,14 @@ func (a *Server) objectStore(ctx context.Context) (blob.BlobStore, error) {
 	}
 	return a.remoteStorage, nil
 }
-func (a *Server) saveTextureFile(ctx context.Context, hash string, data []byte) error {
-	if err := saveTexture(a.cfg.TextureDir, hash, data); err != nil {
-		return err
-	}
-	provider, err := a.objectStore(ctx)
-	if err != nil {
-		return err
-	}
-	if provider == nil {
-		return nil
+func (a *Server) saveTextureFile(ctx context.Context, provider blob.BlobStore, hash string, data []byte) (bool, error) {
+	created, err := saveTexture(a.cfg.TextureDir, hash, data)
+	if err != nil || provider == nil {
+		return created, err
 	}
 	ctx, cancel := context.WithTimeout(ctx, 20*time.Second)
 	defer cancel()
-	return provider.Put(ctx, hash, "image/png", bytes.NewReader(data))
+	return created, provider.Put(ctx, hash, "image/png", bytes.NewReader(data))
 }
 func (a *Server) textureFileBytes(ctx context.Context, hash string) ([]byte, error) {
 	f, err := a.openTextureFile(ctx, hash)

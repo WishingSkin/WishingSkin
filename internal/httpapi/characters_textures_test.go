@@ -13,6 +13,7 @@ import (
 	"net/http/httptest"
 	"os"
 	"path/filepath"
+	"slices"
 	"strings"
 	"sync"
 	"testing"
@@ -202,6 +203,70 @@ func (f *managementApp) upload(user int, data []byte, fields map[string]string) 
 	return f.raw(user, "POST", "/api/textures", m.FormDataContentType(), b.Bytes())
 }
 
+func TestRejectedTextureUploadDoesNotLeaveFileBothDatabases(t *testing.T) {
+	for _, dialect := range []string{"mysql", "postgres"} {
+		t.Run(dialect, func(t *testing.T) {
+			f := newManagementApp(t, dialect)
+			webStatus(t, f.upload(1, testPNG(t, 64, 64), map[string]string{"category": "unknown"}), 400)
+			webStatus(t, f.upload(1, testPNG(t, 128, 64), map[string]string{"expectedCost": "1"}), 409)
+			if files := textureFiles(t, f.app.cfg.TextureDir); len(files) != 0 {
+				t.Fatalf("rejected upload left local files: %v", files)
+			}
+		})
+	}
+}
+
+func TestTextureCapacityBothDatabases(t *testing.T) {
+	for _, dialect := range []string{"mysql", "postgres"} {
+		t.Run(dialect, func(t *testing.T) {
+			first, second := testPNG(t, 128, 64), testPNG(t, 64, 64)
+			t.Run("account_and_shared_file", func(t *testing.T) {
+				f := newManagementApp(t, dialect)
+				f.app.cfg.TextureAccountLimitBytes = int64(len(first))
+				f.app.cfg.TextureSiteLimitBytes = int64(len(first))
+				record := uploadedRecord(t, f.upload(1, first, nil))
+				// An upgrade starts with files whose sizes are not yet inventoried.
+				f.exec("DELETE FROM texture_file_integrity WHERE file_hash=?", record.FileHash)
+				webStatus(t, f.upload(1, first, nil), http.StatusConflict)
+				shared := uploadedRecord(t, f.upload(2, first, nil))
+				if shared.FileHash != record.FileHash || shared.ID == record.ID {
+					t.Fatal("a shared file did not retain separate ownership records")
+				}
+				webStatus(t, f.upload(3, second, nil), http.StatusInsufficientStorage)
+				if files := textureFiles(t, f.app.cfg.TextureDir); len(files) != 1 || files[0].Name() != record.FileHash {
+					t.Fatalf("quota rejection changed the file inventory: %v", files)
+				}
+			})
+			t.Run("concurrent_site_limit", func(t *testing.T) {
+				f := newManagementApp(t, dialect)
+				f.app.cfg.TextureSiteLimitBytes = int64(max(len(first), len(second)))
+				ready := make(chan struct{})
+				statuses := make(chan int, 2)
+				for i, data := range [][]byte{first, second} {
+					go func() { <-ready; statuses <- f.upload(i+1, data, nil).Code }()
+				}
+				close(ready)
+				left, right := <-statuses, <-statuses
+				if min(left, right) != http.StatusCreated || max(left, right) != http.StatusInsufficientStorage {
+					t.Fatalf("concurrent requests did not enforce the site limit: %d, %d", left, right)
+				}
+				if files := textureFiles(t, f.app.cfg.TextureDir); len(files) != 1 {
+					t.Fatalf("concurrent rejection left unreferenced files: %v", files)
+				}
+			})
+		})
+	}
+}
+
+func textureFiles(t *testing.T, directory string) []os.DirEntry {
+	t.Helper()
+	files, err := os.ReadDir(directory)
+	if err != nil {
+		t.Fatal(err)
+	}
+	return slices.DeleteFunc(files, func(entry os.DirEntry) bool { return entry.IsDir() })
+}
+
 func uploadedRecord(t *testing.T, w *httptest.ResponseRecorder) textureRecord {
 	t.Helper()
 	webStatus(t, w, 201)
@@ -310,8 +375,8 @@ func TestTextureDatabaseFailureAndRetry(t *testing.T) {
 			hash := hex.EncodeToString(sum[:])
 			webStatus(t, f.upload(1, data, nil), 503)
 			webStatus(t, f.call(0, "GET", "/textures/"+hash, nil), 404)
-			if actual, err := os.ReadFile(filepath.Join(f.app.cfg.TextureDir, hash)); err != nil || !bytes.Equal(actual, data) {
-				t.Fatal("failed transaction left incomplete file", err)
+			if _, err := os.Stat(filepath.Join(f.app.cfg.TextureDir, hash)); !os.IsNotExist(err) {
+				t.Fatal("failed record insert left an unreferenced file", err)
 			}
 			if dialect == "mysql" {
 				f.exec("DROP TRIGGER ws_upload_fail")
@@ -320,7 +385,11 @@ func TestTextureDatabaseFailureAndRetry(t *testing.T) {
 				f.exec("DROP FUNCTION ws_upload_fail_fn()")
 			}
 			uploadedRecord(t, f.upload(1, data, nil))
-			webStatus(t, f.call(0, "GET", "/textures/"+hash, nil), 200)
+			retried := f.call(0, "GET", "/textures/"+hash, nil)
+			webStatus(t, retried, 200)
+			if !bytes.Equal(retried.Body.Bytes(), data) {
+				t.Fatal("retry did not publish the original file bytes")
+			}
 			// Concurrent requests share bytes but must each commit a separate owned record.
 			var wg sync.WaitGroup
 			responses := make(chan *httptest.ResponseRecorder, 2)
@@ -350,7 +419,11 @@ func TestTextureFilePublication(t *testing.T) {
 	errs := make(chan error, 8)
 	for i := 0; i < 8; i++ {
 		wg.Add(1)
-		go func() { defer wg.Done(); errs <- saveTexture(dir, hash, data) }()
+		go func() {
+			defer wg.Done()
+			_, err := saveTexture(dir, hash, data)
+			errs <- err
+		}()
 	}
 	wg.Wait()
 	close(errs)
@@ -363,7 +436,7 @@ func TestTextureFilePublication(t *testing.T) {
 	if err != nil || len(files) != 1 || files[0].Name() != hash {
 		t.Fatal("staging files left behind", files, err)
 	}
-	if err := saveTexture(dir, hash, []byte("different bytes")); err == nil {
+	if _, err := saveTexture(dir, hash, []byte("different bytes")); err == nil {
 		t.Fatal("existing hash file was overwritten")
 	}
 	actual, err := os.ReadFile(filepath.Join(dir, hash))
@@ -373,7 +446,7 @@ func TestTextureFilePublication(t *testing.T) {
 	if err := os.Mkdir(filepath.Join(dir, "blocked"), 0700); err != nil {
 		t.Fatal(err)
 	}
-	if err := saveTexture(dir, "blocked", data); err == nil {
+	if _, err := saveTexture(dir, "blocked", data); err == nil {
 		t.Fatal("directory accepted as existing image")
 	}
 }

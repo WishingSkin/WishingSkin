@@ -3,6 +3,8 @@ package httpapi
 import (
 	"bytes"
 	"context"
+	"crypto/sha1" // Content identifier in a legacy fixture.
+	"encoding/hex"
 	"encoding/json"
 	"io"
 	"net/url"
@@ -81,6 +83,99 @@ func TestStorageLeaseExcludesSeparateConnectionsBothDatabases(t *testing.T) {
 	}
 }
 
+func TestBackupRejectsDamagedSourceBeforePruningBothDatabases(t *testing.T) {
+	for _, dialect := range []string{"mysql", "postgres"} {
+		t.Run(dialect, func(t *testing.T) {
+			f := newManagementApp(t, dialect)
+			record := uploadedRecord(t, f.upload(1, testPNG(t, 64, 64), nil))
+			destination := t.TempDir()
+			body := map[string]any{"backup": backupSchedule{Directory: destination, Time: "03:00", Timezone: "UTC", Keep: 1}, "cdn": cdnSettings{MaxAge: 60}}
+			webStatus(t, f.call(3, "PATCH", "/api/admin/operations", body), 204)
+			webStatus(t, f.call(3, "POST", "/api/admin/operations/backup", map[string]any{}), 202)
+			good := operationResult(t, f)
+			if good.State != "completed" {
+				t.Fatalf("healthy backup failed: %+v", good)
+			}
+			path := filepath.Join(f.app.cfg.TextureDir, record.FileHash)
+			if err := os.WriteFile(path, testPNG(t, 128, 64), 0600); err != nil {
+				t.Fatal(err)
+			}
+			webStatus(t, f.call(3, "POST", "/api/admin/operations/backup", map[string]any{}), 202)
+			failed := operationResult(t, f)
+			if failed.State != "failed" {
+				t.Fatalf("damaged source backup was accepted: %+v", failed)
+			}
+			if _, err := os.Stat(filepath.Join(failed.Destination, "manifest.json")); !os.IsNotExist(err) {
+				t.Fatalf("damaged source was published: %v", err)
+			}
+			if _, err := backup.Verify(context.Background(), good.Destination); err != nil {
+				t.Fatalf("previous healthy backup was lost: %v", err)
+			}
+		})
+	}
+}
+
+func TestBackupRetainsUnverifiedLegacySourcesBothDatabases(t *testing.T) {
+	for _, dialect := range []string{"mysql", "postgres"} {
+		t.Run(dialect, func(t *testing.T) {
+			f := newManagementApp(t, dialect)
+			ctx := context.Background()
+			f.exec("INSERT INTO migration_state(id,source_fingerprint,status,report) VALUES(?,?,?,?)", 1, strings.Repeat("1", 64), "partial", `{"unsupported":[{"scope":"texture_hash_filter"}]}`)
+			data := testPNG(t, 64, 64)
+			sum := sha1.Sum(data)
+			known := hex.EncodeToString(sum[:])
+			unverified := strings.Repeat("2", 64)
+			addLegacy := func(hash string) {
+				t.Helper()
+				if _, err := saveTexture(f.app.cfg.TextureDir, hash, data); err != nil {
+					t.Fatal(err)
+				}
+				f.exec("INSERT INTO textures(hash,name,kind,model,is_public,deleted) VALUES(?,'legacy','skin','default',FALSE,FALSE)", hash)
+			}
+			addLegacy(known)
+			body := map[string]any{"backup": backupSchedule{Directory: t.TempDir(), Time: "03:00", Timezone: "UTC", Keep: 1}, "cdn": cdnSettings{MaxAge: 60}}
+			webStatus(t, f.call(3, "PATCH", "/api/admin/operations", body), 204)
+			webStatus(t, f.call(3, "POST", "/api/admin/operations/backup", map[string]any{}), 202)
+			first := operationResult(t, f)
+			if first.State != "completed" || first.UnverifiedFiles != 0 {
+				t.Fatalf("verifiable legacy SHA-1 was not recognized: %+v", first)
+			}
+			addLegacy(unverified)
+			webStatus(t, f.call(3, "POST", "/api/admin/operations/backup", map[string]any{}), 202)
+			second := operationResult(t, f)
+			if second.State != "completed_with_errors" || second.UnverifiedFiles != 1 || second.Completed != 1 {
+				t.Fatalf("source trust distinction missing: %+v", second)
+			}
+			var result struct {
+				Valid           bool `json:"valid"`
+				UnverifiedFiles int  `json:"unverifiedFiles"`
+			}
+			path := "/api/admin/backups/" + filepath.Base(second.Destination)
+			response := f.call(3, "POST", path+"/verify", nil)
+			webStatus(t, response, 200)
+			if err := json.Unmarshal(response.Body.Bytes(), &result); err != nil || !result.Valid || result.UnverifiedFiles != 1 {
+				t.Fatalf("source verification status not reported: %+v, %v", result, err)
+			}
+			webStatus(t, f.call(3, "POST", path+"/restore-plan", nil), 200)
+			if _, err := backup.Verify(ctx, first.Destination); err != nil {
+				t.Fatalf("unverified backup displaced a healthy copy: %v", err)
+			}
+			f.exec("DELETE FROM textures WHERE hash=?", unverified)
+			webStatus(t, f.call(3, "POST", "/api/admin/operations/backup", map[string]any{}), 202)
+			third := operationResult(t, f)
+			if third.State != "completed" {
+				t.Fatalf("new verified backup failed: %+v", third)
+			}
+			if _, err := os.Stat(first.Destination); !os.IsNotExist(err) {
+				t.Fatalf("retention did not prune the old healthy copy: %v", err)
+			}
+			if _, err := backup.Verify(ctx, second.Destination); err != nil {
+				t.Fatalf("retention removed the unverified copy: %v", err)
+			}
+		})
+	}
+}
+
 func TestStorageOperationsBothDatabases(t *testing.T) {
 	for _, dialect := range []string{"mysql", "postgres"} {
 		t.Run(dialect, func(t *testing.T) {
@@ -88,7 +183,7 @@ func TestStorageOperationsBothDatabases(t *testing.T) {
 			record := uploadedRecord(t, f.upload(1, testPNG(t, 64, 64), nil))
 			old := time.Now().Add(-2 * time.Hour)
 			orphan := strings.Repeat("a", 64)
-			if err := saveTexture(f.app.cfg.TextureDir, orphan, []byte("orphan")); err != nil {
+			if _, err := saveTexture(f.app.cfg.TextureDir, orphan, []byte("orphan")); err != nil {
 				t.Fatal(err)
 			}
 			path := filepath.Join(f.app.cfg.TextureDir, orphan)
@@ -113,7 +208,7 @@ func TestStorageOperationsBothDatabases(t *testing.T) {
 				t.Fatal("referenced file removed")
 			}
 			// A record added after preview protects the file at execution time.
-			if err := saveTexture(f.app.cfg.TextureDir, orphan, []byte("orphan")); err != nil {
+			if _, err := saveTexture(f.app.cfg.TextureDir, orphan, []byte("orphan")); err != nil {
 				t.Fatal(err)
 			}
 			os.Chtimes(path, old, old)

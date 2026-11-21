@@ -131,6 +131,8 @@ func run() error {
 		return err
 	}
 	apiConfig := httpapi.Config{PluginDir: cfg.PluginDir, CommunityPlugins: communityPlugins(), PublicURL: cfg.PublicURL, TextureDir: cfg.TextureDir, Assets: assets, TurnstileSiteKey: cfg.TurnstileSiteKey, TrustedProxies: cfg.TrustedProxies}
+	apiConfig.TextureAccountLimitBytes = cfg.TextureAccountLimitBytes
+	apiConfig.TextureSiteLimitBytes = cfg.TextureSiteLimitBytes
 	keyPath := os.Getenv("WS_SETTINGS_KEY_FILE")
 	if keyPath == "" {
 		keyPath = filepath.Join(cfg.TextureDir, ".settings.key")

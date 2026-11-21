@@ -15,7 +15,14 @@ async function request(path: string, method = 'GET') {
 async function load() { busy.value = true; try { entries.value = (await request('')).backups } catch (e) { toast((e as Error).message, 'error') } finally { busy.value = false } }
 async function action(entry: Entry, kind: 'verify' | 'restore-plan') {
  busy.value = true
- try { const data = await request('/' + encodeURIComponent(entry.id) + '/' + kind, 'POST'); results.value[entry.id] = t('校验通过'); if (kind === 'restore-plan') restore.value = data; else toast('备份校验通过。') }
+ try {
+  const data = await request('/' + encodeURIComponent(entry.id) + '/' + kind, 'POST')
+  const sourcesVerified = !data.unverifiedFiles
+  results.value[entry.id] = t(sourcesVerified ? '校验通过' : '待校验')
+  if (kind === 'restore-plan') restore.value = data
+  else if (sourcesVerified) toast('备份校验通过。')
+  else toast('待校验', 'info')
+ }
  catch (e) { results.value[entry.id] = t('校验未通过'); toast((e as Error).message, 'error') }
  finally { busy.value = false }
 }

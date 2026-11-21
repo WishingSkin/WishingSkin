@@ -12,6 +12,7 @@ type table struct {
 var tables = []table{
 	{"users", "id,email,email_key,nickname,password_hash,password_method,password_salt,score,permission,banned", "issssssiib", "id"},
 	{"textures", "hash,name,kind,model,is_public,deleted", "ssssbb", "hash"},
+	{"texture_file_integrity", "file_hash,byte_size,sha256", "sis", "file_hash"},
 	{"texture_records", "record_id,file_hash,owner_id,name,description,kind,model,is_public,deleted", "ssIssssbb", "record_id"},
 	{"texture_metadata", "record_id,category,tags,review_state,review_reason", "sssss", "record_id"},
 	{"characters", "id,user_id,uuid,name,name_key,skin_hash,cape_hash,model", "iissssss", "id"},

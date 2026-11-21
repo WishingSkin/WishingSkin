@@ -4,16 +4,18 @@ import (
 	"errors"
 	"net/netip"
 	"os"
+	"strconv"
 	"strings"
 	"wishingskin/internal/mailer"
 )
 
 type Config struct {
-	Listen, Driver, DSN, PublicURL, TextureDir string
-	PluginDir                                  string
-	SMTP                                       *mailer.SMTP
-	TurnstileSiteKey, TurnstileSecret          string
-	TrustedProxies                             []netip.Prefix
+	Listen, Driver, DSN, PublicURL, TextureDir      string
+	PluginDir                                       string
+	SMTP                                            *mailer.SMTP
+	TurnstileSiteKey, TurnstileSecret               string
+	TrustedProxies                                  []netip.Prefix
+	TextureAccountLimitBytes, TextureSiteLimitBytes int64
 }
 
 func Load() (Config, error) {
@@ -24,6 +26,15 @@ func Load() (Config, error) {
 	}
 	if c.Driver != "mysql" && c.Driver != "postgres" {
 		return c, errors.New("WS_DATABASE_DRIVER must be mysql or postgres")
+	}
+	var err error
+	c.TextureAccountLimitBytes, err = byteLimit("WS_TEXTURE_ACCOUNT_LIMIT_BYTES", 256<<20)
+	if err != nil {
+		return c, err
+	}
+	c.TextureSiteLimitBytes, err = byteLimit("WS_TEXTURE_SITE_LIMIT_BYTES", 10<<30)
+	if err != nil {
+		return c, err
 	}
 	if raw := strings.TrimSpace(os.Getenv("WS_TRUSTED_PROXIES")); raw != "" {
 		for _, entry := range strings.Split(raw, ",") {
@@ -48,6 +59,19 @@ func Load() (Config, error) {
 	}
 	return c, nil
 }
+
+func byteLimit(name string, fallback int64) (int64, error) {
+	raw := strings.TrimSpace(os.Getenv(name))
+	if raw == "" {
+		return fallback, nil
+	}
+	limit, err := strconv.ParseInt(raw, 10, 64)
+	if err != nil || limit < 0 {
+		return 0, errors.New(name + " must be a nonnegative integer number of bytes")
+	}
+	return limit, nil
+}
+
 func value(name, fallback string) string {
 	if v := os.Getenv(name); v != "" {
 		return v
