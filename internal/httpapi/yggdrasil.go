@@ -125,7 +125,11 @@ func (a *Server) metadata(w http.ResponseWriter, r *http.Request) {
 		yfail(w, 503, "ServiceUnavailableException", "Site settings unavailable")
 		return
 	}
-	respond(w, 200, map[string]any{"meta": map[string]any{"serverName": brand.Name, "implementationName": "WishingSkin", "implementationVersion": "0.1.0-dev", "feature.non_email_login": false, "feature.username_check": true, "feature.enable_profile_key": false}, "skinDomains": []string{origin.Hostname()}, "signaturePublickey": string(pem.EncodeToMemory(&pem.Block{Type: "PUBLIC KEY", Bytes: pub}))})
+	version := strings.TrimSpace(a.cfg.Version)
+	if version == "" {
+		version = "0.1.0-dev"
+	}
+	respond(w, 200, map[string]any{"meta": map[string]any{"serverName": brand.Name, "implementationName": "WishingSkin", "implementationVersion": version, "feature.non_email_login": false, "feature.username_check": true, "feature.enable_profile_key": false}, "skinDomains": []string{origin.Hostname()}, "signaturePublickey": string(pem.EncodeToMemory(&pem.Block{Type: "PUBLIC KEY", Bytes: pub}))})
 }
 func (a *Server) gameAuthenticate(w http.ResponseWriter, r *http.Request) {
 	if !a.gameLoginLimit.allow(r) {

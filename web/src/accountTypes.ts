@@ -30,6 +30,7 @@ export interface Appearance {
   fontPreset?: FontPreset
   fontScope?: FontScope
   customFontUrl?: string
+  customFontFamily?: string
   advanced?: AdvancedAppearance
 }
 

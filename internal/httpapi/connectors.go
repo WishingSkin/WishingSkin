@@ -265,7 +265,7 @@ func verifyConnector(ctx context.Context, v connectorConfig, username, password 
 	if v.APIKey != "" {
 		req.Header.Set("Authorization", "Bearer "+v.APIKey)
 	}
-	client := http.Client{Timeout: 8 * time.Second, CheckRedirect: func(*http.Request, []*http.Request) error { return http.ErrUseLastResponse }}
+	client := newSafeExtensionClient(8 * time.Second)
 	resp, err := client.Do(req)
 	if err != nil {
 		return "", "", err

@@ -24,6 +24,9 @@ import (
 	"wishingskin/web"
 )
 
+// Overridable at release build time via -ldflags "-X main.buildVersion=1.0.0".
+var buildVersion = "0.1.0-dev"
+
 func main() {
 	if err := run(); err != nil {
 		slog.Error("command failed", "reason", err.Error())
@@ -130,7 +133,7 @@ func run() error {
 	if err != nil {
 		return err
 	}
-	apiConfig := httpapi.Config{PluginDir: cfg.PluginDir, CommunityPlugins: communityPlugins(), PublicURL: cfg.PublicURL, TextureDir: cfg.TextureDir, Assets: assets, TurnstileSiteKey: cfg.TurnstileSiteKey, TrustedProxies: cfg.TrustedProxies}
+	apiConfig := httpapi.Config{PluginDir: cfg.PluginDir, CommunityPlugins: communityPlugins(), PublicURL: cfg.PublicURL, TextureDir: cfg.TextureDir, Version: buildVersion, Assets: assets, TurnstileSiteKey: cfg.TurnstileSiteKey, TrustedProxies: cfg.TrustedProxies}
 	apiConfig.TextureAccountLimitBytes = cfg.TextureAccountLimitBytes
 	apiConfig.TextureSiteLimitBytes = cfg.TextureSiteLimitBytes
 	keyPath := os.Getenv("WS_SETTINGS_KEY_FILE")

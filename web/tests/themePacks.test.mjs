@@ -1,6 +1,7 @@
 import test from 'node:test'
 import assert from 'node:assert/strict'
 import { allThemePacks, isDarkOnlyTheme, isMCBiomeTheme, isMCFamilyTheme, resolveUserThemePack, themePackById } from '../src/themePacks.ts'
+import { extractStylesheetFontFamilies, resolveCustomFontStack } from '../src/themeFonts.ts'
 import { proceduralTileDataUrl, resolveTextureUrl } from '../src/themeTextures.ts'
 
 test('theme packs expose 14 paired themes with scenes and pixel particle profiles', () => {
@@ -56,4 +57,31 @@ test('resolveTextureUrl prefers imported jar assets and falls back to procedural
     keys: ['plains_grass_side', 'particle_cherry_0'],
   })
   assert.ok(missingKey.startsWith('data:image/svg+xml;utf8,'))
+})
+
+test('resolveCustomFontStack extracts CSS stylesheet font families and honors explicit overrides', () => {
+  assert.deepEqual(
+    extractStylesheetFontFamilies('https://fonts.googleapis.com/css2?family=Press+Start+2P:wght@400&family=Noto+Sans+SC:wght@400;700&display=swap'),
+    ['Press Start 2P', 'Noto Sans SC'],
+  )
+  assert.deepEqual(
+    extractStylesheetFontFamilies('https://fonts.googleapis.com/css?family=Roboto:400,700|Open+Sans'),
+    ['Roboto', 'Open Sans'],
+  )
+  const google = resolveCustomFontStack({
+    source: 'https://fonts.googleapis.com/css2?family=Press+Start+2P&display=swap',
+  })
+  assert.equal(google.isStylesheet, true)
+  assert.ok(google.stack.startsWith('"Press Start 2P","WishingCustomFont",'))
+
+  const explicit = resolveCustomFontStack({
+    source: 'https://cdn.example.com/custom.css',
+    customFontFamily: 'My Pixel Font, "Fallback;Bad"',
+  })
+  assert.equal(explicit.isStylesheet, true)
+  assert.ok(explicit.stack.startsWith('"My Pixel Font","FallbackBad","WishingCustomFont",'))
+
+  const direct = resolveCustomFontStack({ source: '/fonts/custom.woff2' })
+  assert.equal(direct.isStylesheet, false)
+  assert.ok(direct.stack.startsWith('"WishingCustomFont",'))
 })

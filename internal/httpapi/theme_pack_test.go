@@ -47,10 +47,11 @@ func TestThemePacksBothDatabases(t *testing.T) {
 				SurfaceOpacity: 74,
 				SurfaceBlur:    20,
 				AllowUserTheme: true,
-				FontPreset:     "fusion_pixel",
-				FontScope:      "all",
-				CustomFontURL:  "https://fonts.example.com/pixel.css",
-				Advanced:       advancedAppearance{Light: map[string]string{"heading": "#123456"}, Dark: map[string]string{"heading": "#abcdef"}},
+				FontPreset:       "fusion_pixel",
+				FontScope:        "all",
+				CustomFontURL:    "https://fonts.example.com/pixel.css",
+				CustomFontFamily: "Press Start 2P",
+				Advanced:         advancedAppearance{Light: map[string]string{"heading": "#123456"}, Dark: map[string]string{"heading": "#abcdef"}},
 			}
 			webStatus(t, f.call(1, "PATCH", "/api/admin/appearance", body), 403)
 			packs := []string{
@@ -64,7 +65,7 @@ func TestThemePacksBothDatabases(t *testing.T) {
 				body.ThemePack = pack
 				webStatus(t, f.call(3, "PATCH", "/api/admin/appearance", body), 200)
 				got := read()
-				if got.ThemePack != pack || got.Accent != "violet" || got.DefaultTheme != "dark" || got.SurfaceEffect != "glass" || got.SurfaceOpacity != 74 || got.SurfaceBlur != 20 || !got.AllowUserTheme || got.FontPreset != "fusion_pixel" || got.FontScope != "all" || got.CustomFontURL != "https://fonts.example.com/pixel.css" || got.Advanced.Light["heading"] != "#123456" || got.Advanced.Dark["heading"] != "#abcdef" {
+				if got.ThemePack != pack || got.Accent != "violet" || got.DefaultTheme != "dark" || got.SurfaceEffect != "glass" || got.SurfaceOpacity != 74 || got.SurfaceBlur != 20 || !got.AllowUserTheme || got.FontPreset != "fusion_pixel" || got.FontScope != "all" || got.CustomFontURL != "https://fonts.example.com/pixel.css" || got.CustomFontFamily != "Press Start 2P" || got.Advanced.Light["heading"] != "#123456" || got.Advanced.Dark["heading"] != "#abcdef" {
 					t.Fatalf("theme settings did not roundtrip for %s: %+v", pack, got)
 				}
 			}
@@ -284,6 +285,14 @@ func TestThemeFontUploadValidationUnit(t *testing.T) {
 	for _, bad := range []string{"http://insecure.example/font.css", "//evil.example/font.css", "/../secret", "javascript:alert(1)", "https://example.com/a'b"} {
 		if validCustomFontURL(bad) {
 			t.Fatalf("unsafe custom font URL accepted: %q", bad)
+		}
+	}
+	if !validCustomFontFamily("") || !validCustomFontFamily("Press Start 2P, Noto Sans SC") {
+		t.Fatal("valid custom font family was rejected")
+	}
+	for _, bad := range []string{"Bad;color:red", "Bad\"Quote", "Bad{Brace}", "Bad\nLine"} {
+		if validCustomFontFamily(bad) {
+			t.Fatalf("unsafe custom font family accepted: %q", bad)
 		}
 	}
 	// Verify WOFF2 magic check in multipart upload helper shape.

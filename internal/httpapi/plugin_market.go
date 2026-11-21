@@ -31,7 +31,7 @@ func fetchExtension(ctx context.Context, raw string, limit int64) ([]byte, error
 	if !validExtensionURL(raw) {
 		return nil, errors.New("invalid extension URL")
 	}
-	client := http.Client{Timeout: 30 * time.Second, CheckRedirect: func(*http.Request, []*http.Request) error { return http.ErrUseLastResponse }}
+	client := newSafeExtensionClient(30 * time.Second)
 	req, err := http.NewRequestWithContext(ctx, "GET", raw, nil)
 	if err != nil {
 		return nil, err
@@ -159,6 +159,12 @@ func (a *Server) inspectMarketEntry(w http.ResponseWriter, r *http.Request) {
 	if _, ok := a.adminRequest(w, r); !ok {
 		return
 	}
+	release, ok := a.acquirePluginUploadSlot(w)
+	if !ok {
+		return
+	}
+	defer release()
+	_ = http.NewResponseController(w).SetWriteDeadline(time.Now().Add(pluginPackageTimeout))
 	data, err := a.marketPackage(r)
 	if err != nil {
 		failure(w, 400, "无法下载或校验插件包")
@@ -172,6 +178,12 @@ func (a *Server) installMarketEntry(w http.ResponseWriter, r *http.Request) {
 	if !ok {
 		return
 	}
+	release, ok := a.acquirePluginUploadSlot(w)
+	if !ok {
+		return
+	}
+	defer release()
+	_ = http.NewResponseController(w).SetWriteDeadline(time.Now().Add(pluginPackageTimeout))
 	data, err := a.marketPackage(r)
 	if err != nil {
 		failure(w, 400, "无法下载或校验插件包")

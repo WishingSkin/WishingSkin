@@ -46,6 +46,55 @@ function isStylesheetFontUrl(url: string): boolean {
   return lower.endsWith('.css') || lower.includes('fonts.googleapis.com') || lower.includes('fonts.bunny.net') || lower.includes('/css?') || lower.includes('/css2?')
 }
 
+function sanitizeFontFamilyName(raw: string): string {
+  return raw
+    .replace(/["'\\;{}<>\r\n\t]/g, '')
+    .replace(/\s+/g, ' ')
+    .trim()
+}
+
+export function extractStylesheetFontFamilies(source: string): string[] {
+  const families: string[] = []
+  const seen = new Set<string>()
+  const push = (value: string) => {
+    const clean = sanitizeFontFamilyName(value)
+    if (!clean || seen.has(clean)) return
+    seen.add(clean)
+    families.push(clean)
+  }
+  try {
+    const parsed = new URL(source, 'https://wishingskin.local')
+    for (const raw of parsed.searchParams.getAll('family')) {
+      for (const segment of raw.split('|')) {
+        const name = segment.split(':')[0] || ''
+        push(name)
+      }
+    }
+  } catch {
+    // Ignore malformed URLs and rely on explicit customFontFamily or fallback.
+  }
+  return families
+}
+
+export function resolveCustomFontStack(options: {
+  source: string
+  customFontFamily?: string
+}): { isStylesheet: boolean; stack: string } {
+  const source = options.source.trim()
+  const isStylesheet = isStylesheetFontUrl(source)
+  if (!isStylesheet) {
+    return { isStylesheet: false, stack: `"WishingCustomFont",${SYSTEM_UI_STACK}` }
+  }
+  const explicit = (options.customFontFamily || '')
+    .split(',')
+    .map(sanitizeFontFamilyName)
+    .filter(Boolean)
+  const families = explicit.length > 0 ? explicit : extractStylesheetFontFamilies(source)
+  const quoted = families.map(name => JSON.stringify(name))
+  quoted.push('"WishingCustomFont"', SYSTEM_UI_STACK)
+  return { isStylesheet: true, stack: quoted.join(',') }
+}
+
 function fontFormatFromUrl(url: string): string {
   const clean = url.split('?')[0].toLowerCase()
   if (clean.endsWith('.woff2') || clean.startsWith('/api/theme-font/')) return 'woff2'
@@ -59,6 +108,7 @@ export function applyThemeFont(options: {
   preset?: FontPreset | string
   scope?: FontScope | string
   customFontUrl?: string
+  customFontFamily?: string
   uploadedFontUrl?: string
 }) {
   if (typeof document === 'undefined') return
@@ -86,20 +136,21 @@ export function applyThemeFont(options: {
   } else if (preset === 'custom') {
     const source = (options.customFontUrl || '').trim() || (options.uploadedFontUrl || '').trim()
     if (source) {
-      if (isStylesheetFontUrl(source)) {
+      const resolved = resolveCustomFontStack({ source, customFontFamily: options.customFontFamily })
+      if (resolved.isStylesheet) {
         const link = document.createElement('link')
         link.rel = 'stylesheet'
         link.href = source
         link.dataset.wsCustomFont = '1'
         document.head.appendChild(link)
-        stack = `"WishingCustomFont",${SYSTEM_UI_STACK}`
+        stack = resolved.stack
       } else {
         const style = document.createElement('style')
         style.dataset.wsCustomFont = '1'
         const safeUrl = source.replace(/["'\\]/g, '')
         style.textContent = `@font-face{font-family:"WishingCustomFont";src:url("${safeUrl}") format("${fontFormatFromUrl(safeUrl)}");font-weight:100 900;font-style:normal;font-display:swap}`
         document.head.appendChild(style)
-        stack = `"WishingCustomFont",${SYSTEM_UI_STACK}`
+        stack = resolved.stack
       }
     }
   }

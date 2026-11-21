@@ -18,6 +18,8 @@ import (
 
 var errPluginUpgradePending = errors.New("plugin upgrade pending")
 
+const pluginPackageTimeout = 2 * time.Minute
+
 type dynamicCheckpoint struct {
 	Digest          string `json:"digest"`
 	Pending         bool   `json:"pending,omitempty"`
@@ -101,6 +103,10 @@ func (a *Server) dynamicPackages(w http.ResponseWriter, r *http.Request) {
 	respond(w, 200, map[string]any{"packages": a.dynamic.Items()})
 }
 func (a *Server) packageBytes(w http.ResponseWriter, r *http.Request) ([]byte, bool) {
+	controller := http.NewResponseController(w)
+	deadline := time.Now().Add(pluginPackageTimeout)
+	_ = controller.SetReadDeadline(deadline)
+	_ = controller.SetWriteDeadline(deadline.Add(30 * time.Second))
 	r.Body = http.MaxBytesReader(w, r.Body, runtimeplugin.MaxPackage)
 	data, err := io.ReadAll(r.Body)
 	if err != nil {
@@ -109,10 +115,24 @@ func (a *Server) packageBytes(w http.ResponseWriter, r *http.Request) ([]byte, b
 	}
 	return data, true
 }
+func (a *Server) acquirePluginUploadSlot(w http.ResponseWriter) (func(), bool) {
+	select {
+	case a.uploads <- struct{}{}:
+		return func() { <-a.uploads }, true
+	default:
+		failure(w, 429, "资源处理繁忙，请稍后重试")
+		return nil, false
+	}
+}
 func (a *Server) inspectDynamicPackage(w http.ResponseWriter, r *http.Request) {
 	if _, ok := a.adminRequest(w, r); !ok {
 		return
 	}
+	release, ok := a.acquirePluginUploadSlot(w)
+	if !ok {
+		return
+	}
+	defer release()
 	data, ok := a.packageBytes(w, r)
 	if !ok {
 		return
@@ -129,6 +149,11 @@ func (a *Server) installDynamicPackage(w http.ResponseWriter, r *http.Request) {
 	if !ok {
 		return
 	}
+	release, ok := a.acquirePluginUploadSlot(w)
+	if !ok {
+		return
+	}
+	defer release()
 	data, ok := a.packageBytes(w, r)
 	if !ok {
 		return

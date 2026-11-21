@@ -447,7 +447,7 @@ func (a *Server) sendWebhook(ctx context.Context, sub, id, payload string) (int,
 	req.Header.Set("X-WishingSkin-Delivery", id)
 	req.Header.Set("X-WishingSkin-Timestamp", stamp)
 	req.Header.Set("X-WishingSkin-Signature", "sha256="+hex.EncodeToString(mac.Sum(nil)))
-	client := http.Client{Timeout: 5 * time.Second, CheckRedirect: func(*http.Request, []*http.Request) error { return http.ErrUseLastResponse }}
+	client := newSafeExtensionClient(5 * time.Second)
 	resp, err := client.Do(req)
 	if err != nil {
 		return 0, err

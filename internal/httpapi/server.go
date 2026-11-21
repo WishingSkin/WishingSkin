@@ -31,7 +31,7 @@ import (
 )
 
 type Config struct {
-	PublicURL, TextureDir                           string
+	PublicURL, TextureDir, Version                  string
 	TextureAccountLimitBytes, TextureSiteLimitBytes int64
 	PluginDir                                       string
 	Assets                                          fs.FS
@@ -260,6 +260,7 @@ func (a *Server) serveAssetOrSPA(w http.ResponseWriter, r *http.Request) {
 func (a *Server) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	r = a.proxyRequest(r)
 	w.Header().Set("X-Content-Type-Options", "nosniff")
+	w.Header().Set("X-Frame-Options", "DENY")
 	w.Header().Set("Referrer-Policy", "same-origin")
 	w.Header().Set("X-Authlib-Injector-API-Location", a.cfg.PublicURL+"/api/yggdrasil/")
 	if strings.HasPrefix(r.URL.Path, "/api/") {

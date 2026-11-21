@@ -37,6 +37,7 @@ type appearance struct {
 	FontPreset       string             `json:"fontPreset"`
 	FontScope        string             `json:"fontScope"`
 	CustomFontURL    string             `json:"customFontUrl,omitempty"`
+	CustomFontFamily string             `json:"customFontFamily,omitempty"`
 	Advanced         advancedAppearance `json:"advanced"`
 }
 
@@ -261,6 +262,11 @@ func (a *Server) updateAppearance(w http.ResponseWriter, r *http.Request) {
 		failure(w, 400, "自定义字体地址须为 HTTPS 链接或以 / 开头的站内路径")
 		return
 	}
+	body.CustomFontFamily = strings.TrimSpace(body.CustomFontFamily)
+	if !validCustomFontFamily(body.CustomFontFamily) {
+		failure(w, 400, "字体族名称无效")
+		return
+	}
 	if !validAccent(body.Accent) || (body.DefaultTheme != "light" && body.DefaultTheme != "dark" && body.DefaultTheme != "system") {
 		failure(w, 400, "个性化设置无效")
 		return
@@ -404,4 +410,19 @@ func validCustomFontURL(value string) bool {
 	}
 	parsed, err := url.Parse(value)
 	return err == nil && parsed.Scheme == "https" && parsed.Host != "" && parsed.User == nil
+}
+
+func validCustomFontFamily(value string) bool {
+	if value == "" {
+		return true
+	}
+	if utf8.RuneCountInString(value) > 120 || strings.ContainsAny(value, "\"'\\;{}<>") {
+		return false
+	}
+	for _, r := range value {
+		if unicode.IsControl(r) {
+			return false
+		}
+	}
+	return true
 }

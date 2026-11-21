@@ -323,6 +323,7 @@ function siteTheme() {
     preset: effectiveFontPreset.value,
     scope: site.value.appearance.fontScope || 'headings',
     customFontUrl: site.value.appearance.customFontUrl,
+    customFontFamily: site.value.appearance.customFontFamily,
     uploadedFontUrl: site.value.themeFont?.url,
   })
   const favicon = document.querySelector<HTMLLinkElement>('link[rel="icon"]')

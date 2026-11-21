@@ -31,6 +31,7 @@ function cloneDraft() {
     fontPreset: props.appearance.fontPreset || 'system',
     fontScope: props.appearance.fontScope || 'headings',
     customFontUrl: props.appearance.customFontUrl || '',
+    customFontFamily: props.appearance.customFontFamily || '',
     advanced: cloneAdvanced(props.appearance.advanced),
   }
 }
@@ -188,6 +189,7 @@ async function save() {
       fontPreset: data.fontPreset || 'system',
       fontScope: data.fontScope || 'headings',
       customFontUrl: data.customFontUrl || '',
+      customFontFamily: data.customFontFamily || '',
       advanced: cloneAdvanced(data.advanced),
     }
     saved.value = settingsSnapshot(draft.value)
@@ -385,6 +387,10 @@ defineExpose({ draft, dirty, busy: computed(() => busy.value || imageBusy.value 
             <label class="binding-field">
               <span>{{ t('自定义字体地址（可选）') }}</span>
               <input v-model="draft.customFontUrl" maxlength="512" :placeholder="t('https://example.com/font.css 或 /fonts/custom.woff2')" />
+            </label>
+            <label v-if="draft.customFontUrl.trim()" class="binding-field">
+              <span>{{ t('CSS 字体族名称（可选）') }}</span>
+              <input v-model="draft.customFontFamily" maxlength="120" :placeholder="t('使用无 ?family= 参数的样式表时填写，如 Press Start 2P')" />
             </label>
             <p v-if="themeFont?.version">{{ t('已上传字体：{name}', { name: themeFont.fileName || 'custom.woff2' }) }}</p>
             <div class="theme-resource-actions">
