@@ -24,6 +24,7 @@ export interface Appearance {
   themePack?: ThemePack
   surfaceEffect?: 'solid' | 'translucent' | 'glass'
   allowUserTheme?: boolean
+  disableParticles?: boolean
   fontPreset?: FontPreset
   fontScope?: FontScope
   customFontUrl?: string

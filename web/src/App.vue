@@ -282,9 +282,16 @@ let themePreference = ''
 let themeTransition: ViewTransition | undefined
 const userThemePack = ref('')
 const userFontPreset = ref('')
+const userParticlesPref = ref<'' | 'on' | 'off'>('')
 const effectiveThemePack = computed(() => (site.value.appearance.allowUserTheme && userThemePack.value && themePackById[userThemePack.value]) ? userThemePack.value : (site.value.appearance.themePack || 'default'))
 const effectiveDarkOnly = computed(() => isDarkOnlyTheme(effectiveThemePack.value))
 const effectiveMCBiome = computed(() => isMCBiomeTheme(effectiveThemePack.value))
+const effectiveParticlesEnabled = computed(() => {
+  if (!effectiveMCBiome.value) return false
+  if (userParticlesPref.value === 'on') return true
+  if (userParticlesPref.value === 'off') return false
+  return !site.value.appearance.disableParticles
+})
 const showMcDisclaimer = computed(() => isMCFamilyTheme(effectiveThemePack.value) || Boolean(site.value.themeAssets?.count))
 const effectiveFontPreset = computed(() => (site.value.appearance.allowUserTheme && userFontPreset.value && fontPresetNames[userFontPreset.value] && userFontPreset.value !== 'custom') ? userFontPreset.value : (site.value.appearance.fontPreset || 'system'))
 
@@ -383,6 +390,12 @@ function setUserFontPreset(value: string) {
     else localStorage.removeItem('wishingskin-font-preset')
   } catch { /* Ignore storage failures. */ }
   siteTheme()
+}
+
+function toggleParticles() {
+  const next = effectiveParticlesEnabled.value ? 'off' : 'on'
+  userParticlesPref.value = next
+  try { localStorage.setItem('wishingskin-particles', next) } catch { /* Ignore storage failures. */ }
 }
 
 async function api(path: string, options: RequestInit = {}) {
@@ -834,6 +847,8 @@ onMounted(() => {
     if (savedPack && themePackById[savedPack]) userThemePack.value = savedPack
     const savedFont = localStorage.getItem('wishingskin-font-preset')
     if (savedFont && fontPresetNames[savedFont] && savedFont !== 'custom') userFontPreset.value = savedFont
+    const savedParticles = localStorage.getItem('wishingskin-particles')
+    if (savedParticles === 'on' || savedParticles === 'off') userParticlesPref.value = savedParticles
   } catch { /* Use the system preference. */ }
   themePreference = preference === 'light' || preference === 'dark' ? preference : ''
   applyTheme(themePreference ? themePreference === 'dark' : window.matchMedia('(prefers-color-scheme: dark)').matches)
@@ -859,7 +874,7 @@ onBeforeUnmount(() => {
       <div class="topbar-actions">
         <button class="topbar-link" :class="{ active: routePath === '/library' }" type="button" :aria-current="routePath === '/library' ? 'page' : undefined" @click="navigate('/library')"><InterfaceIcon name="library" />{{ t('公开库') }}</button>
         <NoticeCenter :notice="site.notice" :format="site.noticeFormat" />
-        <AccountMenu :user="user" :avatar-version="avatarVersion" :dark="dark" :dark-only="effectiveDarkOnly" :allow-user-theme="!!site.appearance.allowUserTheme" :user-theme-pack="userThemePack" :user-font-preset="userFontPreset" :logout-busy="logoutBusy" @navigate="navigate" @theme="toggleTheme" @update:theme-pack="setUserThemePack" @update:font-preset="setUserFontPreset" @logout="logout" />
+        <AccountMenu :user="user" :avatar-version="avatarVersion" :dark="dark" :dark-only="effectiveDarkOnly" :mc-biome="effectiveMCBiome" :particles-enabled="effectiveParticlesEnabled" :allow-user-theme="!!site.appearance.allowUserTheme" :user-theme-pack="userThemePack" :user-font-preset="userFontPreset" :logout-busy="logoutBusy" @navigate="navigate" @theme="toggleTheme" @toggle-particles="toggleParticles" @update:theme-pack="setUserThemePack" @update:font-preset="setUserFontPreset" @logout="logout" />
       </div>
     </header>
 
@@ -870,7 +885,7 @@ onBeforeUnmount(() => {
     <main v-else-if="accessMode" class="access-layout"><AccountAccess :mode="accessMode" :token="linkToken" :site="site" :email="user?.email || email" :dark="dark" @back="navigate('/login'); linkToken = ''" @completed="accessCompleted" /></main>
 
     <main v-else-if="!user && publicLibraryOpen" class="public-library-layout"><button class="secondary-button public-library-back" type="button" @click="navigate('/')">{{ t("返回主页") }}</button><TextureBrowser mode="library" csrf-token="" :wardrobe="[]" :wardrobe-busy="false" wardrobe-error="" @login="navigate('/login')" @upload="openUpload" /></main>
-    <main v-else-if="publicHome" class="public-home-page"><HomepageContent :homepage="site.homepage" :name="site.name" :tagline="site.tagline" :notice="site.notice" :notice-html="site.noticeHtml" :mc-biome="effectiveMCBiome" :cherry-petals="effectiveThemePack === 'cherry' && !dark" @navigate="homepageLink" /></main>
+    <main v-else-if="publicHome" class="public-home-page"><HomepageContent :homepage="site.homepage" :name="site.name" :tagline="site.tagline" :notice="site.notice" :notice-html="site.noticeHtml" :theme-pack="effectiveThemePack" :dark="dark" :mc-biome="effectiveMCBiome" :particles-enabled="effectiveParticlesEnabled" :theme-assets="site.themeAssets" @navigate="homepageLink" /></main>
     <main v-else-if="!user" class="login-layout">
       <section class="welcome-panel" aria-labelledby="welcome-title">
         <div class="welcome-copy"><h1 id="welcome-title">{{ t("每个角色，") + ' ' }}<br>{{ t("都有自己的模样。") }}</h1><p>{{ t("在这里查看你的 Minecraft 角色，") }}<br class="desktop-break">{{ t("找到属于它的皮肤和披风。") }}</p></div>

@@ -25,16 +25,17 @@ import (
 )
 
 type appearance struct {
-	LogoImage      string             `json:"logoImage"`
-	Accent         string             `json:"accent"`
-	DefaultTheme   string             `json:"defaultTheme"`
-	ThemePack      string             `json:"themePack"`
-	SurfaceEffect  string             `json:"surfaceEffect"`
-	AllowUserTheme bool               `json:"allowUserTheme"`
-	FontPreset     string             `json:"fontPreset"`
-	FontScope      string             `json:"fontScope"`
-	CustomFontURL  string             `json:"customFontUrl,omitempty"`
-	Advanced       advancedAppearance `json:"advanced"`
+	LogoImage        string             `json:"logoImage"`
+	Accent           string             `json:"accent"`
+	DefaultTheme     string             `json:"defaultTheme"`
+	ThemePack        string             `json:"themePack"`
+	SurfaceEffect    string             `json:"surfaceEffect"`
+	AllowUserTheme   bool               `json:"allowUserTheme"`
+	DisableParticles bool               `json:"disableParticles,omitempty"`
+	FontPreset       string             `json:"fontPreset"`
+	FontScope        string             `json:"fontScope"`
+	CustomFontURL    string             `json:"customFontUrl,omitempty"`
+	Advanced         advancedAppearance `json:"advanced"`
 }
 
 func (a *Server) readSetting(ctx context.Context, key string, target any) (bool, error) {

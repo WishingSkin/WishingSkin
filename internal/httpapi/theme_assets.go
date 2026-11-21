@@ -53,6 +53,7 @@ type tintSpec struct {
 
 type themeTextureSpec struct {
 	key        string
+	namespace  string // "" / "block" or "particle"
 	candidates []string
 	overlay    string
 	tint       tintSpec
@@ -176,6 +177,26 @@ var themeTextureSpecs = []themeTextureSpec{
 	{key: "reinforced_deepslate_top", candidates: []string{"reinforced_deepslate_top", "deepslate"}},
 	{key: "reinforced_deepslate_side", candidates: []string{"reinforced_deepslate_side", "deepslate"}},
 	{key: "tuff", candidates: []string{"tuff", "deepslate"}},
+
+	// Authentic Minecraft Particle Textures (assets/minecraft/textures/particle/)
+	{key: "particle_cherry_0", namespace: "particle", candidates: []string{"cherry_0", "cherry_1"}},
+	{key: "particle_cherry_1", namespace: "particle", candidates: []string{"cherry_2", "cherry_3"}},
+	{key: "particle_cherry_2", namespace: "particle", candidates: []string{"cherry_5", "cherry_4"}},
+	{key: "particle_cherry_3", namespace: "particle", candidates: []string{"cherry_8", "cherry_7"}},
+	{key: "particle_leaf_plains_0", namespace: "particle", candidates: []string{"leaf_0", "leaf_1"}, tint: plainsLeafTint},
+	{key: "particle_leaf_plains_1", namespace: "particle", candidates: []string{"leaf_3", "leaf_2"}, tint: plainsLeafTint},
+	{key: "particle_leaf_jungle_0", namespace: "particle", candidates: []string{"leaf_0", "leaf_1"}, tint: jungleLeafTint},
+	{key: "particle_leaf_jungle_1", namespace: "particle", candidates: []string{"leaf_4", "leaf_2"}, tint: jungleLeafTint},
+	{key: "particle_firefly", namespace: "particle", candidates: []string{"firefly", "glow"}},
+	{key: "particle_sculk_soul_0", namespace: "particle", candidates: []string{"sculk_soul_0", "soul_0"}},
+	{key: "particle_sculk_soul_1", namespace: "particle", candidates: []string{"sculk_soul_3", "soul_3"}},
+	{key: "particle_sculk_soul_2", namespace: "particle", candidates: []string{"sculk_soul_6", "soul_6"}},
+	{key: "particle_flame", namespace: "particle", candidates: []string{"flame"}},
+	{key: "particle_soul_flame", namespace: "particle", candidates: []string{"soul_fire_flame", "copper_fire_flame", "flame"}},
+	{key: "particle_glow", namespace: "particle", candidates: []string{"glow", "glint"}},
+	{key: "particle_glint", namespace: "particle", candidates: []string{"glint", "glow"}},
+	{key: "particle_spark_0", namespace: "particle", candidates: []string{"spark_0", "spark_1", "glint"}},
+	{key: "particle_spark_1", namespace: "particle", candidates: []string{"spark_3", "spark_2", "glow"}},
 }
 
 var allowedThemeTextureKeys = func() map[string]bool {
@@ -396,6 +417,7 @@ func extractThemeTexturesFromZip(zipPath, sourceName string) (storedThemeAssets,
 	defer zr.Close()
 
 	blockFiles := map[string]*zip.File{}
+	particleFiles := map[string]*zip.File{}
 	var grassCmapFile, foliageCmapFile *zip.File
 	for _, f := range zr.File {
 		if f.FileInfo().IsDir() {
@@ -408,6 +430,16 @@ func extractThemeTexturesFromZip(zipPath, sourceName string) (storedThemeAssets,
 				blockName := strings.TrimSuffix(rel, ".png")
 				if _, exists := blockFiles[blockName]; !exists {
 					blockFiles[blockName] = f
+				}
+			}
+			continue
+		}
+		if idx := strings.Index(name, "assets/minecraft/textures/particle/"); idx >= 0 {
+			rel := name[idx+len("assets/minecraft/textures/particle/"):]
+			if strings.HasSuffix(rel, ".png") && !strings.Contains(rel, "/") {
+				pName := strings.TrimSuffix(rel, ".png")
+				if _, exists := particleFiles[pName]; !exists {
+					particleFiles[pName] = f
 				}
 			}
 			continue
@@ -431,11 +463,16 @@ func extractThemeTexturesFromZip(zipPath, sourceName string) (storedThemeAssets,
 	}
 
 	rawCache := map[string]*image.NRGBA{}
-	loadBlock := func(name string) *image.NRGBA {
-		if cached, ok := rawCache[name]; ok {
+	loadSprite := func(ns, name string) *image.NRGBA {
+		cacheKey := ns + ":" + name
+		if cached, ok := rawCache[cacheKey]; ok {
 			return cached
 		}
-		f, ok := blockFiles[name]
+		files := blockFiles
+		if ns == "particle" {
+			files = particleFiles
+		}
+		f, ok := files[name]
 		if !ok {
 			return nil
 		}
@@ -444,16 +481,20 @@ func extractThemeTexturesFromZip(zipPath, sourceName string) (storedThemeAssets,
 			return nil
 		}
 		normalized := normalizeBlockFrame(img)
-		rawCache[name] = normalized
+		rawCache[cacheKey] = normalized
 		return normalized
 	}
 
 	textures := make(map[string]string, len(themeTextureSpecs))
 	hasher := sha256.New()
 	for _, spec := range themeTextureSpecs {
+		ns := spec.namespace
+		if ns == "" {
+			ns = "block"
+		}
 		var base *image.NRGBA
 		for _, candidate := range spec.candidates {
-			if img := loadBlock(candidate); img != nil {
+			if img := loadSprite(ns, candidate); img != nil {
 				base = cloneNRGBA(img)
 				break
 			}
@@ -462,7 +503,7 @@ func extractThemeTexturesFromZip(zipPath, sourceName string) (storedThemeAssets,
 			continue
 		}
 		if spec.overlay != "" {
-			if ov := loadBlock(spec.overlay); ov != nil {
+			if ov := loadSprite(ns, spec.overlay); ov != nil {
 				tintColor := resolveTint(spec.tint, grassCmap, foliageCmap)
 				tintedOv := applyMultiplyTint(cloneNRGBA(ov), tintColor)
 				compositeOver(base, tintedOv)

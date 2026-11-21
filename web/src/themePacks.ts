@@ -1,12 +1,21 @@
 export interface ThemeTextureSlots {
   lightTrim: string
   darkTrim: string
-  lightSurface: string
-  darkSurface: string
-  strata: readonly [string, string, string, string]
   lightFooter: string
   darkFooter: string
   previewKeys: readonly string[]
+}
+
+export interface ThemeSceneSlots {
+  light?: string
+  dark: string
+}
+
+export interface BiomeParticleProfile {
+  readonly keys: readonly string[]
+  readonly motion: 'fall' | 'rise' | 'float'
+  readonly count: number
+  readonly sizePx: number
 }
 
 export type ThemePack =
@@ -35,6 +44,11 @@ export interface ThemePackMeta {
   readonly mcBiome?: boolean
   readonly mcFamily?: boolean
   readonly textures?: ThemeTextureSlots
+  readonly scenes?: ThemeSceneSlots
+  readonly particles?: {
+    readonly light?: BiomeParticleProfile
+    readonly dark?: BiomeParticleProfile
+  }
 }
 
 export interface ThemePackGroup {
@@ -65,12 +79,17 @@ export const themePackGroups: readonly ThemePackGroup[] = [
         textures: {
           lightTrim: 'plains_grass_side',
           darkTrim: 'deepslate_diamond_ore',
-          lightSurface: 'plains_grass_top',
-          darkSurface: 'deepslate',
-          strata: ['plains_grass_side', 'dirt', 'stone', 'deepslate_diamond_ore'],
           lightFooter: 'bedrock',
           darkFooter: 'bedrock',
-          previewKeys: ['plains_grass_side', 'plains_grass_top', 'oak_planks', 'deepslate', 'deepslate_diamond_ore', 'rail', 'coal_ore', 'bedrock'],
+          previewKeys: ['plains_grass_side', 'plains_grass_top', 'oak_planks', 'deepslate', 'deepslate_diamond_ore', 'rail', 'particle_leaf_plains_0', 'bedrock'],
+        },
+        scenes: {
+          light: '/backgrounds/plains-light.webp',
+          dark: '/backgrounds/plains-dark.webp',
+        },
+        particles: {
+          light: { keys: ['particle_leaf_plains_0', 'particle_leaf_plains_1', 'particle_firefly'], motion: 'fall', count: 7, sizePx: 14 },
+          dark: { keys: ['particle_spark_0', 'particle_spark_1'], motion: 'float', count: 7, sizePx: 12 },
         },
       },
       {
@@ -84,12 +103,17 @@ export const themePackGroups: readonly ThemePackGroup[] = [
         textures: {
           lightTrim: 'grass_block_side_snowed',
           darkTrim: 'chiseled_packed_ice',
-          lightSurface: 'snow',
-          darkSurface: 'packed_ice_bricks',
-          strata: ['grass_block_side_snowed', 'packed_ice', 'polished_calcite_bricks', 'blue_ice'],
           lightFooter: 'blue_ice',
           darkFooter: 'bedrock',
           previewKeys: ['snow', 'grass_block_side_snowed', 'packed_ice', 'blue_ice', 'ice_crystal', 'icicle_tip', 'packed_ice_bricks', 'calcite'],
+        },
+        scenes: {
+          light: '/backgrounds/snowy-light.webp',
+          dark: '/backgrounds/snowy-dark.webp',
+        },
+        particles: {
+          light: { keys: ['particle_spark_0', 'particle_spark_1'], motion: 'fall', count: 9, sizePx: 12 },
+          dark: { keys: ['particle_glint', 'particle_spark_0', 'particle_spark_1'], motion: 'float', count: 8, sizePx: 13 },
         },
       },
       {
@@ -103,12 +127,17 @@ export const themePackGroups: readonly ThemePackGroup[] = [
         textures: {
           lightTrim: 'jungle_grass_side',
           darkTrim: 'moss_block',
-          lightSurface: 'jungle_leaves',
-          darkSurface: 'moss_block',
-          strata: ['jungle_grass_side', 'rooted_dirt', 'mossy_cobblestone', 'moss_block'],
           lightFooter: 'bedrock',
           darkFooter: 'bedrock',
-          previewKeys: ['jungle_grass_side', 'jungle_leaves', 'jungle_planks', 'bamboo_stalk', 'moss_block', 'clay', 'glow_lichen', 'spore_blossom'],
+          previewKeys: ['jungle_grass_side', 'jungle_leaves', 'jungle_planks', 'bamboo_stalk', 'moss_block', 'clay', 'particle_leaf_jungle_0', 'spore_blossom'],
+        },
+        scenes: {
+          light: '/backgrounds/jungle-light.webp',
+          dark: '/backgrounds/jungle-dark.webp',
+        },
+        particles: {
+          light: { keys: ['particle_leaf_jungle_0', 'particle_leaf_jungle_1', 'particle_firefly'], motion: 'fall', count: 8, sizePx: 14 },
+          dark: { keys: ['particle_glow', 'particle_firefly'], motion: 'fall', count: 8, sizePx: 12 },
         },
       },
       {
@@ -122,18 +151,23 @@ export const themePackGroups: readonly ThemePackGroup[] = [
         textures: {
           lightTrim: 'chiseled_sandstone',
           darkTrim: 'orange_terracotta',
-          lightSurface: 'sand',
-          darkSurface: 'cut_sandstone',
-          strata: ['sand', 'sandstone', 'chiseled_sandstone', 'orange_terracotta'],
           lightFooter: 'sandstone_top',
           darkFooter: 'bedrock',
           previewKeys: ['sand', 'sandstone', 'chiseled_sandstone', 'red_sand', 'orange_terracotta', 'blue_terracotta', 'suspicious_sand', 'tnt_side'],
+        },
+        scenes: {
+          light: '/backgrounds/desert-light.webp',
+          dark: '/backgrounds/desert-dark.webp',
+        },
+        particles: {
+          light: { keys: ['particle_spark_0', 'particle_spark_1'], motion: 'float', count: 6, sizePx: 10 },
+          dark: { keys: ['particle_spark_0', 'particle_flame'], motion: 'float', count: 7, sizePx: 12 },
         },
       },
       {
         value: 'cherry',
         label: '樱花',
-        lightScene: '樱花树林、飘落花瓣',
+        lightScene: '樱花树林、像素花瓣飘落',
         darkScene: '紫水晶洞、方解石、晶簇',
         swatches: ['#fdf5f8', '#a8325c', '#17101f', '#c692f7'],
         mcBiome: true,
@@ -141,12 +175,17 @@ export const themePackGroups: readonly ThemePackGroup[] = [
         textures: {
           lightTrim: 'cherry_leaves',
           darkTrim: 'amethyst_block',
-          lightSurface: 'cherry_planks',
-          darkSurface: 'amethyst_block',
-          strata: ['cherry_grass_side', 'cherry_planks', 'calcite', 'amethyst_block'],
           lightFooter: 'cherry_log',
           darkFooter: 'bedrock',
-          previewKeys: ['cherry_leaves', 'cherry_log', 'cherry_planks', 'pink_petals', 'calcite', 'amethyst_block', 'budding_amethyst', 'amethyst_cluster'],
+          previewKeys: ['cherry_leaves', 'cherry_log', 'cherry_planks', 'particle_cherry_0', 'calcite', 'amethyst_block', 'budding_amethyst', 'amethyst_cluster'],
+        },
+        scenes: {
+          light: '/backgrounds/cherry-light.webp',
+          dark: '/backgrounds/cherry-dark.webp',
+        },
+        particles: {
+          light: { keys: ['particle_cherry_0', 'particle_cherry_1', 'particle_cherry_2', 'particle_cherry_3'], motion: 'fall', count: 9, sizePx: 16 },
+          dark: { keys: ['particle_glint', 'particle_glow'], motion: 'float', count: 8, sizePx: 14 },
         },
       },
     ],
@@ -165,12 +204,17 @@ export const themePackGroups: readonly ThemePackGroup[] = [
         textures: {
           lightTrim: 'crimson_nylium_side',
           darkTrim: 'warped_nylium_side',
-          lightSurface: 'crimson_nylium',
-          darkSurface: 'warped_nylium',
-          strata: ['crimson_nylium_side', 'netherrack', 'basalt_side', 'warped_nylium_side'],
           lightFooter: 'nether_bricks',
           darkFooter: 'blackstone',
-          previewKeys: ['crimson_nylium_side', 'crimson_planks', 'nether_wart_block', 'shroomlight', 'warped_nylium_side', 'warped_planks', 'basalt_side', 'blackstone'],
+          previewKeys: ['crimson_nylium_side', 'crimson_planks', 'nether_wart_block', 'shroomlight', 'warped_nylium_side', 'warped_planks', 'particle_flame', 'particle_soul_flame'],
+        },
+        scenes: {
+          light: '/backgrounds/nether-light.webp',
+          dark: '/backgrounds/nether-dark.webp',
+        },
+        particles: {
+          light: { keys: ['particle_flame', 'particle_spark_0'], motion: 'rise', count: 8, sizePx: 14 },
+          dark: { keys: ['particle_soul_flame', 'particle_glow'], motion: 'rise', count: 8, sizePx: 14 },
         },
       },
       {
@@ -184,12 +228,17 @@ export const themePackGroups: readonly ThemePackGroup[] = [
         textures: {
           lightTrim: 'purpur_block',
           darkTrim: 'crying_obsidian',
-          lightSurface: 'end_stone_bricks',
-          darkSurface: 'obsidian',
-          strata: ['end_stone_bricks', 'purpur_block', 'purpur_pillar', 'obsidian'],
           lightFooter: 'end_stone',
           darkFooter: 'obsidian',
-          previewKeys: ['end_stone', 'end_stone_bricks', 'purpur_block', 'purpur_pillar', 'obsidian', 'crying_obsidian', 'gilded_blackstone', 'bedrock'],
+          previewKeys: ['end_stone', 'end_stone_bricks', 'purpur_block', 'purpur_pillar', 'obsidian', 'crying_obsidian', 'gilded_blackstone', 'particle_glint'],
+        },
+        scenes: {
+          light: '/backgrounds/end-light.webp',
+          dark: '/backgrounds/end-dark.webp',
+        },
+        particles: {
+          light: { keys: ['particle_glint', 'particle_spark_0'], motion: 'float', count: 7, sizePx: 14 },
+          dark: { keys: ['particle_glint', 'particle_glow'], motion: 'float', count: 8, sizePx: 14 },
         },
       },
       {
@@ -204,12 +253,15 @@ export const themePackGroups: readonly ThemePackGroup[] = [
         textures: {
           lightTrim: 'sculk',
           darkTrim: 'sculk',
-          lightSurface: 'deepslate',
-          darkSurface: 'sculk',
-          strata: ['deepslate', 'reinforced_deepslate_side', 'sculk', 'bedrock'],
           lightFooter: 'reinforced_deepslate_top',
           darkFooter: 'reinforced_deepslate_top',
-          previewKeys: ['sculk', 'sculk_vein', 'sculk_catalyst_top', 'sculk_sensor_top', 'sculk_shrieker_top', 'reinforced_deepslate_top', 'deepslate', 'tuff'],
+          previewKeys: ['sculk', 'sculk_vein', 'sculk_catalyst_top', 'sculk_sensor_top', 'particle_sculk_soul_0', 'reinforced_deepslate_top', 'deepslate', 'tuff'],
+        },
+        scenes: {
+          dark: '/backgrounds/deep_dark-dark.webp',
+        },
+        particles: {
+          dark: { keys: ['particle_sculk_soul_0', 'particle_sculk_soul_1', 'particle_sculk_soul_2'], motion: 'rise', count: 7, sizePx: 18 },
         },
       },
     ],

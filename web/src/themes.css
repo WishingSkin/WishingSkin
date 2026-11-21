@@ -632,128 +632,207 @@
   opacity: 0.9;
   pointer-events: none;
 }
+:root[data-mc-biome="1"] .public-site-footer {
+  max-width: none;
+  margin-top: 0;
+  padding: 26px max(48px, calc((100% - 1224px) / 2)) 32px;
+  background: color-mix(in srgb, var(--bg) 90%, transparent);
+  -webkit-backdrop-filter: blur(12px);
+  backdrop-filter: blur(12px);
+}
+:root[data-mc-biome="1"] .public-site-footer::before {
+  border-radius: 0;
+}
+@media (max-width: 560px) {
+  :root[data-mc-biome="1"] .public-site-footer {
+    padding: 22px 18px 26px;
+  }
+}
 
-/* Subtle workspace margin pattern (content panels stay clean and readable) */
-:root[data-mc-biome="1"] .workspace-layout::before {
+/* Ambient scenic backdrop for workspace, library and sign-in pages (enhances translucent/glass panels) */
+:root[data-mc-biome="1"] .app-shell {
+  position: relative;
+  isolation: isolate;
+}
+:root[data-mc-biome="1"] .app-shell::before {
+  content: "";
+  position: fixed;
+  inset: 0;
+  z-index: -2;
+  background-color: var(--bg);
+  background-image: var(--mc-scene-active);
+  background-size: cover;
+  background-position: center;
+  background-repeat: no-repeat;
+  pointer-events: none;
+}
+:root[data-mc-biome="1"] .app-shell::after {
   content: "";
   position: fixed;
   inset: 0;
   z-index: -1;
-  background-image: var(--mc-tex-surface);
-  background-size: 32px 32px;
-  image-rendering: pixelated;
-  opacity: 0.045;
-  pointer-events: none;
-}
-
-/* Homepage Strata Scroll (Surface -> Subsoil -> Deep Underground -> Bedrock) */
-.homepage-surface.mc-strata {
-  position: relative;
-  overflow: hidden;
   background: linear-gradient(
     180deg,
-    var(--mc-sky-top, var(--bg)) 0%,
-    var(--mc-sky-bottom, var(--bg)) 34%,
-    color-mix(in srgb, var(--bg) 78%, var(--mc-strata-tint, var(--subtle))) 68%,
-    color-mix(in srgb, var(--bg) 52%, var(--mc-strata-tint, var(--subtle))) 100%
+    color-mix(in srgb, var(--bg) 72%, transparent) 0%,
+    color-mix(in srgb, var(--bg) 82%, transparent) 100%
+  );
+  pointer-events: none;
+}
+:root[data-theme="dark"][data-mc-biome="1"] .app-shell::after {
+  background: linear-gradient(
+    180deg,
+    color-mix(in srgb, var(--bg) 62%, transparent) 0%,
+    color-mix(in srgb, var(--bg) 76%, transparent) 100%
   );
 }
-.homepage-strata-backdrop {
+
+/* Homepage Dual-Act Immersive Scenic Background (Light: Surface -> Underground on scroll; Dark: Underground) */
+.homepage-surface.mc-scene {
+  position: relative;
+  overflow: clip;
+  background: var(--bg);
+}
+.homepage-scene-backdrop {
   position: absolute;
   inset: 0;
   pointer-events: none;
   z-index: 0;
-  display: grid;
-  grid-template-rows: 1.25fr 0.85fr 1fr 0.65fr;
-  transform: translateY(calc(var(--strata-progress, 0) * -18px));
-  will-change: transform;
 }
-.homepage-strata-layer {
+.homepage-scene-stage {
+  position: sticky;
+  top: 0;
+  height: 100vh;
+  height: 100dvh;
+  width: 100%;
+  overflow: hidden;
+}
+.homepage-scene-layer {
+  position: absolute;
+  inset: 0;
+  background-size: cover;
+  background-position: center;
+  background-repeat: no-repeat;
+  will-change: opacity, transform;
+}
+.homepage-scene-layer.scene-surface {
+  background-image: var(--mc-scene-light);
+  opacity: calc(1 - var(--scene-scroll, 0));
+  transform: translateY(calc(var(--scene-scroll, 0) * -18px)) scale(1.03);
+}
+.homepage-scene-layer.scene-underground {
+  background-image: var(--mc-scene-dark);
+  opacity: var(--scene-scroll, 0);
+  transform: translateY(calc((1 - var(--scene-scroll, 0)) * 18px)) scale(1.03);
+}
+.homepage-surface.mc-scene-dark .homepage-scene-layer.scene-surface {
+  display: none;
+}
+.homepage-surface.mc-scene-dark .homepage-scene-layer.scene-underground {
+  opacity: 1;
+  transform: translateY(calc(var(--scene-scroll, 0) * -14px)) scale(1.03);
+}
+.homepage-scene-veil {
+  position: absolute;
+  inset: 0;
+  background: linear-gradient(
+    180deg,
+    color-mix(in srgb, var(--bg) 28%, transparent) 0%,
+    color-mix(in srgb, var(--bg) 42%, transparent) 55%,
+    color-mix(in srgb, var(--bg) 62%, transparent) 100%
+  );
+}
+.homepage-surface.mc-scene-dark .homepage-scene-veil {
+  background: linear-gradient(
+    180deg,
+    color-mix(in srgb, var(--bg) 32%, transparent) 0%,
+    color-mix(in srgb, var(--bg) 48%, transparent) 58%,
+    color-mix(in srgb, var(--bg) 68%, transparent) 100%
+  );
+}
+.homepage-surface.mc-scene .homepage-content {
   position: relative;
-  background-repeat: repeat;
-  background-size: 48px 48px;
-  image-rendering: pixelated;
+  z-index: 2;
 }
-.homepage-strata-layer.layer-1 {
-  background-image: var(--mc-tex-strata-1);
-  background-repeat: repeat-x;
-  background-position: 0 100%;
-  background-size: 48px 48px;
-  opacity: 0.24;
-  mask-image: linear-gradient(180deg, transparent 55%, #000 100%);
-  -webkit-mask-image: linear-gradient(180deg, transparent 55%, #000 100%);
-}
-.homepage-strata-layer.layer-2 {
-  background-image: var(--mc-tex-strata-2);
-  opacity: 0.14;
-  mask-image: linear-gradient(180deg, #000 0%, rgba(0, 0, 0, 0.75) 80%, transparent 100%);
-  -webkit-mask-image: linear-gradient(180deg, #000 0%, rgba(0, 0, 0, 0.75) 80%, transparent 100%);
-}
-.homepage-strata-layer.layer-3 {
-  background-image: var(--mc-tex-strata-3);
-  opacity: 0.16;
-  mask-image: linear-gradient(180deg, transparent 0%, #000 20%, #000 85%, transparent 100%);
-  -webkit-mask-image: linear-gradient(180deg, transparent 0%, #000 20%, #000 85%, transparent 100%);
-}
-.homepage-strata-layer.layer-4 {
-  background-image: var(--mc-tex-strata-4);
-  opacity: 0.2;
-  mask-image: linear-gradient(180deg, transparent 0%, #000 30%, #000 100%);
-  -webkit-mask-image: linear-gradient(180deg, transparent 0%, #000 30%, #000 100%);
-}
-.homepage-surface.mc-strata .homepage-content {
-  position: relative;
-  z-index: 1;
-}
-.homepage-surface.mc-strata .homepage-cta {
-  background: color-mix(in srgb, var(--panel) 90%, transparent);
-  border: 1px solid var(--border);
-  border-radius: var(--radius-card);
-}
-.homepage-surface.mc-strata .homepage-intro {
+.homepage-surface.mc-scene .homepage-intro {
   max-width: none;
   background: color-mix(in srgb, var(--panel) 84%, transparent);
+  -webkit-backdrop-filter: blur(10px) saturate(112%);
+  backdrop-filter: blur(10px) saturate(112%);
   border: 1px solid var(--border);
   border-radius: var(--radius-card);
   padding: 36px 36px 40px;
   box-shadow: var(--shadow-card);
 }
+.homepage-surface.mc-scene .homepage-features > header {
+  display: inline-block;
+  padding: 10px 16px;
+  border-radius: var(--radius-control);
+  background: color-mix(in srgb, var(--panel) 84%, transparent);
+  -webkit-backdrop-filter: blur(8px);
+  backdrop-filter: blur(8px);
+  border: 1px solid color-mix(in srgb, var(--border) 75%, transparent);
+}
+.homepage-surface.mc-scene :is(.homepage-features-grid, .homepage-notice, .homepage-showcase, .homepage-cta) {
+  background: color-mix(in srgb, var(--panel) 88%, transparent);
+  -webkit-backdrop-filter: blur(10px) saturate(112%);
+  backdrop-filter: blur(10px) saturate(112%);
+}
+.homepage-surface.mc-scene .homepage-cta {
+  border: 1px solid var(--border);
+  border-radius: var(--radius-card);
+}
 @media (max-width: 700px) {
-  .homepage-surface.mc-strata .homepage-intro {
+  .homepage-surface.mc-scene .homepage-intro {
     padding: 24px 20px 28px;
   }
 }
 
-/* Cherry Blossom Petals (Light mode only, disabled under reduced-motion) */
-.cherry-petals {
+/* Authentic Minecraft Pixel Biome Particles (low-density, pixelated, reduced-motion safe) */
+.biome-particles {
   position: absolute;
   inset: 0;
   overflow: hidden;
   pointer-events: none;
   z-index: 1;
 }
-.cherry-petal {
+.biome-particle {
   position: absolute;
-  top: -16px;
-  width: 10px;
-  height: 8px;
-  background: #f5adc4;
-  border-radius: 60% 20% 60% 20%;
-  opacity: 0.72;
-  animation: cherry-fall var(--petal-dur, 11s) linear infinite;
-  animation-delay: var(--petal-delay, 0s);
-  left: var(--petal-left, 10%);
+  image-rendering: pixelated;
+  opacity: 0;
+  will-change: transform, opacity;
+  filter: drop-shadow(0 1px 2px color-mix(in srgb, #000000 18%, transparent));
 }
-.cherry-petal:nth-child(even) {
-  width: 8px;
-  height: 6px;
-  background: #fbd0df;
+.biome-particles.motion-fall .biome-particle {
+  top: -24px;
+  animation: mc-particle-fall var(--p-dur, 14s) linear infinite;
+  animation-delay: var(--p-delay, 0s);
 }
-@keyframes cherry-fall {
-  0% { transform: translate3d(0, -16px, 0) rotate(0deg); opacity: 0; }
-  12% { opacity: 0.78; }
-  85% { opacity: 0.65; }
-  100% { transform: translate3d(72px, 560px, 0) rotate(240deg); opacity: 0; }
+.biome-particles.motion-rise .biome-particle {
+  bottom: -24px;
+  animation: mc-particle-rise var(--p-dur, 14s) linear infinite;
+  animation-delay: var(--p-delay, 0s);
+}
+.biome-particles.motion-float .biome-particle {
+  top: var(--p-top, 40%);
+  animation: mc-particle-float var(--p-dur, 12s) ease-in-out infinite;
+  animation-delay: var(--p-delay, 0s);
+}
+@keyframes mc-particle-fall {
+  0% { transform: translate3d(0, -24px, 0) rotate(0deg); opacity: 0; }
+  10% { opacity: 0.84; }
+  84% { opacity: 0.72; }
+  100% { transform: translate3d(var(--p-drift, 48px), 104vh, 0) rotate(160deg); opacity: 0; }
+}
+@keyframes mc-particle-rise {
+  0% { transform: translate3d(0, 24px, 0) scale(0.85); opacity: 0; }
+  14% { opacity: 0.82; }
+  82% { opacity: 0.56; }
+  100% { transform: translate3d(calc(var(--p-drift, 42px) * 0.45), -104vh, 0) scale(1.08); opacity: 0; }
+}
+@keyframes mc-particle-float {
+  0%, 100% { transform: translate3d(0, 0, 0) scale(0.9); opacity: 0.16; }
+  35% { transform: translate3d(calc(var(--p-drift, 40px) * 0.4), -22px, 0) scale(1.08); opacity: 0.85; }
+  70% { transform: translate3d(calc(var(--p-drift, 40px) * -0.25), 14px, 0) scale(0.95); opacity: 0.48; }
 }
 
 /* Footer Minecraft unofficial compliance note */
@@ -920,8 +999,15 @@
 }
 
 @media (prefers-reduced-motion: reduce) {
-  .cherry-petals { display: none; }
-  .homepage-strata-backdrop { transform: none; }
+  .biome-particles { display: none; }
+  .homepage-scene-layer { transform: none !important; }
   :root[data-mc-biome="1"] .primary-button:active,
   :root[data-theme-pack="mc_official"] .primary-button:active { transform: none; }
+}
+@media (prefers-reduced-transparency: reduce) {
+  .homepage-surface.mc-scene :is(.homepage-intro, .homepage-features > header, .homepage-features-grid, .homepage-notice, .homepage-showcase, .homepage-cta) {
+    background: var(--panel);
+    -webkit-backdrop-filter: none;
+    backdrop-filter: none;
+  }
 }

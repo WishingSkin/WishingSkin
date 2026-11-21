@@ -24,6 +24,7 @@ function cloneDraft() {
     themePack: props.appearance.themePack || 'default',
     surfaceEffect: props.appearance.surfaceEffect || 'solid',
     allowUserTheme: Boolean(props.appearance.allowUserTheme),
+    disableParticles: Boolean(props.appearance.disableParticles),
     fontPreset: props.appearance.fontPreset || 'system',
     fontScope: props.appearance.fontScope || 'headings',
     customFontUrl: props.appearance.customFontUrl || '',
@@ -178,6 +179,7 @@ async function save() {
       themePack: data.themePack || 'default',
       surfaceEffect: data.surfaceEffect || 'solid',
       allowUserTheme: Boolean(data.allowUserTheme),
+      disableParticles: Boolean(data.disableParticles),
       fontPreset: data.fontPreset || 'system',
       fontScope: data.fontScope || 'headings',
       customFontUrl: data.customFontUrl || '',
@@ -294,6 +296,10 @@ defineExpose({ draft, dirty, busy: computed(() => busy.value || imageBusy.value 
           <label class="settings-check">
             <input v-model="draft.allowUserTheme" type="checkbox" />
             <span>{{ t('允许用户在账号菜单中自行切换主题包与字体偏好') }}</span>
+          </label>
+          <label class="settings-check">
+            <input :checked="!draft.disableParticles" type="checkbox" @change="draft.disableParticles = !($event.target as HTMLInputElement).checked" />
+            <span>{{ t('启用 MC 主题原版像素氛围粒子动效') }}</span>
           </label>
 
           <h4>{{ t('界面字体') }}</h4>

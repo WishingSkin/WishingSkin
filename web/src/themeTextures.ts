@@ -130,9 +130,95 @@ function keySeed(key: string): number {
   return h >>> 0
 }
 
+const pixelParticleSprites: Record<string, { size: number; pixels: readonly [number, number, string][] }> = {
+  particle_cherry_0: {
+    size: 8,
+    pixels: [[2, 2, '#f49cb8'], [3, 2, '#ffd6e5'], [4, 2, '#f49cb8'], [1, 3, '#e882a3'], [2, 3, '#ffd6e5'], [3, 3, '#ffb8d0'], [4, 3, '#f49cb8'], [2, 4, '#e882a3'], [3, 4, '#f49cb8'], [4, 4, '#e882a3'], [3, 5, '#d66d91']],
+  },
+  particle_cherry_1: {
+    size: 8,
+    pixels: [[3, 1, '#ffd6e5'], [2, 2, '#f49cb8'], [3, 2, '#ffb8d0'], [4, 2, '#ffd6e5'], [2, 3, '#e882a3'], [3, 3, '#f49cb8'], [4, 3, '#e882a3'], [3, 4, '#d66d91']],
+  },
+  particle_cherry_2: {
+    size: 8,
+    pixels: [[2, 2, '#ffb8d0'], [3, 2, '#ffd6e5'], [1, 3, '#f49cb8'], [2, 3, '#ffd6e5'], [3, 3, '#f49cb8'], [4, 3, '#e882a3'], [2, 4, '#e882a3'], [3, 4, '#d66d91']],
+  },
+  particle_cherry_3: {
+    size: 8,
+    pixels: [[3, 2, '#ffd6e5'], [4, 2, '#f49cb8'], [2, 3, '#f49cb8'], [3, 3, '#ffb8d0'], [4, 3, '#e882a3'], [3, 4, '#e882a3']],
+  },
+  particle_leaf_plains_0: {
+    size: 8,
+    pixels: [[3, 1, '#8cc757'], [2, 2, '#6ea83d'], [3, 2, '#8cc757'], [4, 2, '#6ea83d'], [2, 3, '#568c2c'], [3, 3, '#6ea83d'], [4, 3, '#568c2c'], [3, 4, '#477822']],
+  },
+  particle_leaf_plains_1: {
+    size: 8,
+    pixels: [[2, 2, '#8cc757'], [3, 2, '#6ea83d'], [1, 3, '#6ea83d'], [2, 3, '#568c2c'], [3, 3, '#6ea83d'], [4, 3, '#477822'], [2, 4, '#477822']],
+  },
+  particle_leaf_jungle_0: {
+    size: 8,
+    pixels: [[3, 1, '#59c93c'], [2, 2, '#3d9e24'], [3, 2, '#59c93c'], [4, 2, '#3d9e24'], [2, 3, '#2b7d17'], [3, 3, '#3d9e24'], [4, 3, '#2b7d17'], [3, 4, '#1f610f']],
+  },
+  particle_leaf_jungle_1: {
+    size: 8,
+    pixels: [[2, 2, '#59c93c'], [3, 2, '#3d9e24'], [1, 3, '#3d9e24'], [2, 3, '#59c93c'], [3, 3, '#2b7d17'], [2, 4, '#1f610f']],
+  },
+  particle_firefly: {
+    size: 8,
+    pixels: [[3, 3, '#fff9b0'], [4, 3, '#ffe45e'], [3, 4, '#ffe45e'], [4, 4, '#d9a520']],
+  },
+  particle_sculk_soul_0: {
+    size: 8,
+    pixels: [[3, 1, '#7cf7ff'], [4, 1, '#7cf7ff'], [2, 2, '#3ad9e6'], [3, 2, '#c8feff'], [4, 2, '#c8feff'], [5, 2, '#3ad9e6'], [2, 3, '#1ea8b5'], [3, 3, '#0b2229'], [4, 3, '#3ad9e6'], [5, 3, '#1ea8b5'], [2, 4, '#1ea8b5'], [3, 4, '#3ad9e6'], [4, 4, '#0b2229'], [5, 4, '#1ea8b5'], [3, 5, '#178a94'], [4, 5, '#178a94'], [3, 6, '#0f5d66']],
+  },
+  particle_sculk_soul_1: {
+    size: 8,
+    pixels: [[3, 2, '#7cf7ff'], [4, 2, '#7cf7ff'], [2, 3, '#3ad9e6'], [3, 3, '#c8feff'], [4, 3, '#c8feff'], [5, 3, '#3ad9e6'], [3, 4, '#1ea8b5'], [4, 4, '#3ad9e6'], [3, 5, '#178a94']],
+  },
+  particle_sculk_soul_2: {
+    size: 8,
+    pixels: [[3, 2, '#5ae5ec'], [4, 2, '#5ae5ec'], [3, 3, '#c8feff'], [4, 3, '#7cf7ff'], [3, 4, '#1ea8b5']],
+  },
+  particle_flame: {
+    size: 8,
+    pixels: [[3, 1, '#fff3a8'], [3, 2, '#ffbe42'], [4, 2, '#ff9824'], [2, 3, '#ff9824'], [3, 3, '#fff3a8'], [4, 3, '#ff6d1f'], [2, 4, '#e04819'], [3, 4, '#ff9824'], [4, 4, '#e04819'], [3, 5, '#c73414']],
+  },
+  particle_soul_flame: {
+    size: 8,
+    pixels: [[3, 1, '#d9ffff'], [3, 2, '#6df0f7'], [4, 2, '#3ac9d4'], [2, 3, '#3ac9d4'], [3, 3, '#d9ffff'], [4, 3, '#229fa8'], [2, 4, '#197f87'], [3, 4, '#6df0f7'], [4, 4, '#197f87'], [3, 5, '#125f66']],
+  },
+  particle_glow: {
+    size: 8,
+    pixels: [[3, 1, '#a6f3ff'], [3, 2, '#d9fbff'], [1, 3, '#a6f3ff'], [2, 3, '#d9fbff'], [3, 3, '#ffffff'], [4, 3, '#d9fbff'], [5, 3, '#a6f3ff'], [3, 4, '#d9fbff'], [3, 5, '#a6f3ff']],
+  },
+  particle_glint: {
+    size: 8,
+    pixels: [[3, 1, '#e8c4ff'], [3, 2, '#f5e3ff'], [2, 3, '#e8c4ff'], [3, 3, '#ffffff'], [4, 3, '#e8c4ff'], [3, 4, '#f5e3ff'], [3, 5, '#c894f5']],
+  },
+  particle_spark_0: {
+    size: 8,
+    pixels: [[3, 2, '#ffffff'], [2, 3, '#e6f2fa'], [3, 3, '#ffffff'], [4, 3, '#e6f2fa'], [3, 4, '#ffffff']],
+  },
+  particle_spark_1: {
+    size: 8,
+    pixels: [[3, 3, '#ffffff'], [4, 3, '#d9ecfa'], [3, 4, '#d9ecfa']],
+  },
+}
+
 export function proceduralTileDataUrl(key: string): string {
   const cached = proceduralCache.get(key)
   if (cached) return cached
+  const particle = pixelParticleSprites[key]
+  if (particle) {
+    let rects = ''
+    for (const [x, y, color] of particle.pixels) {
+      rects += `<rect x="${x}" y="${y}" width="1" height="1" fill="${color}"/>`
+    }
+    const svg = `<svg xmlns="http://www.w3.org/2000/svg" width="${particle.size}" height="${particle.size}" viewBox="0 0 ${particle.size} ${particle.size}" shape-rendering="crispEdges">${rects}</svg>`
+    const url = `data:image/svg+xml;utf8,${encodeURIComponent(svg)}`
+    proceduralCache.set(key, url)
+    return url
+  }
   const spec = tileSpecs[key] || tileSpecs.stone
   const seed = keySeed(key)
   let rects = `<rect width="16" height="16" fill="${spec.base}"/>`
@@ -188,12 +274,10 @@ export function resolveTextureUrl(key: string, assets?: PublicThemeAssets | null
 
 const cssVars = [
   '--mc-tex-trim',
-  '--mc-tex-surface',
   '--mc-tex-footer',
-  '--mc-tex-strata-1',
-  '--mc-tex-strata-2',
-  '--mc-tex-strata-3',
-  '--mc-tex-strata-4',
+  '--mc-scene-active',
+  '--mc-scene-light',
+  '--mc-scene-dark',
 ] as const
 
 export function applyThemeTextures(pack: string, dark: boolean, assets?: PublicThemeAssets | null) {
@@ -208,10 +292,11 @@ export function applyThemeTextures(pack: string, dark: boolean, assets?: PublicT
   const slots = meta.textures
   const setUrl = (prop: string, key: string) => root.style.setProperty(prop, `url("${resolveTextureUrl(key, assets)}")`)
   setUrl('--mc-tex-trim', dark ? slots.darkTrim : slots.lightTrim)
-  setUrl('--mc-tex-surface', dark ? slots.darkSurface : slots.lightSurface)
   setUrl('--mc-tex-footer', dark ? slots.darkFooter : slots.lightFooter)
-  setUrl('--mc-tex-strata-1', slots.strata[0])
-  setUrl('--mc-tex-strata-2', slots.strata[1])
-  setUrl('--mc-tex-strata-3', slots.strata[2])
-  setUrl('--mc-tex-strata-4', slots.strata[3])
+  if (meta.scenes) {
+    const activeScene = dark ? meta.scenes.dark : (meta.scenes.light || meta.scenes.dark)
+    root.style.setProperty('--mc-scene-active', `url("${activeScene}")`)
+    root.style.setProperty('--mc-scene-light', `url("${meta.scenes.light || meta.scenes.dark}")`)
+    root.style.setProperty('--mc-scene-dark', `url("${meta.scenes.dark}")`)
+  }
 }

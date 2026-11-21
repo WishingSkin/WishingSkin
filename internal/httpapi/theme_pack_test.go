@@ -118,6 +118,8 @@ func TestExtractThemeTexturesFromSyntheticArchive(t *testing.T) {
 	writePNG("assets/minecraft/textures/block/ice_crystal.png", 16, 32, color.NRGBA{140, 220, 255, 255}) // 2-frame animation
 	writePNG("assets/minecraft/textures/block/suspicious_sand_0.png", 16, 16, color.NRGBA{219, 207, 163, 255})
 	writePNG("assets/minecraft/textures/block/purpur_pillar_side.png", 16, 16, color.NRGBA{170, 126, 170, 255})
+	writePNG("assets/minecraft/textures/particle/cherry_0.png", 8, 8, color.NRGBA{245, 175, 200, 255})
+	writePNG("assets/minecraft/textures/particle/sculk_soul_0.png", 16, 16, color.NRGBA{60, 215, 225, 255})
 	if err := zw.Close(); err != nil {
 		t.Fatal(err)
 	}
@@ -130,10 +132,10 @@ func TestExtractThemeTexturesFromSyntheticArchive(t *testing.T) {
 	if err != nil {
 		t.Fatalf("extract failed: %v", err)
 	}
-	if stored.Version == "" || stored.Count < 10 {
+	if stored.Version == "" || stored.Count < 12 {
 		t.Fatalf("unexpected extracted count: %+v", stored.Count)
 	}
-	for _, key := range []string{"plains_grass_top", "plains_grass_side", "ice_crystal", "suspicious_sand", "purpur_pillar", "bedrock"} {
+	for _, key := range []string{"plains_grass_top", "plains_grass_side", "ice_crystal", "suspicious_sand", "purpur_pillar", "bedrock", "particle_cherry_0", "particle_sculk_soul_0"} {
 		if stored.Textures[key] == "" {
 			t.Fatalf("missing expected extracted texture %q", key)
 		}

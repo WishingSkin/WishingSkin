@@ -9,6 +9,8 @@ const props = defineProps<{
   avatarVersion: number
   dark: boolean
   darkOnly?: boolean
+  mcBiome?: boolean
+  particlesEnabled?: boolean
   allowUserTheme?: boolean
   userThemePack?: string
   userFontPreset?: string
@@ -17,6 +19,7 @@ const props = defineProps<{
 const emit = defineEmits<{
   navigate: [path: string]
   theme: []
+  toggleParticles: []
   'update:themePack': [value: string]
   'update:fontPreset': [value: string]
   logout: []
@@ -82,6 +85,9 @@ onBeforeUnmount(() => { window.removeEventListener('resize', place); window.remo
           <AppIcon :name="dark ? 'sun' : 'moon'" />{{ t(dark ? '切换浅色主题' : '切换深色主题') }}
         </button>
         <p v-else class="account-menu-note">{{ t('当前主题仅支持深色模式') }}</p>
+        <button v-if="mcBiome" class="account-menu-action" type="button" @click="emit('toggleParticles')">
+          <AppIcon name="swatch" />{{ t(particlesEnabled ? '关闭氛围粒子' : '开启氛围粒子') }}
+        </button>
       </div>
       <button v-if="user" class="account-menu-action account-menu-logout" type="button" :disabled="logoutBusy" @click="logout">
         <AppIcon name="logout" />{{ t(logoutBusy ? '正在退出…' : '退出登录') }}
