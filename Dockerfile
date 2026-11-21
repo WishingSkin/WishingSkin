@@ -8,7 +8,7 @@ COPY internal/httpapi/admin_event_labels.json /src/internal/httpapi/admin_event_
 COPY internal/httpapi/page_routes.json /src/internal/httpapi/page_routes.json
 RUN pnpm build
 
-FROM golang:1.26.10-alpine AS backend
+FROM golang:1.26.11-alpine AS backend
 WORKDIR /src
 COPY go.mod go.sum ./
 RUN go mod download
