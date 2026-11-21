@@ -14,8 +14,8 @@ import (
 	"time"
 	_ "time/tzdata"
 
-	"wishingskin/internal/backup"
-	localstorage "wishingskin/internal/storage"
+	"github.com/WishingSkin/WishingSkin/internal/backup"
+	localstorage "github.com/WishingSkin/WishingSkin/internal/storage"
 )
 
 type backupSchedule struct {

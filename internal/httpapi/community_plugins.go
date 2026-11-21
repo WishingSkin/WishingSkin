@@ -9,9 +9,9 @@ import (
 	"net/http"
 	"strings"
 	"unicode/utf8"
-	"wishingskin/internal/securebox"
-	"wishingskin/internal/store"
-	sdk "wishingskin/pkg/plugin"
+	"github.com/WishingSkin/WishingSkin/internal/securebox"
+	"github.com/WishingSkin/WishingSkin/internal/store"
+	sdk "github.com/WishingSkin/WishingSkin/pkg/plugin"
 )
 
 func pluginOrigin(id string) string {

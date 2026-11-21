@@ -12,7 +12,7 @@ import (
 	"strings"
 	"time"
 
-	"wishingskin/internal/securebox"
+	"github.com/WishingSkin/WishingSkin/internal/securebox"
 )
 
 type invitationOptions struct {

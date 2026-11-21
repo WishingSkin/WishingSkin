@@ -21,13 +21,13 @@ import (
 	"time"
 
 	"github.com/coreos/go-oidc/v3/oidc"
-	"wishingskin/internal/credential"
-	"wishingskin/internal/mailer"
-	pluginregistry "wishingskin/internal/plugins"
-	"wishingskin/internal/runtimeplugin"
-	"wishingskin/internal/store"
-	sdk "wishingskin/pkg/plugin"
-	blob "wishingskin/pkg/storage"
+	"github.com/WishingSkin/WishingSkin/internal/credential"
+	"github.com/WishingSkin/WishingSkin/internal/mailer"
+	pluginregistry "github.com/WishingSkin/WishingSkin/internal/plugins"
+	"github.com/WishingSkin/WishingSkin/internal/runtimeplugin"
+	"github.com/WishingSkin/WishingSkin/internal/store"
+	sdk "github.com/WishingSkin/WishingSkin/pkg/plugin"
+	blob "github.com/WishingSkin/WishingSkin/pkg/storage"
 )
 
 type Config struct {

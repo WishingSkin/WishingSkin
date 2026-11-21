@@ -21,7 +21,7 @@ import (
 	"strings"
 	"time"
 
-	"wishingskin/internal/defaultassets"
+	"github.com/WishingSkin/WishingSkin/internal/defaultassets"
 )
 
 var validHash = regexp.MustCompile(`^[a-f0-9]{32,128}$`)

@@ -6,7 +6,7 @@ import (
 	"context"
 	"encoding/json"
 	"net/http"
-	sdk "wishingskin/pkg/plugin"
+	sdk "github.com/WishingSkin/WishingSkin/pkg/plugin"
 )
 
 type Plugin struct{}

@@ -18,7 +18,7 @@ import (
 	"time"
 	"unicode/utf8"
 
-	"wishingskin/internal/credential"
+	"github.com/WishingSkin/WishingSkin/internal/credential"
 )
 
 var hashPattern = regexp.MustCompile(`^[0-9a-fA-F]{32,128}$`)

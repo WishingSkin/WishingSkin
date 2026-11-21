@@ -12,7 +12,7 @@ import (
 	"strings"
 	"testing"
 
-	"wishingskin/internal/securebox"
+	"github.com/WishingSkin/WishingSkin/internal/securebox"
 )
 
 func invitationFixtureItem(code string, id, usedBy int64, usedAt *string) InvitationCode {

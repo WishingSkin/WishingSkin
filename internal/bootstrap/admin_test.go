@@ -8,9 +8,9 @@ import (
 	"sync"
 	"testing"
 
-	"wishingskin/internal/bootstrap"
-	"wishingskin/internal/credential"
-	"wishingskin/internal/testutil"
+	"github.com/WishingSkin/WishingSkin/internal/bootstrap"
+	"github.com/WishingSkin/WishingSkin/internal/credential"
+	"github.com/WishingSkin/WishingSkin/internal/testutil"
 )
 
 func TestInitialAdministratorBothDatabases(t *testing.T) {

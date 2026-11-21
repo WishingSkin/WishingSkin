@@ -12,8 +12,8 @@ import (
 	"strings"
 	"sync"
 
-	"wishingskin/internal/securebox"
-	"wishingskin/internal/store"
+	"github.com/WishingSkin/WishingSkin/internal/securebox"
+	"github.com/WishingSkin/WishingSkin/internal/store"
 )
 
 var importMutex sync.Mutex

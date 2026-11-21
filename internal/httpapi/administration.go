@@ -11,7 +11,7 @@ import (
 	"strconv"
 	"strings"
 	"unicode/utf8"
-	"wishingskin/internal/store"
+	"github.com/WishingSkin/WishingSkin/internal/store"
 )
 
 func (a *Server) registerAdministration() {

@@ -8,7 +8,7 @@ import (
 	"testing"
 	"time"
 
-	"wishingskin/internal/testutil"
+	"github.com/WishingSkin/WishingSkin/internal/testutil"
 )
 
 func TestSessionQueryFailureStatus(t *testing.T) {

@@ -16,7 +16,7 @@ import (
 
 	"github.com/go-jose/go-jose/v4"
 	"golang.org/x/oauth2"
-	"wishingskin/internal/credential"
+	"github.com/WishingSkin/WishingSkin/internal/credential"
 )
 
 type oidcProviderFixture struct {

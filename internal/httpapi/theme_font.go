@@ -10,7 +10,7 @@ import (
 	"net/http"
 	"time"
 
-	"wishingskin/internal/store"
+	"github.com/WishingSkin/WishingSkin/internal/store"
 )
 
 const maxThemeFontBytes = 2 << 20

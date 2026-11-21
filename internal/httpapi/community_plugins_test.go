@@ -4,8 +4,8 @@ import (
 	"encoding/json"
 	"strings"
 	"testing"
-	"wishingskin/examples/plugins/greeting"
-	sdk "wishingskin/pkg/plugin"
+	"github.com/WishingSkin/WishingSkin/examples/plugins/greeting"
+	sdk "github.com/WishingSkin/WishingSkin/pkg/plugin"
 )
 
 func TestCommunityPluginsBothDatabases(t *testing.T) {

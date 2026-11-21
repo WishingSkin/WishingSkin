@@ -19,9 +19,9 @@ import (
 	"testing"
 	"time"
 
-	"wishingskin/internal/credential"
-	"wishingskin/internal/store"
-	"wishingskin/internal/testutil"
+	"github.com/WishingSkin/WishingSkin/internal/credential"
+	"github.com/WishingSkin/WishingSkin/internal/store"
+	"github.com/WishingSkin/WishingSkin/internal/testutil"
 )
 
 const ownerProfile = "11111111111141118111111111111111"

@@ -13,7 +13,7 @@ import (
 	"slices"
 	"strings"
 	"time"
-	"wishingskin/internal/runtimeplugin"
+	"github.com/WishingSkin/WishingSkin/internal/runtimeplugin"
 )
 
 var errPluginUpgradePending = errors.New("plugin upgrade pending")

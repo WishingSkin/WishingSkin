@@ -1,4 +1,4 @@
-module wishingskin
+module github.com/WishingSkin/WishingSkin
 
 go 1.26.11
 

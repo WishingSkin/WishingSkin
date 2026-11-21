@@ -19,7 +19,7 @@ import (
 	"sync"
 	"testing"
 
-	"wishingskin/internal/credential"
+	"github.com/WishingSkin/WishingSkin/internal/credential"
 )
 
 var fixtureKeyOnce sync.Once

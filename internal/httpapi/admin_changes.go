@@ -8,7 +8,7 @@ import (
 	"fmt"
 	"sort"
 	"strings"
-	"wishingskin/internal/store"
+	"github.com/WishingSkin/WishingSkin/internal/store"
 )
 
 func (a *Server) auditChange(ctx context.Context, field string, before, after any) {

@@ -13,7 +13,7 @@ import (
 	"regexp"
 	"strings"
 	"time"
-	"wishingskin/internal/store"
+	"github.com/WishingSkin/WishingSkin/internal/store"
 
 	mysql "github.com/go-sql-driver/mysql"
 	"golang.org/x/crypto/bcrypt"

@@ -16,8 +16,8 @@ import (
 	"strings"
 	"time"
 
-	localstorage "wishingskin/internal/storage"
-	"wishingskin/internal/store"
+	localstorage "github.com/WishingSkin/WishingSkin/internal/storage"
+	"github.com/WishingSkin/WishingSkin/internal/store"
 )
 
 const formatVersion = 1

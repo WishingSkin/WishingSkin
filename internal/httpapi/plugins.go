@@ -4,7 +4,7 @@ import (
 	"context"
 	"database/sql"
 	"net/http"
-	localstorage "wishingskin/internal/storage"
+	localstorage "github.com/WishingSkin/WishingSkin/internal/storage"
 )
 
 func (a *Server) registerPlugins() {

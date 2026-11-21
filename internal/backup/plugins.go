@@ -20,8 +20,8 @@ import (
 	"strings"
 	"unicode/utf8"
 
-	"wishingskin/internal/runtimeplugin"
-	"wishingskin/internal/store"
+	"github.com/WishingSkin/WishingSkin/internal/runtimeplugin"
+	"github.com/WishingSkin/WishingSkin/internal/store"
 )
 
 type PluginBundle struct {

@@ -6,7 +6,7 @@ import (
 	"os"
 	"strconv"
 	"strings"
-	"wishingskin/internal/mailer"
+	"github.com/WishingSkin/WishingSkin/internal/mailer"
 )
 
 type Config struct {

@@ -9,7 +9,7 @@ import (
 	"os"
 	"strings"
 
-	"wishingskin/internal/store"
+	"github.com/WishingSkin/WishingSkin/internal/store"
 )
 
 // Restore requires application writes stopped and a freshly migrated database.

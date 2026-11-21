@@ -13,7 +13,7 @@ import (
 	"regexp"
 	"strings"
 	"time"
-	blob "wishingskin/pkg/storage"
+	blob "github.com/WishingSkin/WishingSkin/pkg/storage"
 )
 
 type S3Options struct {

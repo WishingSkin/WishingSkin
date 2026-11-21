@@ -11,7 +11,7 @@ import (
 	"sync/atomic"
 	"testing"
 	"time"
-	sdk "wishingskin/pkg/plugin"
+	sdk "github.com/WishingSkin/WishingSkin/pkg/plugin"
 )
 
 type runtimeFixture struct{ calls *atomic.Int32 }

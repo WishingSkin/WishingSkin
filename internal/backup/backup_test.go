@@ -16,9 +16,9 @@ import (
 	"sync"
 	"testing"
 
-	"wishingskin/internal/bsmigration"
-	"wishingskin/internal/store"
-	"wishingskin/internal/testutil"
+	"github.com/WishingSkin/WishingSkin/internal/bsmigration"
+	"github.com/WishingSkin/WishingSkin/internal/store"
+	"github.com/WishingSkin/WishingSkin/internal/testutil"
 )
 
 var fixtureKey = sync.OnceValues(func() (string, error) {

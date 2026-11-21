@@ -9,8 +9,8 @@ import (
 	"strings"
 	"testing"
 	"time"
-	"wishingskin/internal/backup"
-	blob "wishingskin/pkg/storage"
+	"github.com/WishingSkin/WishingSkin/internal/backup"
+	blob "github.com/WishingSkin/WishingSkin/pkg/storage"
 )
 
 type inventoryOperationStore struct {

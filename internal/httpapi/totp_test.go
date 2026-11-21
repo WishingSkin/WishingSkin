@@ -10,7 +10,7 @@ import (
 	"strings"
 	"testing"
 	"time"
-	"wishingskin/internal/credential"
+	"github.com/WishingSkin/WishingSkin/internal/credential"
 )
 
 func TestTOTPReferenceVectors(t *testing.T) {

@@ -1,6 +1,6 @@
 package plugins
 
-import sdk "wishingskin/pkg/plugin"
+import sdk "github.com/WishingSkin/WishingSkin/pkg/plugin"
 
 type Manifest = sdk.Manifest
 type PageContribution = sdk.PageContribution

@@ -5,7 +5,7 @@ import (
 	"strings"
 	"testing"
 
-	"wishingskin/internal/mailer"
+	"github.com/WishingSkin/WishingSkin/internal/mailer"
 )
 
 func TestMailTemplateSettingsBothDatabases(t *testing.T) {

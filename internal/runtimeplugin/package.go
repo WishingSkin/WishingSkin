@@ -16,7 +16,7 @@ import (
 	"runtime"
 	"slices"
 	"strings"
-	sdk "wishingskin/pkg/plugin"
+	sdk "github.com/WishingSkin/WishingSkin/pkg/plugin"
 )
 
 const MaxPackage = 128 << 20

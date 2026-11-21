@@ -13,8 +13,8 @@ import (
 	"strings"
 	"sync"
 	"time"
-	"wishingskin/internal/runtimeplugin"
-	sdk "wishingskin/pkg/plugin"
+	"github.com/WishingSkin/WishingSkin/internal/runtimeplugin"
+	sdk "github.com/WishingSkin/WishingSkin/pkg/plugin"
 )
 
 func (a *Server) dynamicLock(id string) *sync.Mutex {

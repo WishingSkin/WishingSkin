@@ -9,8 +9,8 @@ import (
 	"testing"
 	"time"
 
-	"wishingskin/internal/credential"
-	"wishingskin/internal/securebox"
+	"github.com/WishingSkin/WishingSkin/internal/credential"
+	"github.com/WishingSkin/WishingSkin/internal/securebox"
 )
 
 // Secret-bearing responses must never be included in failure output.

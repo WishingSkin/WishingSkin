@@ -8,7 +8,7 @@ import (
 	"strings"
 	"testing"
 
-	sdk "wishingskin/pkg/plugin"
+	sdk "github.com/WishingSkin/WishingSkin/pkg/plugin"
 )
 
 type communityFixture struct{ events *int }

@@ -9,7 +9,7 @@ import (
 	"net/url"
 	"strings"
 	"time"
-	"wishingskin/internal/runtimeplugin"
+	"github.com/WishingSkin/WishingSkin/internal/runtimeplugin"
 )
 
 type marketEntry struct {

@@ -23,8 +23,8 @@ import (
 	"sync/atomic"
 	"time"
 
-	"wishingskin/internal/bsmigration"
-	"wishingskin/internal/credential"
+	"github.com/WishingSkin/WishingSkin/internal/bsmigration"
+	"github.com/WishingSkin/WishingSkin/internal/credential"
 )
 
 func main() {

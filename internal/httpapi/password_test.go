@@ -11,7 +11,7 @@ import (
 	"testing"
 	"time"
 
-	"wishingskin/internal/credential"
+	"github.com/WishingSkin/WishingSkin/internal/credential"
 )
 
 func seedPassword(t *testing.T, f *managementApp, id int, password string) {

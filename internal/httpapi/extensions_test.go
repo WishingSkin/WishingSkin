@@ -20,8 +20,8 @@ import (
 	"sync/atomic"
 	"testing"
 	"time"
-	rp "wishingskin/internal/runtimeplugin"
-	sdk "wishingskin/pkg/plugin"
+	rp "github.com/WishingSkin/WishingSkin/internal/runtimeplugin"
+	sdk "github.com/WishingSkin/WishingSkin/pkg/plugin"
 )
 
 func TestPluginPackagesAndWebhooksBothDatabases(t *testing.T) {

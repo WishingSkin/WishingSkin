@@ -20,7 +20,7 @@ import (
 	"strings"
 	"time"
 
-	"wishingskin/internal/store"
+	"github.com/WishingSkin/WishingSkin/internal/store"
 )
 
 const (

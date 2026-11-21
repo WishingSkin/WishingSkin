@@ -12,7 +12,7 @@ import (
 	"net/url"
 	"strconv"
 	"strings"
-	"wishingskin/internal/securebox"
+	"github.com/WishingSkin/WishingSkin/internal/securebox"
 )
 
 func (a *Server) totpRequest(w http.ResponseWriter, r *http.Request) (User, string, bool) {

@@ -11,7 +11,7 @@ import (
 	"time"
 
 	"github.com/go-sql-driver/mysql"
-	"wishingskin/internal/store"
+	"github.com/WishingSkin/WishingSkin/internal/store"
 )
 
 func Database(t *testing.T, dialect string) *store.Store {

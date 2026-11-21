@@ -13,7 +13,7 @@ import (
 	"sync"
 	"time"
 	"unicode/utf8"
-	sdk "wishingskin/pkg/plugin"
+	sdk "github.com/WishingSkin/WishingSkin/pkg/plugin"
 )
 
 type registeredTask struct {

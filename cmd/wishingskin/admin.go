@@ -8,8 +8,8 @@ import (
 	"os"
 
 	"golang.org/x/term"
-	"wishingskin/internal/bootstrap"
-	"wishingskin/internal/store"
+	"github.com/WishingSkin/WishingSkin/internal/bootstrap"
+	"github.com/WishingSkin/WishingSkin/internal/store"
 )
 
 func createAdmin(ctx context.Context, s *store.Store) error {

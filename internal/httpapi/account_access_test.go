@@ -11,9 +11,9 @@ import (
 	"testing"
 	"time"
 
-	"wishingskin/internal/bootstrap"
-	"wishingskin/internal/testutil"
-	"wishingskin/internal/turnstile"
+	"github.com/WishingSkin/WishingSkin/internal/bootstrap"
+	"github.com/WishingSkin/WishingSkin/internal/testutil"
+	"github.com/WishingSkin/WishingSkin/internal/turnstile"
 )
 
 type capturedMail struct{ To, Purpose, Link string }

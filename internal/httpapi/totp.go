@@ -15,7 +15,7 @@ import (
 	"strings"
 	"time"
 
-	"wishingskin/internal/securebox"
+	"github.com/WishingSkin/WishingSkin/internal/securebox"
 )
 
 const totpPurpose = "wishingskin:totp:v1"

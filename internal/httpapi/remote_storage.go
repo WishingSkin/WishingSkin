@@ -6,7 +6,7 @@ import (
 	"net/http"
 	"strings"
 	"time"
-	blob "wishingskin/pkg/storage"
+	blob "github.com/WishingSkin/WishingSkin/pkg/storage"
 )
 
 func (a *Server) remoteOrphanPreview(w http.ResponseWriter, r *http.Request) {

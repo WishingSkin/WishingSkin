@@ -13,7 +13,7 @@ import (
 	"path/filepath"
 	"strings"
 
-	"wishingskin/internal/bsmigration"
+	"github.com/WishingSkin/WishingSkin/internal/bsmigration"
 )
 
 func main() {

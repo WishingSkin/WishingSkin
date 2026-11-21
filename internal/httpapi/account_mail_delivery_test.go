@@ -13,7 +13,7 @@ import (
 	"testing"
 	"time"
 
-	"wishingskin/internal/mailer"
+	"github.com/WishingSkin/WishingSkin/internal/mailer"
 )
 
 func accountSMTPFixture(t *testing.T) (string, <-chan string) {

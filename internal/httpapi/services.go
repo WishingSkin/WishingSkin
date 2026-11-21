@@ -14,9 +14,9 @@ import (
 	"net/url"
 	"strings"
 
-	"wishingskin/internal/mailer"
-	"wishingskin/internal/store"
-	"wishingskin/internal/turnstile"
+	"github.com/WishingSkin/WishingSkin/internal/mailer"
+	"github.com/WishingSkin/WishingSkin/internal/store"
+	"github.com/WishingSkin/WishingSkin/internal/turnstile"
 )
 
 type serviceSettings struct {

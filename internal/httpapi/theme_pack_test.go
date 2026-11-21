@@ -17,8 +17,8 @@ import (
 	"path/filepath"
 	"testing"
 
-	"wishingskin/internal/backup"
-	"wishingskin/internal/testutil"
+	"github.com/WishingSkin/WishingSkin/internal/backup"
+	"github.com/WishingSkin/WishingSkin/internal/testutil"
 )
 
 func TestThemePacksBothDatabases(t *testing.T) {

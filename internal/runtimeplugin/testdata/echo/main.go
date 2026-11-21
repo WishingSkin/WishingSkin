@@ -5,7 +5,7 @@ import (
 	"encoding/json"
 	"os"
 	"time"
-	sdk "wishingskin/pkg/plugin"
+	sdk "github.com/WishingSkin/WishingSkin/pkg/plugin"
 )
 
 func main() {

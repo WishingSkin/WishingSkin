@@ -15,13 +15,13 @@ import (
 	"syscall"
 	"time"
 
-	"wishingskin/internal/backup"
-	"wishingskin/internal/bsmigration"
-	"wishingskin/internal/config"
-	"wishingskin/internal/httpapi"
-	"wishingskin/internal/store"
-	"wishingskin/internal/turnstile"
-	"wishingskin/web"
+	"github.com/WishingSkin/WishingSkin/internal/backup"
+	"github.com/WishingSkin/WishingSkin/internal/bsmigration"
+	"github.com/WishingSkin/WishingSkin/internal/config"
+	"github.com/WishingSkin/WishingSkin/internal/httpapi"
+	"github.com/WishingSkin/WishingSkin/internal/store"
+	"github.com/WishingSkin/WishingSkin/internal/turnstile"
+	"github.com/WishingSkin/WishingSkin/web"
 )
 
 // Overridable at release build time via -ldflags "-X main.buildVersion=1.0.0".

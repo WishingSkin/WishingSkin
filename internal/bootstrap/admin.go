@@ -12,8 +12,8 @@ import (
 	"strings"
 	"unicode/utf8"
 
-	"wishingskin/internal/credential"
-	"wishingskin/internal/store"
+	"github.com/WishingSkin/WishingSkin/internal/credential"
+	"github.com/WishingSkin/WishingSkin/internal/store"
 )
 
 var ErrNotEmpty = errors.New("站点已配置或已有账号/迁移记录，不能初始化首个管理员；不会提升或覆盖原账号")

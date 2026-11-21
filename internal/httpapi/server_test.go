@@ -21,8 +21,8 @@ import (
 	"testing/fstest"
 	"time"
 
-	"wishingskin/internal/bsmigration"
-	"wishingskin/internal/testutil"
+	"github.com/WishingSkin/WishingSkin/internal/bsmigration"
+	"github.com/WishingSkin/WishingSkin/internal/testutil"
 )
 
 func TestLimiterExpiryAndAddressBoundary(t *testing.T) {

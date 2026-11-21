@@ -11,7 +11,7 @@ import (
 	"path/filepath"
 	"regexp"
 	"sort"
-	"wishingskin/internal/backup"
+	"github.com/WishingSkin/WishingSkin/internal/backup"
 )
 
 var managedBackupName = regexp.MustCompile(`^wishingskin-backup-[0-9]{8}T[0-9]{6}Z-[a-f0-9]{8}$`)

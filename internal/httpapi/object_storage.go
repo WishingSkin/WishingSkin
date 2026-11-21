@@ -8,10 +8,10 @@ import (
 	"io"
 	"net/http"
 	"time"
-	"wishingskin/internal/securebox"
-	localstorage "wishingskin/internal/storage"
-	"wishingskin/internal/store"
-	blob "wishingskin/pkg/storage"
+	"github.com/WishingSkin/WishingSkin/internal/securebox"
+	localstorage "github.com/WishingSkin/WishingSkin/internal/storage"
+	"github.com/WishingSkin/WishingSkin/internal/store"
+	blob "github.com/WishingSkin/WishingSkin/pkg/storage"
 )
 
 func (a *Server) objectStorageSettings(ctx context.Context) (localstorage.S3Options, string, error) {

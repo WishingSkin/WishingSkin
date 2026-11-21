@@ -9,7 +9,7 @@ import (
 	"strings"
 	"time"
 
-	"wishingskin/internal/credential"
+	"github.com/WishingSkin/WishingSkin/internal/credential"
 )
 
 // Serialize credential issuance with password changes and compare the exact

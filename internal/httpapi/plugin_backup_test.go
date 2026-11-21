@@ -11,9 +11,9 @@ import (
 	"os"
 	"path/filepath"
 	"testing"
-	"wishingskin/internal/backup"
-	rp "wishingskin/internal/runtimeplugin"
-	"wishingskin/internal/testutil"
+	"github.com/WishingSkin/WishingSkin/internal/backup"
+	rp "github.com/WishingSkin/WishingSkin/internal/runtimeplugin"
+	"github.com/WishingSkin/WishingSkin/internal/testutil"
 )
 
 // Restore executable packages and their SQL/KV data into an independent empty

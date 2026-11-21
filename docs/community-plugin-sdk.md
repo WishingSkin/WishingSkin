@@ -11,8 +11,8 @@ WishingSkin 支持两种社区插件形态：随主程序编译的 **Go 源码�
 
 ```go
 import (
-    "wishingskin/examples/plugins/greeting"
-    sdk "wishingskin/pkg/plugin"
+    "github.com/WishingSkin/WishingSkin/examples/plugins/greeting"
+    sdk "github.com/WishingSkin/WishingSkin/pkg/plugin"
 )
 
 func communityPlugins() []sdk.Plugin {

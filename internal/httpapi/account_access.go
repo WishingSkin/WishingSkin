@@ -12,8 +12,8 @@ import (
 	"time"
 	"unicode/utf8"
 
-	"wishingskin/internal/credential"
-	"wishingskin/internal/turnstile"
+	"github.com/WishingSkin/WishingSkin/internal/credential"
+	"github.com/WishingSkin/WishingSkin/internal/turnstile"
 )
 
 type MailSender interface {

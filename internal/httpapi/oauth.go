@@ -16,7 +16,7 @@ import (
 	"strconv"
 	"strings"
 	"time"
-	"wishingskin/internal/store"
+	"github.com/WishingSkin/WishingSkin/internal/store"
 )
 
 type oauthClient struct {

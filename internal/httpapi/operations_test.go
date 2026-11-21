@@ -14,7 +14,7 @@ import (
 	"sync"
 	"testing"
 	"time"
-	"wishingskin/internal/backup"
+	"github.com/WishingSkin/WishingSkin/internal/backup"
 )
 
 type operationStore struct {

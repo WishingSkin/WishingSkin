@@ -4,7 +4,7 @@ import (
 	"context"
 	"net/http"
 
-	"wishingskin/internal/mailer"
+	"github.com/WishingSkin/WishingSkin/internal/mailer"
 )
 
 // Load appearance only when sending, not on every site/challenge configuration read.

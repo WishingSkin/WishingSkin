@@ -14,8 +14,8 @@ import (
 	"strconv"
 	"strings"
 	"time"
-	"wishingskin/internal/securebox"
-	sdk "wishingskin/pkg/plugin"
+	"github.com/WishingSkin/WishingSkin/internal/securebox"
+	sdk "github.com/WishingSkin/WishingSkin/pkg/plugin"
 )
 
 var extensionEvents = []string{"character.create", "texture.upload"}

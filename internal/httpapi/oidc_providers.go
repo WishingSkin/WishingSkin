@@ -6,7 +6,7 @@ import (
 	"regexp"
 	"strings"
 	"unicode/utf8"
-	"wishingskin/internal/store"
+	"github.com/WishingSkin/WishingSkin/internal/store"
 )
 
 var providerIDPattern = regexp.MustCompile(`^[a-z][a-z0-9-]{0,31}$`)
