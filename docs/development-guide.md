@@ -66,6 +66,24 @@ go run ./testdata/bs/generate.go artifacts/generated-bs-fixture
 - **筛选与管理记录**：公开库、我的材质和衣柜共用 `ResourceFilters`。管理记录的中英文标签共用 `internal/httpapi/admin_event_labels.json`，支持关键词与 `#编号` 搜索，列表和 CSV 导出复用同一筛选逻辑。
 - **社区插件**：接口与运行契约见[社区插件 SDK](community-plugin-sdk.md)，插件应只通过宿主公开接口交互，不直接读写核心业务表。
 
+## 版本号与发布约定
+
+WishingSkin 采用通用语义化版本（[Semantic Versioning 2.0.0](https://semver.org/)），Git Tag 统一以 `v` 为前缀（首个公开版本为 `v0.1.0`）：
+
+- **`v0.x.y`（公测与演进阶段）**：
+  - `x`（次版本号，如 `v0.1.0` → `v0.2.0`）：新增功能模块、数据库 schema 升级、插件协议或配置项扩展。
+  - `y`（修订号，如 `v0.1.0` → `v0.1.1`）：向后兼容的缺陷修复、安全补丁、文案与样式微调（通常不引入 schema 变更）。
+- **`v1.0.0` 及以上（稳定阶段）**：
+  - 主版本号 `MAJOR`：不兼容的配置、协议或插件 SDK 变更。
+  - 次版本号 `MINOR`：向后兼容的新增功能与正向 schema 迁移。
+  - 修订号 `PATCH`：向后兼容的缺陷与安全修复。
+- **预发布版本**：如需在正式版前验证，使用 `-rc.1`、`-beta.1` 等后缀（例如 `v0.2.0-rc.1`）；本地开发构建默认显示 `0.1.0-dev`。
+- **注入构建版本号**：发布编译时通过 `-ldflags` 注入 `main.buildVersion`（不带 `v` 前缀，例如 `0.1.0`），供 Yggdrasil `implementationVersion` 等接口输出：
+
+```powershell
+go build -trimpath -ldflags "-s -w -X main.buildVersion=0.1.0" -o bin/wishingskin.exe ./cmd/wishingskin
+```
+
 ## 提交范围
 
 版本库只提交源代码、必要合成测试夹具、用户手册、架构与接口文档。构建产物、浏览器截图、真实运营数据、凭据密钥、个人工具配置与临时验收日志留在本地并保持 Git 忽略。引入新第三方依赖或字体时，须同步核对锁文件与[第三方声明](../THIRD_PARTY_NOTICES.md)。
