@@ -14,7 +14,7 @@
 
 ---
 
-WishingSkin 是一个面向自托管服主与社区的开源 Minecraft 皮肤站。单个二进制文件即可提供网页端、皮肤与披风管理、Yggdrasil（authlib-injector）认证、CustomSkinLoader 兼容接口、官方/社区插件运行以及完整的备份恢复工具，支持 MySQL 8 与 PostgreSQL（当前数据库 schema 21）。
+WishingSkin 是一个面向自托管服主与社区的开源 Minecraft 皮肤站。单个二进制文件即可提供网页端、皮肤与披风管理、Yggdrasil（authlib-injector）认证、CustomSkinLoader 兼容接口、官方/社区插件运行以及完整的备份恢复工具，支持 MySQL 8 与 PostgreSQL（当前数据库 schema 24）。
 
 ## 核心特性
 
@@ -46,7 +46,7 @@ docker compose --env-file .env -f deploy/compose.postgres.yaml up -d app
 
 ### 从源码构建
 
-需要 Go 1.26.10、Node.js 24.19.0、pnpm 11.24.0 以及已创建的 PostgreSQL 或 MySQL 数据库。前端构建与 Go 编译需串行执行：
+需要 Go 1.26.11、Node.js 24.19.0、pnpm 11.24.0 以及已创建的 PostgreSQL 或 MySQL 数据库。前端构建与 Go 编译需串行执行：
 
 ```powershell
 pnpm --dir web install --frozen-lockfile

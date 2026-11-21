@@ -81,7 +81,7 @@ go build -trimpath -o bin/wishingskin.exe ./cmd/wishingskin
 
 - **运行时协议**：使用 `plugin.ServeRuntime` 持续接收 JSON lines 请求并输出结果（日志写 `stderr`）。`health` 由 SDK 自动处理，其余按 `RuntimeRequest.Kind` 分派并返回 `RuntimeResponse`（`status` 200–599，路由不允许 3xx；任务与事件应返回 2xx）。单次调用超时 30 秒（事件 5 秒），超时会终止子进程并在下次调用时拉起。
 - **权限声明**：可选 `routes.public`、`routes.user`、`routes.admin`、`events`、`pages`、`tasks`、`frontend`、`database`、`webhooks`，实际提供的能力须与声明匹配。依赖不能成环。
-- **目录与热重载**：包存放在 `WS_PLUGIN_DIR`（默认 `<WS_TEXTURE_DIR>/.plugins`）。支持后台免重启重载、升级与卸载（卸载保留数据与已应用迁移，升级保留旧包）。多实例部署应共享包目录与数据库，变更包时先保留单个实例操作，完成后再重启其余实例。
+- **目录与热重载**：包存放在 `WS_PLUGIN_DIR`（默认 `<WS_TEXTURE_DIR>/.plugins`）。支持后台免重启重载、升级与卸载（卸载保留数据与已应用迁移，升级保留旧包）。后台提示升级未完成时，重新上传同一个 ZIP 即可继续。多实例部署应共享包目录与数据库，变更包时先保留单个实例操作，完成后再重启其余实例。
 
 ### 动态插件 KV 数据与 SQL 迁移
 

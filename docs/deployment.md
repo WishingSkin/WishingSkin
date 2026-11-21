@@ -1,6 +1,6 @@
 # 生产自部署手册
 
-当前版本使用数据库 schema 21。部署前请先为数据库、材质目录、插件目录、备份目录以及 32 字节设置密钥规划好持久化存储。全部环境变量与命令行参数见[配置与 CLI 参考](configuration.md)。
+当前版本使用数据库 schema 24。部署前请先为数据库、材质目录、插件目录、备份目录以及 32 字节设置密钥规划好持久化存储。全部环境变量与命令行参数见[配置与 CLI 参考](configuration.md)。
 
 ## 部署前的网络与存储边界
 
@@ -37,7 +37,7 @@ docker compose --env-file .env -f deploy/compose.postgres.yaml up -d app
 
 ## 方式二：原生二进制部署
 
-构建环境需与 `Dockerfile` 保持一致（Go 1.26.10、Node.js 24.19.0、pnpm 11.24.0）。先构建前端 `web/dist`，再编译 Go 程序：
+构建环境需与 `Dockerfile` 保持一致（Go 1.26.11、Node.js 24.19.0、pnpm 11.24.0）。先构建前端 `web/dist`，再编译 Go 程序：
 
 ```powershell
 pnpm --dir web install --frozen-lockfile
@@ -78,5 +78,5 @@ Invoke-WebRequest https://skin.example.com/readyz
 
 ## 日常维护
 
-- 在后台“存储与备份”可按指定时区每日定时备份（目标目录须已存在且独立于材质目录）。保留份数设为 `0` 表示全部保留；设为正整数后，每次备份成功会自动清理超出份数且校验完整的程序备份，不影响手动 CLI 备份和不完整目录。
+- 在后台“存储与备份”可按指定时区每日定时备份（目标目录须已存在且独立于材质目录）。保留份数和自动清理规则见[备份与恢复](backup-restore.md)。
 - 手动 CLI 备份、隔离恢复和版本升级必须先停写，操作步骤见[备份与恢复](backup-restore.md)与[升级、回退与恢复手册](upgrade-runbook.md)。

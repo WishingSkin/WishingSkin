@@ -2,7 +2,7 @@
 
 ## 环境与构建
 
-本地开发使用与 `Dockerfile` 一致的工具版本：Go 1.26.10、Node.js 24.19.0、pnpm 11.24.0，以及 MySQL 8 或 PostgreSQL。
+本地开发使用与 `Dockerfile` 一致的工具版本：Go 1.26.11、Node.js 24.19.0、pnpm 11.24.0，以及 MySQL 8 或 PostgreSQL。
 
 在仓库根目录执行构建：
 

@@ -4,7 +4,7 @@
 
 ## 范围
 
-应用依赖依据 `go.mod`、`go.sum`、`web/package.json` 和 `web/pnpm-lock.yaml` 列出。Go 部分包含35个外部模块及 Go 1.26.10 标准库的许可和附加来源声明；模块归档可通过表中的源码地址或 `go mod download` 获取，并用 `go.sum` 校验。
+应用依赖依据 `go.mod`、`go.sum`、`web/package.json` 和 `web/pnpm-lock.yaml` 列出。Go 部分包含35个外部模块及 Go 1.26.11 标准库的许可和附加来源声明；模块归档可通过表中的源码地址或 `go mod download` 获取，并用 `go.sum` 校验。
 
 浏览器使用 Vue 预编译组件，以及通过动态导入加载的 skinview3d、skinview-utils 和 three。编译器、构建工具和类型定义另列清单。模块内附加许可也予以保留，不按链接器是否留下具体函数删减声明。
 
@@ -28,7 +28,7 @@
 | github.com/aymerick/douceur | v0.2.0 | MIT | https://github.com/aymerick/douceur/tree/v0.2.0 |
 | github.com/gorilla/css | v1.0.1 | BSD-3-Clause | https://github.com/gorilla/css/tree/v1.0.1 |
 | github.com/microcosm-cc/bluemonday | v1.0.27 | BSD-3-Clause | https://github.com/microcosm-cc/bluemonday/tree/v1.0.27 |
-| github.com/yuin/goldmark | v1.7.13 | MIT | https://github.com/yuin/goldmark/tree/v1.7.13 |
+| github.com/yuin/goldmark | v1.7.17 | MIT | https://github.com/yuin/goldmark/tree/v1.7.17 |
 | golang.org/x/net | v0.60.0 | BSD-3-Clause + PATENTS | https://go.googlesource.com/net/+/refs/tags/v0.60.0 |
 | github.com/coreos/go-oidc/v3 | v3.21.0 | Apache-2.0 | https://github.com/coreos/go-oidc/tree/v3.21.0 |
 | github.com/go-jose/go-jose/v4 | v4.1.4 | Apache-2.0 | https://github.com/go-jose/go-jose/tree/v4.1.4 |
@@ -49,7 +49,7 @@
 | github.com/zeebo/xxh3 | v1.1.0 | BSD-2-Clause | https://proxy.golang.org/github.com/zeebo/xxh3/@v/v1.1.0.zip |
 | go.yaml.in/yaml/v3 | v3.0.5 | MIT + Apache-2.0 | https://proxy.golang.org/go.yaml.in/yaml/v3/@v/v3.0.5.zip |
 | gopkg.in/ini.v1 | v1.67.3 | Apache-2.0 | https://proxy.golang.org/gopkg.in/ini.v1/@v/v1.67.3.zip |
-| Go 标准库与运行时 | go1.26.10 | BSD-3-Clause；附下列来源声明 | https://go.googlesource.com/go/+/refs/tags/go1.26.10 |
+| Go 标准库与运行时 | go1.26.11 | BSD-3-Clause；附下列来源声明 | https://go.googlesource.com/go/+/refs/tags/go1.26.11 |
 
 这些模块的完整发布源码也可通过 `go mod download <模块>@<版本>` 取得，并用项目 `go.sum` 校验下载内容。Go 发布源码可从 https://go.dev/dl/ 取得。
 
@@ -261,7 +261,7 @@ published by Morgan Kaufmann Publishers, (c) 2005 Elsevier Inc.,
 under the accompanying license; see chapter 5.1.5 for detailed explanation.
 ```
 
-### Go 1.26.10、golang.org/x/crypto、x/sync、x/sys、x/term、x/text — LICENSE
+### Go 1.26.11、golang.org/x/crypto、x/sync、x/sys、x/term、x/text — LICENSE
 
 ```text
 Copyright 2009 The Go Authors.
@@ -1069,7 +1069,7 @@ OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE USE
 OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 ```
 
-### github.com/yuin/goldmark v1.7.13 — LICENSE
+### github.com/yuin/goldmark v1.7.17 — LICENSE
 
 ```text
 MIT License
