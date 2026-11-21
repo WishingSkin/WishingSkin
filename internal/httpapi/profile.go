@@ -146,7 +146,7 @@ func (a *Server) avatar(w http.ResponseWriter, r *http.Request) {
 	}
 	if mode == "character" {
 		var hash string
-		err = a.s.DB.QueryRowContext(r.Context(), a.s.Bind("SELECT c.skin_hash FROM characters c JOIN textures t ON t.hash=c.skin_hash WHERE c.user_id=? AND c.uuid=? AND t.deleted=FALSE"), id, character).Scan(&hash)
+		err = a.s.DB.QueryRowContext(r.Context(), a.s.Bind("SELECT c.skin_hash FROM characters c JOIN textures f ON f.hash=c.skin_hash WHERE c.user_id=? AND c.uuid=? AND "+downloadableTextureSQL), id, character).Scan(&hash)
 		if err != nil && !errors.Is(err, sql.ErrNoRows) {
 			failure(w, 503, "头像暂不可用")
 			return

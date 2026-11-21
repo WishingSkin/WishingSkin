@@ -75,21 +75,32 @@ func (h *communityHost) Handle(route sdk.Route) error {
 	return nil
 }
 func (a *Server) communityEnabled(ctx context.Context, id string) (bool, error) {
-	return a.communityDependencyEnabled(ctx, id, map[string]bool{})
+	return a.readCommunityEnabled(ctx, a.s.DB, id)
 }
-func (a *Server) communityDependencyEnabled(ctx context.Context, id string, visiting map[string]bool) (bool, error) {
+func (a *Server) readCommunityEnabled(ctx context.Context, reader settingReader, id string) (bool, error) {
+	return a.communityDependencyEnabled(ctx, reader, id, map[string]bool{})
+}
+func (a *Server) communityDependencyEnabled(ctx context.Context, reader settingReader, id string, visiting map[string]bool) (bool, error) {
 	state, ok := a.plugins.State(id)
 	if !ok || !state.Enabled || state.Error != "" || visiting[id] {
 		return false, nil
 	}
-	enabled, err := a.storedPluginEnabled(ctx, id)
+	enabled, err := a.readPluginEnabled(ctx, reader, id)
 	if err != nil || !enabled {
 		return enabled, err
+	}
+	if a.dynamic != nil {
+		if item, exists := a.dynamic.Get(id); exists {
+			state, err := a.dynamicCheckpoint(ctx, reader, id)
+			if err != nil || state.Pending || state.Digest != "" && state.Digest != item.Digest {
+				return false, err
+			}
+		}
 	}
 	visiting[id] = true
 	defer delete(visiting, id)
 	for _, dep := range state.Manifest.Dependencies {
-		on, err := a.communityDependencyEnabled(ctx, dep, visiting)
+		on, err := a.communityDependencyEnabled(ctx, reader, dep, visiting)
 		if err != nil || !on {
 			return false, err
 		}
@@ -138,8 +149,11 @@ func (a *Server) publishPluginEvent(ctx context.Context, name string, userID int
 	_ = a.queueExtensionEvent(ctx, event)
 }
 func (a *Server) readCommunitySettings(ctx context.Context, id string) (map[string]any, error) {
+	return a.readCommunitySettingsFrom(ctx, a.s.DB, id)
+}
+func (a *Server) readCommunitySettingsFrom(ctx context.Context, reader settingReader, id string) (map[string]any, error) {
 	var raw string
-	err := a.s.DB.QueryRowContext(ctx, a.s.Bind("SELECT settings_json FROM plugins WHERE plugin_id=?"), id).Scan(&raw)
+	err := reader.QueryRowContext(ctx, a.s.Bind("SELECT settings_json FROM plugins WHERE plugin_id=?"), id).Scan(&raw)
 	if errors.Is(err, sql.ErrNoRows) || raw == "{}" {
 		return map[string]any{}, nil
 	}

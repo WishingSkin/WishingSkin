@@ -147,7 +147,7 @@ func (a *Server) marketPackage(r *http.Request) ([]byte, error) {
 				return nil, errors.New("checksum mismatch")
 			}
 			pkg, err := runtimeplugin.Inspect(data)
-			if err != nil || pkg.Manifest.ID != entry.ID || pkg.Manifest.Version != entry.Version {
+			if err != nil || pkg.ValidateRoutePaths() != nil || pkg.Manifest.ID != entry.ID || pkg.Manifest.Version != entry.Version {
 				return nil, errors.New("catalog manifest mismatch")
 			}
 			return data, nil
@@ -183,7 +183,7 @@ func (a *Server) installMarketEntry(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	if err = a.activatePackage(r.Context(), data, grants); err != nil {
-		failure(w, 409, "插件安装失败，请检查依赖、迁移和运行协议")
+		pluginActivationError(w, err)
 		return
 	}
 	pkg, _ := runtimeplugin.Inspect(data)

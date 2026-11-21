@@ -57,13 +57,29 @@ func (a *Server) adminPlugins(w http.ResponseWriter, r *http.Request) {
 			failure(w, 503, "暂时无法读取插件状态")
 			return
 		}
-		items = append(items, map[string]any{
+		item := map[string]any{
 			"name": state.Manifest.Name, "description": state.Manifest.Description, "settings": state.Manifest.Settings, "origin": pluginOrigin(state.Manifest.ID), "id": state.Manifest.ID, "version": state.Manifest.Version, "dependencies": state.Manifest.Dependencies,
 			"settingsNamespace": state.Manifest.SettingsNamespace, "migrationVersion": state.Manifest.MigrationVersion,
 			"routes": state.Manifest.Routes, "capabilities": state.Manifest.Capabilities, "events": state.Manifest.Events,
 			"pages": state.Manifest.Pages, "tasks": state.Manifest.Tasks, "permissions": state.Manifest.Permissions,
 			"enabled": enabled && state.Enabled, "error": state.Error,
-		})
+		}
+		if installed, exists := a.dynamic.Get(state.Manifest.ID); exists {
+			checkpoint, err := a.dynamicCheckpoint(r.Context(), a.s.DB, state.Manifest.ID)
+			if err != nil {
+				failure(w, 503, "暂时无法读取插件状态")
+				return
+			}
+			if checkpoint.Pending {
+				item["enabled"] = false
+				item["recoveryRequired"] = true
+			}
+			if !checkpoint.Pending && checkpoint.Digest != "" && checkpoint.Digest != installed.Digest {
+				item["enabled"] = false
+				item["staleRuntime"] = true
+			}
+		}
+		items = append(items, item)
 	}
 	respond(w, 200, map[string]any{"plugins": items})
 }
@@ -73,7 +89,8 @@ func (a *Server) updatePlugin(w http.ResponseWriter, r *http.Request) {
 	if !ok {
 		return
 	}
-	state, exists := a.plugins.State(r.PathValue("id"))
+	id := r.PathValue("id")
+	state, exists := a.plugins.State(id)
 	if !exists {
 		failure(w, 404, "插件不存在")
 		return
@@ -84,6 +101,31 @@ func (a *Server) updatePlugin(w http.ResponseWriter, r *http.Request) {
 	if !decode(w, r, &body) || body.Enabled == nil {
 		failure(w, 400, "插件状态无效")
 		return
+	}
+	if _, dynamic := a.dynamic.Get(id); dynamic {
+		lock := a.dynamicLock(id)
+		lock.Lock()
+		defer lock.Unlock()
+		var stillInstalled bool
+		state, stillInstalled = a.plugins.State(id)
+		if !stillInstalled {
+			failure(w, 404, "插件不存在")
+			return
+		}
+		checkpoint, err := a.dynamicCheckpoint(r.Context(), a.s.DB, id)
+		if err != nil {
+			failure(w, 503, "暂时无法读取插件状态")
+			return
+		}
+		if checkpoint.Pending {
+			pluginRecoveryResponse(w, "插件状态保存失败")
+			return
+		}
+		item, installed := a.dynamic.Get(id)
+		if !installed || checkpoint.Digest != "" && checkpoint.Digest != item.Digest {
+			respond(w, 409, map[string]any{"error": "插件状态保存失败", "staleRuntime": true})
+			return
+		}
 	}
 	if state.Error != "" && *body.Enabled {
 		failure(w, 409, "插件依赖尚未满足")

@@ -2,6 +2,7 @@ package httpapi
 
 import (
 	"context"
+	"database/sql"
 	"encoding/json"
 	"errors"
 	"io"
@@ -20,6 +21,7 @@ func (a *Server) dynamicLock(id string) *sync.Mutex {
 	lock, _ := a.dynamicCalls.LoadOrStore(id, &sync.Mutex{})
 	return lock.(*sync.Mutex)
 }
+
 func (a *Server) unregisterDynamicContributions(id string) {
 	rt := &a.communityRuntime
 	rt.mu.Lock()
@@ -68,26 +70,45 @@ func (a *Server) callDynamic(ctx context.Context, id string, request sdk.Runtime
 	mu := a.dynamicLock(id)
 	mu.Lock()
 	defer mu.Unlock()
-	if !a.availableCommunity(ctx, id) {
-		return nil, errPluginUnavailable
-	}
-	// The database lease also serializes data updates across host instances.
-	release, err := a.s.LeasePluginTask(ctx, id, "runtime-call")
-	if err != nil {
-		return nil, err
-	}
-	defer release()
-	request.Settings, err = a.readCommunitySettings(ctx, id)
-	if err != nil {
-		return nil, err
-	}
 	item, ok := a.dynamic.Get(id)
 	if !ok {
 		return nil, errPluginUnavailable
 	}
-	if slices.Contains(item.Grants, "database") {
+	return a.callDynamicLocked(ctx, item, request)
+}
+
+func (a *Server) callDynamicLocked(ctx context.Context, item runtimeplugin.Installed, request sdk.RuntimeRequest) (json.RawMessage, error) {
+	id := item.Package.Manifest.ID
+	ctx, cancel := context.WithTimeout(ctx, 30*time.Second)
+	defer cancel()
+	var database interface {
+		settingReader
+		QueryContext(context.Context, string, ...any) (*sql.Rows, error)
+		BeginTx(context.Context, *sql.TxOptions) (*sql.Tx, error)
+	} = a.s.DB
+	hasData := slices.Contains(item.Grants, "database")
+	if hasData {
+		conn, release, err := a.s.LeasePluginData(ctx, id)
+		if err != nil {
+			return nil, err
+		}
+		defer release()
+		database = conn
+	}
+	enabled, err := a.readCommunityEnabled(ctx, database, id)
+	if err != nil {
+		return nil, err
+	}
+	if !enabled {
+		return nil, errPluginUnavailable
+	}
+	request.Settings, err = a.readCommunitySettingsFrom(ctx, database, id)
+	if err != nil {
+		return nil, err
+	}
+	if hasData {
 		request.Data = map[string]json.RawMessage{}
-		rows, err := a.s.DB.QueryContext(ctx, a.s.Bind("SELECT data_key,value_json FROM plugin_data WHERE plugin_id=?"), id)
+		rows, err := database.QueryContext(ctx, a.s.Bind("SELECT data_key,value_json FROM plugin_data WHERE plugin_id=?"), id)
 		if err != nil {
 			return nil, err
 		}
@@ -105,8 +126,6 @@ func (a *Server) callDynamic(ctx context.Context, id string, request sdk.Runtime
 			return nil, err
 		}
 	}
-	ctx, cancel := context.WithTimeout(ctx, 30*time.Second)
-	defer cancel()
 	data, err := a.dynamic.Call(ctx, id, request)
 	if err != nil {
 		return nil, err
@@ -125,7 +144,7 @@ func (a *Server) callDynamic(ctx context.Context, id string, request sdk.Runtime
 		if response.Status >= 400 {
 			return nil, errors.New("failed operation cannot write data")
 		}
-		if !slices.Contains(item.Grants, "database") || len(response.Writes) > 128 {
+		if !hasData || len(response.Writes) > 128 {
 			return nil, errors.New("database permission required")
 		}
 		for key, value := range response.Writes {
@@ -145,7 +164,7 @@ func (a *Server) callDynamic(ctx context.Context, id string, request sdk.Runtime
 		if total > 1<<20 || len(request.Data) > 1024 {
 			return nil, errors.New("plugin data limit")
 		}
-		tx, err := a.s.DB.BeginTx(ctx, nil)
+		tx, err := database.BeginTx(ctx, nil)
 		if err != nil {
 			return nil, err
 		}
@@ -174,14 +193,23 @@ func (a *Server) callDynamic(ctx context.Context, id string, request sdk.Runtime
 }
 func (a *Server) dynamicRoute(w http.ResponseWriter, r *http.Request) {
 	id := r.PathValue("id")
+	path := "/" + r.PathValue("path")
+	if !runtimeplugin.ValidRoutePath(path) || r.URL.EscapedPath() != "/api/plugins/"+id+path {
+		http.NotFound(w, r)
+		return
+	}
 	item, ok := a.dynamic.Get(id)
 	if !ok || !a.availableCommunity(r.Context(), id) {
 		http.NotFound(w, r)
 		return
 	}
+	if digest := r.Header.Get("X-Plugin-Digest"); digest != "" && digest != item.Digest {
+		respond(w, 409, map[string]any{"error": "插件暂时不可用", "staleRuntime": true})
+		return
+	}
 	var route *runtimeplugin.Route
 	for _, v := range item.Package.Routes {
-		if v.Method == r.Method && v.Path == "/"+r.PathValue("path") {
+		if v.Method == r.Method && v.Path == path {
 			copy := v
 			route = &copy
 			break
@@ -214,7 +242,19 @@ func (a *Server) dynamicRoute(w http.ResponseWriter, r *http.Request) {
 		failure(w, 400, "请求内容无效")
 		return
 	}
-	data, err := a.callDynamic(r.Context(), id, sdk.RuntimeRequest{Kind: "route", Method: r.Method, Path: route.Path, Query: r.URL.RawQuery, Body: body, Principal: principal})
+	mu := a.dynamicLock(id)
+	mu.Lock()
+	defer mu.Unlock()
+	current, ok := a.dynamic.Get(id)
+	if !ok || current.Digest != item.Digest {
+		respond(w, 409, map[string]any{"error": "插件暂时不可用", "staleRuntime": true})
+		return
+	}
+	data, err := a.callDynamicLocked(r.Context(), item, sdk.RuntimeRequest{Kind: "route", Method: r.Method, Path: route.Path, Query: r.URL.RawQuery, Body: body, Principal: principal})
+	if errors.Is(err, errPluginUnavailable) {
+		http.NotFound(w, r)
+		return
+	}
 	if err != nil {
 		failure(w, 503, "插件暂时不可用")
 		return
@@ -234,6 +274,9 @@ func (a *Server) dynamicFrontend(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	id := r.PathValue("id")
+	mu := a.dynamicLock(id)
+	mu.Lock()
+	defer mu.Unlock()
 	item, ok := a.dynamic.Get(id)
 	if !ok || !a.availableCommunity(r.Context(), id) || item.Package.Frontend == "" {
 		http.NotFound(w, r)
@@ -246,5 +289,11 @@ func (a *Server) dynamicFrontend(w http.ResponseWriter, r *http.Request) {
 	}
 	// srcdoc runs in an opaque-origin sandbox. Only the explicit host bridge can make requests.
 	html := "<meta http-equiv=\"Content-Security-Policy\" content=\"default-src 'none'; script-src 'unsafe-inline'; style-src 'unsafe-inline'; img-src data:; connect-src 'none'; form-action 'none'; base-uri 'none'\">" + string(data)
-	respond(w, 200, map[string]any{"html": html, "routes": item.Package.Routes})
+	routes := []runtimeplugin.Route{}
+	for _, route := range item.Package.Routes {
+		if runtimeplugin.ValidRoutePath(route.Path) {
+			routes = append(routes, route)
+		}
+	}
+	respond(w, 200, map[string]any{"html": html, "routes": routes, "digest": item.Digest})
 }

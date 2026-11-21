@@ -12,6 +12,7 @@ import (
 	"net/http"
 	"slices"
 	"strconv"
+	"strings"
 	"time"
 	"wishingskin/internal/securebox"
 	sdk "wishingskin/pkg/plugin"
@@ -181,9 +182,9 @@ func (a *Server) deleteWebhook(w http.ResponseWriter, r *http.Request) {
 	}
 	defer tx.Rollback()
 	id := r.PathValue("id")
-	_, err := tx.ExecContext(r.Context(), a.s.Bind("DELETE FROM webhook_deliveries WHERE subscription_id=?"), id)
+	_, err := tx.ExecContext(r.Context(), a.s.Bind("DELETE FROM webhook_subscriptions WHERE id=?"), id)
 	if err == nil {
-		_, err = tx.ExecContext(r.Context(), a.s.Bind("DELETE FROM webhook_subscriptions WHERE id=?"), id)
+		_, err = tx.ExecContext(r.Context(), a.s.Bind("DELETE FROM webhook_deliveries WHERE subscription_id=?"), id)
 	}
 	if err == nil {
 		err = a.s.RecordAdminEvent(r.Context(), tx, u.ID, "webhook.delete", "webhook", id)
@@ -228,7 +229,7 @@ func (a *Server) queueExtensionEvent(ctx context.Context, event sdk.Event) error
 		return err
 	}
 	defer tx.Rollback()
-	rows, err := tx.QueryContext(ctx, "SELECT id,events_json FROM webhook_subscriptions WHERE enabled=TRUE")
+	rows, err := tx.QueryContext(ctx, "SELECT id,events_json FROM webhook_subscriptions WHERE enabled=TRUE FOR UPDATE")
 	if err != nil {
 		return err
 	}
@@ -264,7 +265,7 @@ func (a *Server) queueExtensionEvent(ctx context.Context, event sdk.Event) error
 		if !slices.Contains(item.Package.Manifest.Events, event.Name) {
 			continue
 		}
-		on, e := a.communityEnabled(ctx, pluginID)
+		on, e := a.readCommunityEnabled(ctx, tx, pluginID)
 		if e != nil {
 			return e
 		}
@@ -281,6 +282,59 @@ func (a *Server) queueExtensionEvent(ctx context.Context, event sdk.Event) error
 	}
 	return tx.Commit()
 }
+
+func (a *Server) webhookPluginEnabled(ctx context.Context, id string) (bool, error) {
+	if id == "" {
+		return true, nil
+	}
+	state, ok := a.plugins.State(id)
+	if !ok || !slices.Contains(state.Manifest.Permissions, "webhooks") {
+		return false, nil
+	}
+	return a.communityEnabled(ctx, id)
+}
+
+func (a *Server) deliveryTargets(ctx context.Context, dynamic bool) ([]string, error) {
+	var targets []string
+	if dynamic {
+		for _, item := range a.dynamic.Items() {
+			if len(item.Package.Manifest.Events) == 0 {
+				continue
+			}
+			id := item.Package.Manifest.ID
+			if a.availableCommunity(ctx, id) {
+				targets = append(targets, id)
+			}
+		}
+		return targets, nil
+	}
+	rows, err := a.s.DB.QueryContext(ctx, "SELECT id,plugin_id FROM webhook_subscriptions WHERE enabled=TRUE")
+	if err != nil {
+		return nil, err
+	}
+	type subscription struct{ id, plugin string }
+	var subscriptions []subscription
+	for rows.Next() {
+		var sub subscription
+		if err = rows.Scan(&sub.id, &sub.plugin); err != nil {
+			rows.Close()
+			return nil, err
+		}
+		subscriptions = append(subscriptions, sub)
+	}
+	err = rows.Err()
+	rows.Close()
+	if err != nil {
+		return nil, err
+	}
+	for _, sub := range subscriptions {
+		if enabled, err := a.webhookPluginEnabled(ctx, sub.plugin); err == nil && enabled {
+			targets = append(targets, sub.id)
+		}
+	}
+	return targets, nil
+}
+
 func (a *Server) runExtensionDeliveries(ctx context.Context, now time.Time) {
 	release, err := a.s.LeasePluginTask(ctx, "wishingskin.events", "dispatch")
 	if err != nil {
@@ -292,7 +346,17 @@ func (a *Server) runExtensionDeliveries(ctx context.Context, now time.Time) {
 		if dynamic {
 			table, target = "plugin_event_deliveries", "plugin_id"
 		}
-		rows, err := a.s.DB.QueryContext(ctx, a.s.Bind("SELECT id,"+target+",payload_json,attempts FROM "+table+" WHERE state='pending' AND next_at<=? ORDER BY created_at,id LIMIT 4"), now.Unix())
+		_, _ = a.s.DB.ExecContext(ctx, a.s.Bind("DELETE FROM "+table+" WHERE state<>'pending' AND created_at<?"), now.Add(-30*24*time.Hour).Unix())
+		targets, err := a.deliveryTargets(ctx, dynamic)
+		if err != nil || len(targets) == 0 {
+			continue
+		}
+		args := []any{now.Unix()}
+		for _, id := range targets {
+			args = append(args, id)
+		}
+		placeholders := strings.Repeat("?,", len(targets)-1) + "?"
+		rows, err := a.s.DB.QueryContext(ctx, a.s.Bind("SELECT id,"+target+",payload_json,attempts FROM "+table+" WHERE state='pending' AND next_at<=? AND "+target+" IN ("+placeholders+") ORDER BY created_at,id LIMIT 4"), args...)
 		if err != nil {
 			continue
 		}
@@ -346,7 +410,6 @@ func (a *Server) runExtensionDeliveries(ctx context.Context, now time.Time) {
 			args = append(args, d.id)
 			_, _ = a.s.DB.ExecContext(ctx, a.s.Bind(query), args...)
 		}
-		_, _ = a.s.DB.ExecContext(ctx, a.s.Bind("DELETE FROM "+table+" WHERE state<>'pending' AND created_at<?"), now.Add(-30*24*time.Hour).Unix())
 	}
 }
 func (a *Server) sendWebhook(ctx context.Context, sub, id, payload string) (int, error) {
@@ -359,14 +422,12 @@ func (a *Server) sendWebhook(ctx context.Context, sub, id, payload string) (int,
 	if !enabled {
 		return 0, errPluginUnavailable
 	}
-	if pluginID != "" {
-		on, err := a.communityEnabled(ctx, pluginID)
-		if err != nil {
-			return 0, err
-		}
-		if !on {
-			return 0, errPluginUnavailable
-		}
+	on, err := a.webhookPluginEnabled(ctx, pluginID)
+	if err != nil {
+		return 0, err
+	}
+	if !on {
+		return 0, errPluginUnavailable
 	}
 	key, err := securebox.Open(a.cfg.SettingsKey, sealed, "wishingskin:webhook:"+sub)
 	if err != nil {

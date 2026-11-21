@@ -7,9 +7,10 @@ const emit = defineEmits<{ expired: [] }>()
 const frame = ref<HTMLIFrameElement>()
 const html = ref('')
 let routes: { method: string; path: string }[] = []
+let digest = ''
 let generation = 0
 const requests = new Map<string, AbortController>()
-function clear() { generation++; html.value = ''; routes = []; for (const request of requests.values()) request.abort(); requests.clear() }
+function clear() { generation++; html.value = ''; routes = []; digest = ''; for (const request of requests.values()) request.abort(); requests.clear() }
 async function load() {
  clear(); if (!props.enabled) return
  const version = generation
@@ -20,7 +21,8 @@ async function load() {
   if (response.status === 404) return
   const data = await response.json()
   if (!response.ok) throw new Error(data.error || '插件界面加载失败')
-  html.value = data.html; routes = data.routes || []
+  if (version !== generation || typeof data.digest !== 'string' || !/^[a-f0-9]{64}$/.test(data.digest)) return
+  html.value = data.html; routes = data.routes || []; digest = data.digest
  } catch (error) { if (version === generation) toast((error as Error).message, 'error') }
 }
 async function receive(event: MessageEvent) {
@@ -30,16 +32,21 @@ async function receive(event: MessageEvent) {
  const target = event.source as Window
  const respond = (status: number, body: unknown) => target.postMessage({ type: 'wishingskin:response', id: message.id, status, body }, '*')
  const method = typeof message.method === 'string' ? message.method.toUpperCase() : 'GET'
- if (!routes.some(route => route.method === method && route.path === message.path) || requests.size >= 4) { respond(403, { error: 'Request unavailable' }); return }
+ const route = routes.find(route => route.method === method && route.path === message.path)
+ if (!route || !digest || requests.size >= 4) { respond(403, { error: 'Request unavailable' }); return }
+ const expectedPath = `/api/plugins/${encodeURIComponent(props.pluginId)}${route.path}`
+ const endpoint = new URL(expectedPath, window.location.origin)
+ if (endpoint.origin !== window.location.origin || endpoint.pathname !== expectedPath || endpoint.search || endpoint.hash) { respond(403, { error: 'Request unavailable' }); return }
  const body = message.body === undefined ? undefined : JSON.stringify(message.body)
  if (body && new TextEncoder().encode(body).length > 65536) { respond(413, { error: 'Request too large' }); return }
  const controller = new AbortController(); requests.set(message.id, controller)
  const version = generation
  try {
-  const response = await fetch(`/api/plugins/${encodeURIComponent(props.pluginId)}${message.path}`, { method, signal: controller.signal, headers: { 'Content-Type': 'application/json', 'X-CSRF-Token': props.csrfToken }, body: method === 'GET' || method === 'HEAD' ? undefined : body })
+  const response = await fetch(endpoint, { method, mode: 'same-origin', redirect: 'error', signal: controller.signal, headers: { 'Content-Type': 'application/json', 'X-CSRF-Token': props.csrfToken, 'X-Plugin-Digest': digest }, body: method === 'GET' ? undefined : body })
   if (version !== generation) return
   if (response.status === 401) emit('expired')
-  respond(response.status, await response.json())
+  const payload = await response.json()
+  if (version === generation) respond(response.status, payload)
  } catch { if (version === generation) respond(503, { error: 'Request failed' }) }
  finally { if (version === generation) requests.delete(message.id) }
 }

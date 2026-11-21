@@ -22,6 +22,19 @@ import (
 const MaxPackage = 128 << 20
 
 var Permissions = []string{"routes.public", "routes.user", "routes.admin", "events", "pages", "tasks", "frontend", "database", "webhooks"}
+var routePathPattern = regexp.MustCompile(`^/(?:[A-Za-z0-9._~-]+/)*[A-Za-z0-9._~-]*$`)
+
+func ValidRoutePath(value string) bool {
+	if !routePathPattern.MatchString(value) {
+		return false
+	}
+	for segment := range strings.SplitSeq(value, "/") {
+		if segment == "." || segment == ".." {
+			return false
+		}
+	}
+	return true
+}
 
 type Route struct {
 	Method string `json:"method"`
@@ -40,6 +53,15 @@ type Package struct {
 	Routes      []Route           `json:"routes"`
 	Frontend    string            `json:"frontend,omitempty"`
 	Migrations  []Migration       `json:"migrations,omitempty"`
+}
+
+func (p Package) ValidateRoutePaths() error {
+	for _, route := range p.Routes {
+		if !ValidRoutePath(route.Path) {
+			return errors.New("invalid route path")
+		}
+	}
+	return nil
 }
 
 func (p Package) Validate() error {

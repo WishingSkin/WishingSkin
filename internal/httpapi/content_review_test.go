@@ -1,6 +1,7 @@
 package httpapi
 
 import (
+	"bytes"
 	"fmt"
 	"strings"
 	"testing"
@@ -33,6 +34,19 @@ func TestContentReviewBoundariesBothDatabases(t *testing.T) {
 			webStatus(t, f.call(3, "PATCH", "/api/admin/review/"+record.ID, map[string]string{"state": "approved"}), 204)
 			webStatus(t, f.call(0, "GET", "/textures/"+record.FileHash, nil), 200)
 			webStatus(t, f.call(1, "PUT", binding, map[string]string{"recordId": record.ID}), 204)
+			fallback := f.call(0, "GET", "/api/avatars/1.png", nil)
+			webStatus(t, fallback, 200)
+			webStatus(t, f.call(1, "PATCH", "/api/account/profile", map[string]string{"nickname": "Owner", "avatarMode": "character", "characterUUID": character.UUID}), 200)
+			avatar := f.call(0, "GET", "/api/avatars/1.png", nil)
+			webStatus(t, avatar, 200)
+			if bytes.Equal(avatar.Body.Bytes(), fallback.Body.Bytes()) {
+				t.Fatal("approved skin missing from avatar")
+			}
+			legacy := f.call(0, "GET", "/csl/ReviewPlayer.json", nil)
+			webStatus(t, legacy, 200)
+			if !strings.Contains(legacy.Body.String(), record.FileHash) {
+				t.Fatal("approved skin missing from legacy profile")
+			}
 			w = f.call(0, "GET", "/api/library?category=%E9%A3%8E%E6%99%AF&tag=sky", nil)
 			webStatus(t, w, 200)
 			if !strings.Contains(w.Body.String(), record.ID) {
@@ -45,6 +59,17 @@ func TestContentReviewBoundariesBothDatabases(t *testing.T) {
 			}
 			webStatus(t, f.call(3, "PATCH", "/api/admin/review/"+record.ID, map[string]string{"state": "rejected", "reason": "test"}), 204)
 			webStatus(t, f.call(0, "GET", "/textures/"+record.FileHash, nil), 404)
+			webStatus(t, f.call(0, "GET", "/skin/ReviewPlayer.png", nil), 404)
+			legacy = f.call(0, "GET", "/csl/ReviewPlayer.json", nil)
+			webStatus(t, legacy, 200)
+			if strings.Contains(legacy.Body.String(), record.FileHash) {
+				t.Fatal("rejected skin appears in legacy profile")
+			}
+			avatar = f.call(0, "GET", "/api/avatars/1.png", nil)
+			webStatus(t, avatar, 200)
+			if !bytes.Equal(avatar.Body.Bytes(), fallback.Body.Bytes()) {
+				t.Fatal("rejected skin appears in avatar")
+			}
 			w = f.call(1, "GET", "/api/characters", nil)
 			webStatus(t, w, 200)
 			if strings.Contains(w.Body.String(), record.FileHash) {

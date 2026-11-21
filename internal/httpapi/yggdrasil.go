@@ -655,9 +655,9 @@ func (a *Server) profileResponse(ctx context.Context, q yggQuerier, uuid string,
 		if item.hash == "" {
 			continue
 		}
-		var deleted bool
-		err := q.QueryRowContext(ctx, a.s.Bind("SELECT f.deleted FROM textures f WHERE f.hash=? AND "+availableTextureSQL), item.hash).Scan(&deleted)
-		if errors.Is(err, sql.ErrNoRows) || deleted {
+		var available int
+		err := q.QueryRowContext(ctx, a.s.Bind("SELECT 1 FROM textures f WHERE f.hash=? AND "+downloadableTextureSQL), item.hash).Scan(&available)
+		if errors.Is(err, sql.ErrNoRows) {
 			continue
 		}
 		if err != nil {
@@ -725,9 +725,9 @@ func (a *Server) serveTextureHash(w http.ResponseWriter, r *http.Request, hash s
 		http.NotFound(w, r)
 		return
 	}
-	var deleted bool
-	err := a.s.DB.QueryRowContext(r.Context(), a.s.Bind("SELECT f.deleted FROM textures f WHERE f.hash=? AND "+availableTextureSQL), hash).Scan(&deleted)
-	if errors.Is(err, sql.ErrNoRows) || deleted {
+	var available int
+	err := a.s.DB.QueryRowContext(r.Context(), a.s.Bind("SELECT 1 FROM textures f WHERE f.hash=? AND "+downloadableTextureSQL), hash).Scan(&available)
+	if errors.Is(err, sql.ErrNoRows) {
 		http.NotFound(w, r)
 		return
 	}
@@ -735,7 +735,9 @@ func (a *Server) serveTextureHash(w http.ResponseWriter, r *http.Request, hash s
 		failure(w, 503, "材质暂不可用")
 		return
 	}
-	if a.redirectCDN(w,r,hash){return}
+	if a.redirectCDN(w, r, hash) {
+		return
+	}
 	f, err := a.openTextureFile(r.Context(), hash)
 	if err != nil {
 		http.NotFound(w, r)
@@ -772,7 +774,11 @@ func (a *Server) legacyPlayerJSON(w http.ResponseWriter, r *http.Request) {
 	}
 	var username, model, skin, cape string
 	var banned bool
-	err := a.s.DB.QueryRowContext(r.Context(), a.s.Bind("SELECT c.name,c.model,CASE WHEN s.deleted=FALSE THEN c.skin_hash ELSE '' END,CASE WHEN p.deleted=FALSE THEN c.cape_hash ELSE '' END,u.banned FROM characters c JOIN users u ON u.id=c.user_id LEFT JOIN textures s ON s.hash=c.skin_hash LEFT JOIN textures p ON p.hash=c.cape_hash WHERE c.name_key=?"), key).Scan(&username, &model, &skin, &cape, &banned)
+	err := a.s.DB.QueryRowContext(r.Context(), a.s.Bind(
+		"SELECT c.name,c.model,"+
+			"CASE WHEN EXISTS (SELECT 1 FROM textures f WHERE f.hash=c.skin_hash AND "+downloadableTextureSQL+") THEN c.skin_hash ELSE '' END,"+
+			"CASE WHEN EXISTS (SELECT 1 FROM textures f WHERE f.hash=c.cape_hash AND "+downloadableTextureSQL+") THEN c.cape_hash ELSE '' END,"+
+			"u.banned FROM characters c JOIN users u ON u.id=c.user_id WHERE c.name_key=?"), key).Scan(&username, &model, &skin, &cape, &banned)
 	if errors.Is(err, sql.ErrNoRows) {
 		http.NotFound(w, r)
 		return

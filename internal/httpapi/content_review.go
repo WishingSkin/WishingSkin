@@ -16,6 +16,7 @@ import (
 // Missing metadata denotes an existing, approved record.
 const approvedRecordSQL = "NOT EXISTS (SELECT 1 FROM texture_metadata review_meta WHERE review_meta.record_id=r.record_id AND review_meta.review_state<>'approved')"
 const availableTextureSQL = "(EXISTS (SELECT 1 FROM texture_records r WHERE r.file_hash=f.hash AND r.deleted=FALSE AND " + approvedRecordSQL + ") OR (EXISTS (SELECT 1 FROM characters c WHERE c.skin_hash=f.hash OR c.cape_hash=f.hash) AND NOT EXISTS (SELECT 1 FROM texture_records r JOIN texture_metadata m ON m.record_id=r.record_id WHERE r.file_hash=f.hash AND m.review_state<>'approved')))"
+const downloadableTextureSQL = "f.deleted=FALSE AND " + availableTextureSQL
 
 type contentPolicy struct {
 	ReviewUploads bool     `json:"reviewUploads"`

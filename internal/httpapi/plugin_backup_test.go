@@ -33,8 +33,8 @@ func verifyDynamicBackup(t *testing.T, f *managementApp, pkg rp.Package, archive
 	// Retain a staged, never activated upgrade next to the installed archive.
 	newer := pkg
 	newer.Manifest.Version = "2.0.0"
-	newer.Manifest.MigrationVersion = 2
-	newer.Migrations = append(append([]rp.Migration{}, pkg.Migrations...), rp.Migration{Version: 2, MySQL: []string{"CREATE TABLE {{prefix}}future (id INTEGER)"}, Postgres: []string{"CREATE TABLE {{prefix}}future (id INTEGER)"}})
+	newer.Manifest.MigrationVersion++
+	newer.Migrations = append(append([]rp.Migration{}, pkg.Migrations...), rp.Migration{Version: newer.Manifest.MigrationVersion, MySQL: []string{"CREATE TABLE {{prefix}}future (id INTEGER)"}, Postgres: []string{"CREATE TABLE {{prefix}}future (id INTEGER)"}})
 	manifest, _ := json.Marshal(newer)
 	input, err := zip.NewReader(bytes.NewReader(archive), int64(len(archive)))
 	if err != nil {

@@ -16,6 +16,52 @@ import (
 	"wishingskin/internal/runtimeplugin"
 )
 
+var errPluginUpgradePending = errors.New("plugin upgrade pending")
+
+type dynamicCheckpoint struct {
+	Digest          string `json:"digest"`
+	Pending         bool   `json:"pending,omitempty"`
+	PreviousEnabled bool   `json:"previousEnabled,omitempty"`
+}
+
+func dynamicCheckpointKey(id string) string {
+	sum := sha256.Sum256([]byte(id))
+	return "plugin_runtime_" + hex.EncodeToString(sum[:16])
+}
+
+func (a *Server) dynamicCheckpoint(ctx context.Context, reader settingReader, id string) (dynamicCheckpoint, error) {
+	var state dynamicCheckpoint
+	_, err := a.readSettingFrom(ctx, reader, dynamicCheckpointKey(id), &state)
+	return state, err
+}
+
+func (a *Server) saveDynamicCheckpoint(ctx context.Context, pkg runtimeplugin.Package, enabled bool, state dynamicCheckpoint) error {
+	tx, err := a.s.DB.BeginTx(ctx, nil)
+	if err != nil {
+		return err
+	}
+	defer tx.Rollback()
+	if err = a.putPluginEnabled(ctx, tx, pkg.Manifest.ID, pkg.Manifest.Version, enabled); err != nil {
+		return err
+	}
+	if err = a.putSetting(ctx, tx, dynamicCheckpointKey(pkg.Manifest.ID), state); err != nil {
+		return err
+	}
+	return tx.Commit()
+}
+
+func pluginActivationError(w http.ResponseWriter, err error) {
+	if errors.Is(err, errPluginUpgradePending) {
+		pluginRecoveryResponse(w, "插件安装失败，请检查依赖、迁移和运行协议")
+		return
+	}
+	failure(w, 409, "插件安装失败，请检查依赖、迁移和运行协议")
+}
+
+func pluginRecoveryResponse(w http.ResponseWriter, message string) {
+	respond(w, 409, map[string]any{"error": message, "recoveryRequired": true, "retrySamePackage": true})
+}
+
 func (a *Server) initDynamicPlugins() error {
 	root := a.cfg.PluginDir
 	if root == "" {
@@ -72,7 +118,7 @@ func (a *Server) inspectDynamicPackage(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	pkg, err := runtimeplugin.Inspect(data)
-	if err != nil {
+	if err != nil || pkg.ValidateRoutePaths() != nil {
 		failure(w, 400, "插件包格式无效或不支持当前平台")
 		return
 	}
@@ -93,7 +139,7 @@ func (a *Server) installDynamicPackage(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	if err := a.activatePackage(r.Context(), data, grants); err != nil {
-		failure(w, 409, "插件安装失败，请检查依赖、迁移和运行协议")
+		pluginActivationError(w, err)
 		return
 	}
 	pkg, _ := runtimeplugin.Inspect(data)
@@ -107,10 +153,25 @@ func (a *Server) activatePackage(ctx context.Context, data []byte, grants []stri
 	if err != nil {
 		return err
 	}
+	if err = pkg.ValidateRoutePaths(); err != nil {
+		return err
+	}
 	id := pkg.Manifest.ID
 	lock := a.dynamicLock(id)
 	lock.Lock()
 	defer lock.Unlock()
+	release, err := a.s.LeasePluginTask(ctx, id, "database-migrations")
+	if err != nil {
+		return err
+	}
+	defer release()
+	state, err := a.dynamicCheckpoint(ctx, a.s.DB, id)
+	if err != nil {
+		return err
+	}
+	if state.Pending && state.Digest != runtimeplugin.Digest(data) {
+		return errPluginUpgradePending
+	}
 	if _, exists := a.plugins.State(id); exists {
 		if _, dynamic := a.dynamic.Get(id); !dynamic {
 			return errors.New("source plugin id collision")
@@ -151,6 +212,10 @@ func (a *Server) activatePackage(ctx context.Context, data []byte, grants []stri
 			return errors.New("missing dependency")
 		}
 	}
+	steps, err := a.planPluginMigrations(ctx, pkg)
+	if err != nil {
+		return err
+	}
 	item, err := a.dynamic.Stage(data, grants)
 	if err != nil {
 		return err
@@ -161,89 +226,62 @@ func (a *Server) activatePackage(ctx context.Context, data []byte, grants []stri
 	if err != nil {
 		return err
 	}
-	enabled, _ := a.storedPluginEnabled(ctx, id)
-	tx, err := a.s.DB.BeginTx(ctx, nil)
-	if err != nil {
-		return err
-	}
-	err = a.putPluginEnabled(ctx, tx, id, pkg.Manifest.Version, false)
-	if err == nil {
-		err = tx.Commit()
-	} else {
-		tx.Rollback()
-	}
-	if err != nil {
-		return err
+	if !state.Pending {
+		enabled, err := a.storedPluginEnabled(ctx, id)
+		if err != nil {
+			return err
+		}
+		state = dynamicCheckpoint{Digest: item.Digest, Pending: true, PreviousEnabled: enabled}
+		if err = a.saveDynamicCheckpoint(ctx, pkg, false, state); err != nil {
+			return err
+		}
 	}
 	a.cancelCommunityTasks(id)
 	_ = a.dynamic.Reload(id)
-	if err = a.applyPluginMigrations(ctx, item); err != nil {
-		return err
+	if err = a.applyPluginMigrations(ctx, id, steps); err != nil {
+		return errors.Join(errPluginUpgradePending, err)
 	}
 	if err = a.dynamic.Activate(item); err != nil {
-		return err
+		return errors.Join(errPluginUpgradePending, err)
 	}
 	a.unregisterDynamicContributions(id)
 	if err = a.plugins.Replace(pkg.Manifest); err != nil {
-		return err
+		return errors.Join(errPluginUpgradePending, err)
 	}
 	a.registerDynamicContributions(item)
-	tx, err = a.s.DB.BeginTx(ctx, nil)
-	if err != nil {
-		return err
+	if err = a.saveDynamicCheckpoint(ctx, pkg, state.PreviousEnabled, dynamicCheckpoint{Digest: item.Digest}); err != nil {
+		return errors.Join(errPluginUpgradePending, err)
 	}
-	defer tx.Rollback()
-	if err = a.putPluginEnabled(ctx, tx, id, pkg.Manifest.Version, enabled); err != nil {
-		return err
-	}
-	return tx.Commit()
+	return nil
 }
-func (a *Server) applyPluginMigrations(ctx context.Context, item runtimeplugin.Installed) error {
-	id := item.Package.Manifest.ID
-	release, err := a.s.LeasePluginTask(ctx, id, "database-migrations")
+
+type pluginMigrationStep struct {
+	version, index  int
+	query, checksum string
+}
+
+func (a *Server) planPluginMigrations(ctx context.Context, pkg runtimeplugin.Package) ([]pluginMigrationStep, error) {
+	rows, err := a.s.DB.QueryContext(ctx, a.s.Bind("SELECT version,step,checksum FROM plugin_migrations WHERE plugin_id=?"), pkg.Manifest.ID)
 	if err != nil {
-		return err
+		return nil, err
 	}
-	defer release()
-	h := sha256.Sum256([]byte(id))
-	prefix := "plugin_" + hex.EncodeToString(h[:8]) + "_"
-	rows, err := a.s.DB.QueryContext(ctx, a.s.Bind("SELECT version,step,checksum FROM plugin_migrations WHERE plugin_id=?"), id)
-	if err != nil {
-		return err
-	}
+	defer rows.Close()
+	applied := map[[2]int]string{}
 	for rows.Next() {
 		var version, step int
 		var checksum string
 		if err = rows.Scan(&version, &step, &checksum); err != nil {
-			break
+			return nil, err
 		}
-		if version < 1 || version > len(item.Package.Migrations) {
-			err = errors.New("migration downgrade is not supported")
-			break
-		}
-		migration := item.Package.Migrations[version-1]
-		queries := migration.Postgres
-		if a.s.Dialect == "mysql" {
-			queries = migration.MySQL
-		}
-		if step < 0 || step >= len(queries) {
-			err = errors.New("applied migration removed")
-			break
-		}
-		hash := sha256.Sum256([]byte(queries[step]))
-		if checksum != hex.EncodeToString(hash[:]) {
-			err = errors.New("applied migration changed")
-			break
-		}
+		applied[[2]int{version, step}] = checksum
 	}
-	if err == nil {
-		err = rows.Err()
+	if err = rows.Err(); err != nil {
+		return nil, err
 	}
-	rows.Close()
-	if err != nil {
-		return err
-	}
-	for _, migration := range item.Package.Migrations {
+	hash := sha256.Sum256([]byte(pkg.Manifest.ID))
+	prefix := "plugin_" + hex.EncodeToString(hash[:8]) + "_"
+	var plan []pluginMigrationStep
+	for _, migration := range pkg.Migrations {
 		steps := migration.Postgres
 		if a.s.Dialect == "mysql" {
 			steps = migration.MySQL
@@ -251,27 +289,52 @@ func (a *Server) applyPluginMigrations(ctx context.Context, item runtimeplugin.I
 		for index, query := range steps {
 			hash := sha256.Sum256([]byte(query))
 			checksum := hex.EncodeToString(hash[:])
-			var old string
-			err := a.s.DB.QueryRowContext(ctx, a.s.Bind("SELECT checksum FROM plugin_migrations WHERE plugin_id=? AND version=? AND step=?"), id, migration.Version, index).Scan(&old)
-			if err == nil {
+			key := [2]int{migration.Version, index}
+			if old, exists := applied[key]; exists {
 				if old != checksum {
-					return errors.New("changed applied migration")
+					return nil, errors.New("applied migration changed")
 				}
+				delete(applied, key)
 				continue
 			}
-			if !errors.Is(err, sql.ErrNoRows) {
-				return err
-			}
 			if !strings.Contains(query, "{{prefix}}") {
-				return errors.New("migration must name plugin tables with prefix")
+				return nil, errors.New("migration must name plugin tables with prefix")
 			}
-			if _, err = a.s.DB.ExecContext(ctx, strings.ReplaceAll(query, "{{prefix}}", prefix)); err != nil {
-				return err
-			}
-			if _, err = a.s.DB.ExecContext(ctx, a.s.Bind("INSERT INTO plugin_migrations(plugin_id,version,step,checksum,applied_at) VALUES(?,?,?,?,?)"), id, migration.Version, index, checksum, time.Now().Unix()); err != nil {
-				return err
-			}
+			plan = append(plan, pluginMigrationStep{version: migration.Version, index: index, query: strings.ReplaceAll(query, "{{prefix}}", prefix), checksum: checksum})
 		}
+	}
+	if len(applied) != 0 {
+		return nil, errors.New("applied migration removed")
+	}
+	return plan, nil
+}
+
+func (a *Server) applyPluginMigrations(ctx context.Context, id string, steps []pluginMigrationStep) error {
+	if len(steps) == 0 {
+		return nil
+	}
+	var executor interface {
+		ExecContext(context.Context, string, ...any) (sql.Result, error)
+	} = a.s.DB
+	if a.s.Dialect == "postgres" {
+		tx, err := a.s.DB.BeginTx(ctx, nil)
+		if err != nil {
+			return err
+		}
+		defer tx.Rollback()
+		executor = tx
+	}
+	insert := a.s.Bind("INSERT INTO plugin_migrations(plugin_id,version,step,checksum,applied_at) VALUES(?,?,?,?,?)")
+	for _, step := range steps {
+		if _, err := executor.ExecContext(ctx, step.query); err != nil {
+			return err
+		}
+		if _, err := executor.ExecContext(ctx, insert, id, step.version, step.index, step.checksum, time.Now().Unix()); err != nil {
+			return err
+		}
+	}
+	if tx, ok := executor.(*sql.Tx); ok {
+		return tx.Commit()
 	}
 	return nil
 }
@@ -305,21 +368,67 @@ func (a *Server) removeDynamicPackage(w http.ResponseWriter, r *http.Request) {
 	lock := a.dynamicLock(id)
 	lock.Lock()
 	defer lock.Unlock()
+	item, exists := a.dynamic.Get(id)
+	if !exists {
+		http.NotFound(w, r)
+		return
+	}
+	release, err := a.s.LeasePluginTask(r.Context(), id, "database-migrations")
+	if err != nil {
+		failure(w, 503, "暂时无法卸载插件")
+		return
+	}
+	defer release()
+	state, err := a.dynamicCheckpoint(r.Context(), a.s.DB, id)
+	if err != nil {
+		failure(w, 503, "暂时无法读取插件状态")
+		return
+	}
+	if state.Pending {
+		pluginRecoveryResponse(w, "操作失败")
+		return
+	}
+	if state.Digest != "" && state.Digest != item.Digest {
+		respond(w, 409, map[string]any{"error": "操作失败", "staleRuntime": true})
+		return
+	}
 	for _, s := range a.plugins.States() {
 		if slices.Contains(s.Manifest.Dependencies, id) {
 			failure(w, 409, "请先移除依赖此插件的插件")
 			return
 		}
 	}
+	tx, ok := a.beginAdminWrite(w, r, u)
+	if !ok {
+		return
+	}
+	defer tx.Rollback()
+	if err = a.putPluginEnabled(r.Context(), tx, id, item.Package.Manifest.Version, false); err == nil {
+		_, err = tx.ExecContext(r.Context(), a.s.Bind("DELETE FROM plugin_event_deliveries WHERE plugin_id=? AND state='pending'"), id)
+	}
+	if err == nil {
+		_, err = tx.ExecContext(r.Context(), a.s.Bind("UPDATE webhook_subscriptions SET enabled=FALSE WHERE plugin_id=?"), id)
+	}
+	if err == nil {
+		_, err = tx.ExecContext(r.Context(), a.s.Bind("DELETE FROM webhook_deliveries WHERE state<>'delivered' AND subscription_id IN (SELECT id FROM webhook_subscriptions WHERE plugin_id=?)"), id)
+	}
+	if err == nil {
+		err = a.s.RecordAdminEvent(r.Context(), tx, u.ID, "plugin.uninstall", "plugin", id)
+	}
+	if err == nil {
+		err = tx.Commit()
+	}
+	if err != nil {
+		failure(w, 503, "操作失败")
+		return
+	}
 	a.cancelCommunityTasks(id)
 	if err := a.dynamic.Uninstall(id); err != nil {
-		http.NotFound(w, r)
+		failure(w, 503, "操作失败")
 		return
 	}
 	a.unregisterDynamicContributions(id)
 	a.plugins.Remove(id)
-	_, _ = a.s.DB.ExecContext(r.Context(), a.s.Bind("UPDATE plugins SET enabled=? WHERE plugin_id=?"), false, id)
-	_ = a.recordDynamicEvent(r.Context(), u.ID, "plugin.uninstall", id)
 	respond(w, 200, map[string]bool{"removed": true})
 }
 
