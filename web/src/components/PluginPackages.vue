@@ -14,7 +14,12 @@ const permissionNames: Record<string, string> = { 'routes.public': '公开接口
 async function request(path: string, method = 'GET', body?: BodyInit, extra: Record<string, string> = {}) {
  const r = await fetch(path, { method, credentials: 'same-origin', headers: { 'X-CSRF-Token': props.csrfToken, ...extra }, body })
  if (r.status === 401) { emit('expired'); throw new Error(t('请重新登录')) }
- const data = await r.json().catch(() => ({})); if (!r.ok) throw new Error(data.error || t('操作失败')); return data
+ const data = await r.json().catch(() => ({}))
+ if (!r.ok) {
+  if (data.retrySamePackage === true) throw new Error('插件升级未完成，请重新上传同一个 ZIP。')
+  throw new Error(data.error || t('操作失败'))
+ }
+ return data
 }
 async function load() {
  try { const installed = await request('/api/admin/plugin-packages'); packages.value = installed.packages; const market = await request('/api/admin/plugin-market'); source.value = market.source; catalog.value = market.packages; unavailable.value = !!market.unavailable } catch (e) { toast((e as Error).message, 'error') }

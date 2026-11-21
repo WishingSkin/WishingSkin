@@ -20,8 +20,8 @@ async function action(entry: Entry, kind: 'verify' | 'restore-plan') {
   const sourcesVerified = !data.unverifiedFiles
   results.value[entry.id] = t(sourcesVerified ? '校验通过' : '待校验')
   if (kind === 'restore-plan') restore.value = data
-  else if (sourcesVerified) toast('备份校验通过。')
-  else toast('待校验', 'info')
+  if (!sourcesVerified) toast('这份备份有材质来源待核验，不计入自动保留份数。', 'info')
+  else if (kind === 'verify') toast('备份校验通过。')
  }
  catch (e) { results.value[entry.id] = t('校验未通过'); toast((e as Error).message, 'error') }
  finally { busy.value = false }
