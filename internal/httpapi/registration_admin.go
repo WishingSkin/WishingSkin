@@ -89,6 +89,9 @@ func (a *Server) setRegistration(w http.ResponseWriter, r *http.Request) {
 	}
 	if err == nil && body.ManualEmailVerification != nil {
 		err = a.putSetting(r.Context(), tx, "manual_email_verification", manual)
+		if err == nil && manual {
+			_, err = tx.ExecContext(r.Context(), "DELETE FROM account_tokens WHERE purpose='verify'")
+		}
 	}
 	if err == nil && body.RandomUserIDs != nil {
 		err = a.putSetting(r.Context(), tx, "random_user_ids", *body.RandomUserIDs)
@@ -123,4 +126,10 @@ func manualEmailVerification(ctx context.Context, reader settingReader) (bool, e
 		return false, nil
 	}
 	return raw == "true", err
+}
+
+func lockRegistrationMode(ctx context.Context, tx *sql.Tx) (string, error) {
+	var mode string
+	err := tx.QueryRowContext(ctx, "SELECT value FROM settings WHERE setting_key='registration_mode' FOR UPDATE").Scan(&mode)
+	return mode, err
 }

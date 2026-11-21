@@ -147,3 +147,29 @@ func TestAdministratorVerificationRegistrationBothDatabases(t *testing.T) {
 		})
 	}
 }
+
+func TestAdministratorVerificationSwitchRevokesEmailLinksBothDatabases(t *testing.T) {
+	for _, dialect := range []string{"mysql", "postgres"} {
+		t.Run(dialect, func(t *testing.T) {
+			f, mailbox := accessApp(t, dialect)
+			webStatus(t, f.call(3, "PATCH", "/api/admin/registration", map[string]string{"mode": "open"}), 204)
+			body := registrationBody("review@example.test")
+			webStatus(t, f.call(0, "POST", "/api/auth/register", body), 201)
+			oldLink := mailbox.token()
+			clearMailLimits(f)
+			webStatus(t, mailRequest(f, body["email"], "reset"), 202)
+			resetLink := mailbox.token()
+			webStatus(t, f.call(3, "PATCH", "/api/admin/registration", map[string]any{"mode": "open", "manualEmailVerification": true}), 204)
+			clearMailLimits(f)
+			webStatus(t, mailRequest(f, body["email"], "verify"), 202)
+			if mailbox.token() != resetLink {
+				t.Fatal("manual verification sent a verification email")
+			}
+			verification := map[string]string{"token": oldLink}
+			webStatus(t, f.call(0, "POST", "/api/auth/verify", verification), 400)
+			webStatus(t, f.call(3, "PATCH", "/api/admin/registration", map[string]any{"mode": "open", "manualEmailVerification": false}), 204)
+			webStatus(t, f.call(0, "POST", "/api/auth/verify", verification), 400)
+			webStatus(t, f.call(0, "POST", "/api/auth/reset", map[string]string{"token": resetLink, "newPassword": body["password"] + "1!"}), 204)
+		})
+	}
+}

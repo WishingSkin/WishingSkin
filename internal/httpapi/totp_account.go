@@ -204,6 +204,9 @@ func (a *Server) enableTOTP(w http.ResponseWriter, r *http.Request) {
 		_, err = tx.ExecContext(r.Context(), a.s.Bind("DELETE FROM oauth_tokens WHERE user_id=?"), u.ID)
 	}
 	if err == nil {
+		_, err = tx.ExecContext(r.Context(), a.s.Bind("DELETE FROM oauth_refresh_tokens WHERE user_id=?"), u.ID)
+	}
+	if err == nil {
 		err = a.s.RecordAdminEvent(r.Context(), tx, u.ID, "account.totp.enable", "user", strconv.FormatInt(u.ID, 10))
 	}
 	if err == nil {

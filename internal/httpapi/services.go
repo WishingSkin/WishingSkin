@@ -37,7 +37,15 @@ type runtimeServices struct {
 	SiteKey   string
 }
 
+func (s runtimeServices) challengeConfigured() bool {
+	return s.Challenge != nil && s.SiteKey != ""
+}
+
 func (a *Server) serviceSettings(ctx context.Context) (serviceSettings, bool, error) {
+	return a.readServiceSettings(ctx, a.s.DB)
+}
+
+func (a *Server) readServiceSettings(ctx context.Context, reader settingReader) (serviceSettings, bool, error) {
 	value := serviceSettings{TLSMode: "starttls"}
 	if a.cfg.SMTP != nil {
 		s := a.cfg.SMTP
@@ -52,7 +60,7 @@ func (a *Server) serviceSettings(ctx context.Context) (serviceSettings, bool, er
 	value.SiteKey = a.cfg.TurnstileSiteKey
 	value.Secret = a.cfg.TurnstileSecret
 	var sealed string
-	err := a.s.DB.QueryRowContext(ctx, "SELECT value FROM settings WHERE setting_key='service_config'").Scan(&sealed)
+	err := reader.QueryRowContext(ctx, "SELECT value FROM settings WHERE setting_key='service_config'").Scan(&sealed)
 	if errors.Is(err, sql.ErrNoRows) {
 		return value, false, nil
 	}
@@ -150,7 +158,7 @@ func (a *Server) updateServices(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	defer tx.Rollback()
-	value, _, err := a.serviceSettings(r.Context())
+	value, _, err := a.readServiceSettings(r.Context(), tx)
 	if err != nil {
 		failure(w, 503, "无法解密服务设置，请检查本地设置密钥")
 		return

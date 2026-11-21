@@ -20,11 +20,15 @@ func (a *Server) registerPlugins() {
 }
 
 func (a *Server) storedPluginEnabled(ctx context.Context, id string) (bool, error) {
+	return a.readPluginEnabled(ctx, a.s.DB, id)
+}
+
+func (a *Server) readPluginEnabled(ctx context.Context, reader settingReader, id string) (bool, error) {
 	var enabled bool
-	err := a.s.DB.QueryRowContext(ctx, a.s.Bind("SELECT enabled FROM plugins WHERE plugin_id=?"), id).Scan(&enabled)
+	err := reader.QueryRowContext(ctx, a.s.Bind("SELECT enabled FROM plugins WHERE plugin_id=?"), id).Scan(&enabled)
 	if err == sql.ErrNoRows {
 		if id == "wishingskin.oidc" {
-			value, err := a.oidcConfiguration(ctx)
+			value, err := a.readOIDCConfiguration(ctx, reader)
 			return value.Enabled, err
 		}
 		return false, nil

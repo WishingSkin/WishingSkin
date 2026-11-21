@@ -2,7 +2,6 @@ package httpapi
 
 import (
 	"context"
-	"errors"
 	"net/http"
 	"regexp"
 	"strings"
@@ -13,13 +12,17 @@ import (
 var providerIDPattern = regexp.MustCompile(`^[a-z][a-z0-9-]{0,31}$`)
 
 func (a *Server) oidcConfigurations(ctx context.Context) ([]OIDCSettings, error) {
-	first, err := a.oidcConfiguration(ctx)
+	return a.readOIDCConfigurations(ctx, a.s.DB)
+}
+
+func (a *Server) readOIDCConfigurations(ctx context.Context, reader settingReader) ([]OIDCSettings, error) {
+	first, err := a.readOIDCConfiguration(ctx, reader)
 	if err != nil {
 		return nil, err
 	}
 	values := []OIDCSettings{first}
 	var sealed string
-	ok, err := a.readSetting(ctx, "oidc_providers", &sealed)
+	ok, err := a.readSettingFrom(ctx, reader, "oidc_providers", &sealed)
 	if err != nil || !ok {
 		return values, err
 	}
@@ -31,11 +34,15 @@ func (a *Server) oidcConfigurations(ctx context.Context) ([]OIDCSettings, error)
 }
 
 func (a *Server) oidcSettingsFor(ctx context.Context, id string) (OIDCSettings, error) {
-	values, err := a.oidcConfigurations(ctx)
+	return a.findOIDCSettings(ctx, a.s.DB, id)
+}
+
+func (a *Server) findOIDCSettings(ctx context.Context, reader settingReader, id string) (OIDCSettings, error) {
+	values, err := a.readOIDCConfigurations(ctx, reader)
 	if err != nil {
 		return OIDCSettings{}, err
 	}
-	enabled, err := a.storedPluginEnabled(ctx, "wishingskin.oidc")
+	enabled, err := a.readPluginEnabled(ctx, reader, "wishingskin.oidc")
 	if err != nil {
 		return OIDCSettings{}, err
 	}
@@ -45,7 +52,7 @@ func (a *Server) oidcSettingsFor(ctx context.Context, id string) (OIDCSettings, 
 			return v, nil
 		}
 	}
-	return OIDCSettings{}, errors.New("unknown OIDC provider")
+	return OIDCSettings{}, errCredentials
 }
 
 func (a *Server) publicOIDCProviders(ctx context.Context) ([]map[string]any, error) {
@@ -107,7 +114,7 @@ func (a *Server) updateOIDCProviders(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	defer tx.Rollback()
-	old, err := a.oidcConfigurations(r.Context())
+	old, err := a.readOIDCConfigurations(r.Context(), tx)
 	if err != nil {
 		failure(w, 503, "无法读取 OIDC 设置，请检查设置密钥")
 		return

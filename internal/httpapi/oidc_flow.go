@@ -5,6 +5,7 @@ import (
 	"database/sql"
 	"errors"
 	"net/http"
+	"strconv"
 	"strings"
 	"time"
 )
@@ -26,6 +27,61 @@ type oidcFlow struct {
 	Username       string
 	Email          string
 	EmailVerified  bool
+}
+
+const oidcSignupBindingCookie = "ws_oidc_signup_bind"
+
+func oidcSignupBindingKey(userID int64) string {
+	return tokenHash("wishingskin-oidc-signup:" + strconv.FormatInt(userID, 10))
+}
+
+func (a *Server) stageOIDCSignupBinding(ctx context.Context, tx *sql.Tx, userID int64, cookie, passwordHash string, flow oidcFlow) error {
+	flow.Purpose, flow.BrowserHash = "signup_bind", tokenHash(cookie)
+	flow.UserID, flow.CredentialHash = userID, passwordHash
+	sealed, err := a.sealOIDC(flow, "flow")
+	if err != nil {
+		return err
+	}
+	_, err = tx.ExecContext(ctx, a.s.Bind("INSERT INTO oidc_flows(flow_hash,value,expires_at) VALUES(?,?,?)"), tokenHash(oidcSignupBindingKey(userID)), sealed, time.Now().Add(24*time.Hour).Unix())
+	return err
+}
+
+func (a *Server) dropOIDCSignupBinding(ctx context.Context, tx *sql.Tx, userID int64) error {
+	_, err := tx.ExecContext(ctx, a.s.Bind("DELETE FROM oidc_flows WHERE flow_hash=?"), tokenHash(oidcSignupBindingKey(userID)))
+	return err
+}
+
+func (a *Server) finishOIDCSignupBinding(r *http.Request, tx *sql.Tx, userID int64) error {
+	ctx := r.Context()
+	if cookie, err := r.Cookie(oidcSignupBindingCookie); err == nil && len(cookie.Value) == 64 {
+		flow, err := a.readOIDCFlow(ctx, tx, oidcSignupBindingKey(userID), "signup_bind", true)
+		if err != nil && !errors.Is(err, sql.ErrNoRows) {
+			return err
+		}
+		if err == nil && flow.UserID == userID && flow.BrowserHash == tokenHash(cookie.Value) {
+			var credential string
+			if err := tx.QueryRowContext(ctx, a.s.Bind("SELECT password_hash FROM users WHERE id=?"), userID).Scan(&credential); err != nil {
+				return err
+			}
+			config, err := a.findOIDCSettings(ctx, tx, flow.ProviderID)
+			if err != nil && !errors.Is(err, errCredentials) {
+				return err
+			}
+			if err == nil && config.Enabled && flow.ConfigHash == oidcFingerprint(config) && credential == flow.CredentialHash {
+				var linked int
+				query := "SELECT COUNT(*) FROM oidc_identities WHERE identity_key=? OR (user_id=? AND issuer_key=?)"
+				if err := tx.QueryRowContext(ctx, a.s.Bind(query), oidcIdentityKey(flow.Issuer, flow.Subject), userID, tokenHash(flow.Issuer)).Scan(&linked); err != nil {
+					return err
+				}
+				if linked == 0 {
+					if err := a.insertOIDCIdentity(ctx, tx, userID, flow); err != nil {
+						return err
+					}
+				}
+			}
+		}
+	}
+	return a.dropOIDCSignupBinding(ctx, tx, userID)
 }
 
 func (a *Server) oidcCookie(w http.ResponseWriter, name, value string, age int) {
@@ -64,15 +120,14 @@ func (a *Server) saveOIDCFlow(ctx context.Context, token string, value oidcFlow)
 
 // Use the same lock order as plugin/configuration writes before creating auth state.
 func (a *Server) lockOIDCConfiguration(ctx context.Context, tx *sql.Tx, fingerprint string) error {
-	var mode string
-	if err := tx.QueryRowContext(ctx, "SELECT value FROM settings WHERE setting_key='registration_mode' FOR UPDATE").Scan(&mode); err != nil {
+	if _, err := lockRegistrationMode(ctx, tx); err != nil {
 		return err
 	}
-	values, err := a.oidcConfigurations(ctx)
+	values, err := a.readOIDCConfigurations(ctx, tx)
 	if err != nil {
 		return err
 	}
-	enabled, err := a.storedPluginEnabled(ctx, "wishingskin.oidc")
+	enabled, err := a.readPluginEnabled(ctx, tx, "wishingskin.oidc")
 	if err != nil {
 		return err
 	}

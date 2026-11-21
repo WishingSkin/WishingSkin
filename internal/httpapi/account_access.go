@@ -237,11 +237,15 @@ func (a *Server) publicWrite(w http.ResponseWriter, r *http.Request) bool {
 
 func (a *Server) challenge(w http.ResponseWriter, r *http.Request, token, action string) bool {
 	services, serviceErr := a.services(r.Context())
-	if serviceErr != nil || services.Challenge == nil || services.SiteKey == "" {
+	if serviceErr != nil || !services.challengeConfigured() {
 		respond(w, 503, map[string]any{"error": "人机验证尚未配置，请联系管理员", "captchaRequired": true})
 		return false
 	}
-	err := services.Challenge.Verify(r.Context(), token, connectionIP(r), action)
+	return verifyChallenge(w, r, services.Challenge, token, action)
+}
+
+func verifyChallenge(w http.ResponseWriter, r *http.Request, verifier ChallengeVerifier, token, action string) bool {
+	err := verifier.Verify(r.Context(), token, connectionIP(r), action)
 	if errors.Is(err, turnstile.ErrInvalid) {
 		respond(w, 403, map[string]any{"error": "请重新完成人机验证", "captchaRequired": true})
 		return false
@@ -263,28 +267,31 @@ func (a *Server) mailAllowance(w http.ResponseWriter, r *http.Request, email str
 	return true
 }
 
-func (a *Server) acquireMail(w http.ResponseWriter, r *http.Request) bool {
+func (a *Server) acquireMail(w http.ResponseWriter, r *http.Request) (MailSender, bool) {
 	services, err := a.services(r.Context())
 	if err != nil || services.Mail == nil {
 		failure(w, 503, "邮件服务尚未配置，请联系管理员")
-		return false
+		return nil, false
 	}
 	select {
 	case a.mailSlots <- struct{}{}:
-		return true
+		return services.Mail, true
 	default:
 		failure(w, 429, "邮件处理繁忙，请稍后重试")
-		return false
+		return nil, false
 	}
 }
 
-// The caller holds the user lock. Only an accepted mail and a committed
-// transaction replace the previous link, so a failed resend keeps it usable.
-func (a *Server) issueAccountMail(ctx context.Context, tx *sql.Tx, id int64, email, purpose string) error {
+func (a *Server) sendAccountMail(ctx context.Context, sender MailSender, email, purpose string) (string, error) {
 	token, err := secret()
 	if err != nil {
-		return err
+		return "", err
 	}
+	err = sender.Send(ctx, email, purpose, a.cfg.PublicURL+"/#"+purpose+"="+token)
+	return token, err
+}
+
+func (a *Server) storeAccountMail(ctx context.Context, tx *sql.Tx, id int64, token, purpose string) error {
 	lifetime := 24 * time.Hour
 	if purpose == "reset" {
 		lifetime = 30 * time.Minute
@@ -292,17 +299,13 @@ func (a *Server) issueAccountMail(ctx context.Context, tx *sql.Tx, id int64, ema
 	if _, err := tx.ExecContext(ctx, a.s.Bind("DELETE FROM account_tokens WHERE user_id=? AND purpose=?"), id, purpose); err != nil {
 		return err
 	}
-	if _, err := tx.ExecContext(ctx, a.s.Bind("INSERT INTO account_tokens(user_id,purpose,token_hash,expires_at) VALUES(?,?,?,?)"), id, purpose, tokenHash(token), time.Now().Add(lifetime).Unix()); err != nil {
-		return err
-	}
-	services, err := a.services(ctx)
-	if err != nil {
-		return err
-	}
-	if services.Mail == nil {
-		return errors.New("mail unavailable")
-	}
-	return services.Mail.Send(ctx, email, purpose, a.cfg.PublicURL+"/#"+purpose+"="+token)
+	_, err := tx.ExecContext(ctx, a.s.Bind("INSERT INTO account_tokens(user_id,purpose,token_hash,expires_at) VALUES(?,?,?,?)"), id, purpose, tokenHash(token), time.Now().Add(lifetime).Unix())
+	return err
+}
+
+type registrationRequest struct {
+	Email, Nickname, Password, Invitation, TurnstileToken string
+	OIDC                                                  bool
 }
 
 func (a *Server) register(w http.ResponseWriter, r *http.Request) {
@@ -323,10 +326,7 @@ func (a *Server) register(w http.ResponseWriter, r *http.Request) {
 		failure(w, 429, "注册尝试过于频繁，请稍后重试")
 		return
 	}
-	var body struct {
-		Email, Nickname, Password, Invitation, TurnstileToken string
-		OIDC                                                  bool
-	}
+	var body registrationRequest
 	if !decode(w, r, &body) {
 		return
 	}
@@ -369,11 +369,21 @@ func (a *Server) register(w http.ResponseWriter, r *http.Request) {
 	if !a.challenge(w, r, body.TurnstileToken, "register") {
 		return
 	}
+	mailToken := ""
+	var sender MailSender
 	if !manualVerification {
-		if !a.mailAllowance(w, r, body.Email) || !a.acquireMail(w, r) {
+		if !a.mailAllowance(w, r, body.Email) {
+			return
+		}
+		var ok bool
+		sender, ok = a.acquireMail(w, r)
+		if !ok {
 			return
 		}
 		defer func() { <-a.mailSlots }()
+		if _, _, _, ok := a.checkRegistration(w, r, body, signupCookie, manualVerification, false); !ok {
+			return
+		}
 	}
 	select {
 	case a.hashes <- struct{}{}:
@@ -387,66 +397,22 @@ func (a *Server) register(w http.ResponseWriter, r *http.Request) {
 		failure(w, 503, "暂时无法注册")
 		return
 	}
-	tx, err := a.s.DB.BeginTx(r.Context(), &sql.TxOptions{Isolation: sql.LevelReadCommitted})
-	if err != nil {
-		failure(w, 503, "暂时无法注册")
+	if !manualVerification {
+		mailToken, err = a.sendAccountMail(r.Context(), sender, body.Email, "verify")
+		if err != nil {
+			failure(w, 503, "注册未完成，邮件可能未发送，请稍后重试")
+			return
+		}
+	}
+	tx, invitation, signup, ok := a.checkRegistration(w, r, body, signupCookie, manualVerification, true)
+	if !ok {
 		return
 	}
 	defer tx.Rollback()
-	if err := tx.QueryRowContext(r.Context(), "SELECT value FROM settings WHERE setting_key='registration_mode' FOR UPDATE").Scan(&mode); err != nil {
-		failure(w, 503, "暂时无法注册")
-		return
-	}
-	if mode != "open" && mode != "invitation" {
-		failure(w, 403, "注册当前已关闭")
-		return
-	}
-	currentManual, err := manualEmailVerification(r.Context(), tx)
-	if err != nil {
-		failure(w, 503, "暂时无法读取注册设置")
-		return
-	}
-	if currentManual != manualVerification {
-		failure(w, 409, "注册设置已更新，请刷新后重试")
-		return
-	}
-	allowed, err = a.registrationEmailAllowed(r.Context(), tx, body.Email)
-	if err != nil {
-		failure(w, 503, "暂时无法读取注册设置")
-		return
-	}
-	if !allowed {
-		failure(w, 400, "该邮箱域名不在注册允许范围内")
-		return
-	}
-	options, err := a.invitationOptions(r.Context(), tx, mode)
-	if err != nil {
-		failure(w, 503, "暂时无法读取插件设置")
-		return
-	}
-	if options.Enabled && options.Required {
-		var remaining int
-		var expires int64
-		err = tx.QueryRowContext(r.Context(), a.s.Bind("SELECT remaining_uses,expires_at FROM invitation_codes WHERE code_hash=? FOR UPDATE"), tokenHash(strings.TrimSpace(body.Invitation))).Scan(&remaining, &expires)
-		if errors.Is(err, sql.ErrNoRows) || err == nil && (remaining < 1 || expires != 0 && expires <= time.Now().Unix()) {
-			failure(w, 400, "邀请码无效、已过期或已用完")
-			return
-		}
+	if invitation != "" {
+		_, err = tx.ExecContext(r.Context(), a.s.Bind("UPDATE invitation_codes SET remaining_uses=remaining_uses-1,used_at=? WHERE code_hash=?"), time.Now().Unix(), invitation)
 		if err != nil {
 			failure(w, 503, "暂时无法注册")
-			return
-		}
-		if _, err = tx.ExecContext(r.Context(), a.s.Bind("UPDATE invitation_codes SET remaining_uses=remaining_uses-1,used_at=? WHERE code_hash=?"), time.Now().Unix(), tokenHash(strings.TrimSpace(body.Invitation))); err != nil {
-			failure(w, 503, "暂时无法注册")
-			return
-		}
-	}
-	var signup oidcFlow
-	if body.OIDC {
-		signup, err = a.readOIDCFlow(r.Context(), tx, signupCookie.Value, "signup", true)
-		config, configErr := a.oidcSettingsFor(r.Context(), signup.ProviderID)
-		if err != nil || configErr != nil || !config.Enabled || signup.ConfigHash != oidcFingerprint(config) {
-			failure(w, 400, "OIDC 注册已失效，请重新登录")
 			return
 		}
 	}
@@ -464,17 +430,13 @@ func (a *Server) register(w http.ResponseWriter, r *http.Request) {
 		_, err = tx.ExecContext(r.Context(), a.s.Bind("INSERT INTO account_states(user_id,email_verified,verification_required) VALUES(?,?,?)"), id, false, true)
 	}
 	if err == nil && body.OIDC {
-		err = a.insertOIDCIdentity(r.Context(), tx, id, signup)
-		if uniqueViolation(err) {
-			failure(w, 409, "此 OIDC 身份已绑定，请重新登录")
-			return
-		}
+		err = a.stageOIDCSignupBinding(r.Context(), tx, id, signupCookie.Value, hash, signup)
 		if err == nil {
 			_, err = tx.ExecContext(r.Context(), a.s.Bind("DELETE FROM oidc_flows WHERE flow_hash=?"), tokenHash(signupCookie.Value))
 		}
 	}
 	if err == nil && !manualVerification {
-		err = a.issueAccountMail(r.Context(), tx, id, body.Email, "verify")
+		err = a.storeAccountMail(r.Context(), tx, id, mailToken, "verify")
 	}
 	if err == nil {
 		err = tx.Commit()
@@ -485,12 +447,107 @@ func (a *Server) register(w http.ResponseWriter, r *http.Request) {
 	}
 	if body.OIDC {
 		a.oidcCookie(w, "ws_oidc_signup", "", -1)
+		a.oidcCookie(w, oidcSignupBindingCookie, signupCookie.Value, 86400)
 	}
 	message := "账号已创建，验证邮件已提交发送。请验证邮箱后登录。"
 	if manualVerification {
 		message = "账号已创建，请等待管理员完成邮箱验证。"
 	}
 	respond(w, 201, map[string]string{"message": message})
+}
+
+func (a *Server) checkRegistration(w http.ResponseWriter, r *http.Request, body registrationRequest, signupCookie *http.Cookie, manualVerification, write bool) (*sql.Tx, string, oidcFlow, bool) {
+	var signup oidcFlow
+	tx, err := a.s.DB.BeginTx(r.Context(), &sql.TxOptions{Isolation: sql.LevelReadCommitted})
+	if err != nil {
+		failure(w, 503, "暂时无法注册")
+		return nil, "", signup, false
+	}
+	keepTransaction := false
+	defer func() {
+		if !keepTransaction {
+			_ = tx.Rollback()
+		}
+	}()
+	mode, err := lockRegistrationMode(r.Context(), tx)
+	if err != nil {
+		failure(w, 503, "暂时无法注册")
+		return nil, "", signup, false
+	}
+	if mode != "open" && mode != "invitation" {
+		failure(w, 403, "注册当前已关闭")
+		return nil, "", signup, false
+	}
+	currentManual, err := manualEmailVerification(r.Context(), tx)
+	if err != nil {
+		failure(w, 503, "暂时无法读取注册设置")
+		return nil, "", signup, false
+	}
+	if currentManual != manualVerification {
+		failure(w, 409, "注册设置已更新，请刷新后重试")
+		return nil, "", signup, false
+	}
+	allowed, err := a.registrationEmailAllowed(r.Context(), tx, body.Email)
+	if err != nil {
+		failure(w, 503, "暂时无法读取注册设置")
+		return nil, "", signup, false
+	}
+	if !allowed {
+		failure(w, 400, "该邮箱域名不在注册允许范围内")
+		return nil, "", signup, false
+	}
+	options, err := a.invitationOptions(r.Context(), tx, mode)
+	if err != nil {
+		failure(w, 503, "暂时无法读取插件设置")
+		return nil, "", signup, false
+	}
+	var invitation string
+	if options.Enabled && options.Required {
+		var remaining int
+		var expires int64
+		invitation = tokenHash(strings.TrimSpace(body.Invitation))
+		err = tx.QueryRowContext(r.Context(), a.s.Bind("SELECT remaining_uses,expires_at FROM invitation_codes WHERE code_hash=? FOR UPDATE"), invitation).Scan(&remaining, &expires)
+		if errors.Is(err, sql.ErrNoRows) || err == nil && (remaining < 1 || expires != 0 && expires <= time.Now().Unix()) {
+			failure(w, 400, "邀请码无效、已过期或已用完")
+			return nil, "", signup, false
+		}
+		if err != nil {
+			failure(w, 503, "暂时无法注册")
+			return nil, "", signup, false
+		}
+	}
+	if body.OIDC {
+		signup, err = a.readOIDCFlow(r.Context(), tx, signupCookie.Value, "signup", true)
+		config, configErr := a.findOIDCSettings(r.Context(), tx, signup.ProviderID)
+		if err != nil || configErr != nil || !config.Enabled || signup.ConfigHash != oidcFingerprint(config) {
+			failure(w, 400, "OIDC 注册已失效，请重新登录")
+			return nil, "", signup, false
+		}
+		var linked int
+		err = tx.QueryRowContext(r.Context(), a.s.Bind("SELECT COUNT(*) FROM oidc_identities WHERE identity_key=?"), oidcIdentityKey(signup.Issuer, signup.Subject)).Scan(&linked)
+		if err != nil {
+			failure(w, 503, "暂时无法注册")
+			return nil, "", signup, false
+		}
+		if linked != 0 {
+			failure(w, 409, "此 OIDC 身份已绑定，请重新登录")
+			return nil, "", signup, false
+		}
+	}
+	if !write {
+		var exists int
+		if err := tx.QueryRowContext(r.Context(), a.s.Bind("SELECT COUNT(*) FROM users WHERE email_key=?"), strings.ToLower(body.Email)).Scan(&exists); err != nil {
+			failure(w, 503, "暂时无法注册")
+			return nil, "", signup, false
+		}
+		if exists > 0 {
+			failure(w, 409, "此邮箱已注册，请登录或找回密码")
+			return nil, "", signup, false
+		}
+		return nil, "", oidcFlow{}, true
+	}
+	keepTransaction = true
+	return tx, invitation, signup, true
 }
 
 func (a *Server) requestAccountMail(w http.ResponseWriter, r *http.Request) {
@@ -506,37 +563,69 @@ func (a *Server) requestAccountMail(w http.ResponseWriter, r *http.Request) {
 		failure(w, 400, "邮箱或邮件用途无效")
 		return
 	}
-	if !a.mailAllowance(w, r, body.Email) || !a.acquireMail(w, r) {
+	if body.Purpose == "verify" {
+		manual, err := manualEmailVerification(r.Context(), a.s.DB)
+		if err != nil {
+			failure(w, 503, "暂时无法发送邮件")
+			return
+		}
+		if manual {
+			accountMailAccepted(w)
+			return
+		}
+	}
+	if !a.mailAllowance(w, r, body.Email) {
+		return
+	}
+	sender, ok := a.acquireMail(w, r)
+	if !ok {
 		return
 	}
 	defer func() { <-a.mailSlots }()
-	tx, err := a.s.DB.BeginTx(r.Context(), &sql.TxOptions{Isolation: sql.LevelReadCommitted})
+	ctx := r.Context()
+	emailKey := strings.ToLower(body.Email)
+	target, err := a.accountMailTarget(ctx, a.s.DB, emailKey, body.Purpose, false)
+	if errors.Is(err, sql.ErrNoRows) || err == nil && !target.eligible(body.Purpose) {
+		accountMailAccepted(w)
+		return
+	}
+	if err != nil {
+		failure(w, 503, "暂时无法发送邮件")
+		return
+	}
+	token, err := a.sendAccountMail(ctx, sender, target.Email, body.Purpose)
+	if err != nil {
+		failure(w, 503, "暂时无法发送邮件")
+		return
+	}
+	tx, err := a.s.DB.BeginTx(ctx, &sql.TxOptions{Isolation: sql.LevelReadCommitted})
 	if err != nil {
 		failure(w, 503, "暂时无法发送邮件")
 		return
 	}
 	defer tx.Rollback()
-	var id int64
-	var email string
-	var banned bool
-	err = tx.QueryRowContext(r.Context(), a.s.Bind("SELECT id,email,banned FROM users WHERE email_key=? FOR UPDATE"), strings.ToLower(body.Email)).Scan(&id, &email, &banned)
-	if errors.Is(err, sql.ErrNoRows) || err == nil && banned {
-		respond(w, 202, map[string]string{"message": "如有符合条件的账号，邮件已提交发送，请检查邮箱。"})
-		return
-	}
-	if err == nil && body.Purpose == "verify" {
-		var verified bool
-		err = tx.QueryRowContext(r.Context(), a.s.Bind("SELECT email_verified FROM account_states WHERE user_id=?"), id).Scan(&verified)
-		if errors.Is(err, sql.ErrNoRows) {
-			err = nil
+	if body.Purpose == "verify" {
+		_, err = lockRegistrationMode(ctx, tx)
+		var manual bool
+		if err == nil {
+			manual, err = manualEmailVerification(ctx, tx)
 		}
-		if err == nil && verified {
-			respond(w, 202, map[string]string{"message": "如有符合条件的账号，邮件已提交发送，请检查邮箱。"})
+		if err != nil {
+			failure(w, 503, "暂时无法发送邮件")
+			return
+		}
+		if manual {
+			accountMailAccepted(w)
 			return
 		}
 	}
+	current, err := a.accountMailTarget(ctx, tx, emailKey, body.Purpose, true)
+	if errors.Is(err, sql.ErrNoRows) || err == nil && current != target {
+		accountMailAccepted(w)
+		return
+	}
 	if err == nil {
-		err = a.issueAccountMail(r.Context(), tx, id, email, body.Purpose)
+		err = a.storeAccountMail(ctx, tx, target.ID, token, body.Purpose)
 	}
 	if err == nil {
 		err = tx.Commit()
@@ -545,6 +634,33 @@ func (a *Server) requestAccountMail(w http.ResponseWriter, r *http.Request) {
 		failure(w, 503, "暂时无法发送邮件")
 		return
 	}
+	accountMailAccepted(w)
+}
+
+type accountMailTarget struct {
+	ID                int64
+	Email, Credential string
+	Banned, Verified  bool
+}
+
+func (target accountMailTarget) eligible(purpose string) bool {
+	return !target.Banned && (purpose != "verify" || !target.Verified)
+}
+
+func (a *Server) accountMailTarget(ctx context.Context, reader settingReader, email, purpose string, lock bool) (accountMailTarget, error) {
+	var target accountMailTarget
+	query := "SELECT id,email,password_hash,banned FROM users WHERE email_key=?"
+	if lock {
+		query += " FOR UPDATE"
+	}
+	err := reader.QueryRowContext(ctx, a.s.Bind(query), email).Scan(&target.ID, &target.Email, &target.Credential, &target.Banned)
+	if err == nil && purpose == "verify" {
+		err = reader.QueryRowContext(ctx, a.s.Bind("SELECT COALESCE((SELECT email_verified FROM account_states WHERE user_id=?),FALSE)"), target.ID).Scan(&target.Verified)
+	}
+	return target, err
+}
+
+func accountMailAccepted(w http.ResponseWriter) {
 	respond(w, 202, map[string]string{"message": "如有符合条件的账号，邮件已提交发送，请检查邮箱。"})
 }
 
@@ -603,7 +719,20 @@ func (a *Server) verifyEmail(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	defer tx.Rollback()
-	err = a.lockMailToken(r, tx, id, body.Token, "verify")
+	_, err = lockRegistrationMode(r.Context(), tx)
+	if err == nil {
+		var manual bool
+		manual, err = manualEmailVerification(r.Context(), tx)
+		if manual {
+			err = errCredentials
+		}
+	}
+	if err == nil {
+		err = a.lockMailToken(r, tx, id, body.Token, "verify")
+	}
+	if err == nil {
+		err = a.finishOIDCSignupBinding(r, tx, id)
+	}
 	query := "INSERT INTO account_states(user_id,email_verified,verification_required) VALUES(?,TRUE,FALSE) ON CONFLICT(user_id) DO UPDATE SET email_verified=TRUE"
 	if a.s.Dialect == "mysql" {
 		query = "INSERT INTO account_states(user_id,email_verified,verification_required) VALUES(?,TRUE,FALSE) ON DUPLICATE KEY UPDATE email_verified=TRUE"
@@ -664,6 +793,12 @@ func (a *Server) resetPassword(w http.ResponseWriter, r *http.Request) {
 	}
 	defer tx.Rollback()
 	err = a.lockMailToken(r, tx, id, body.Token, "reset")
+	if err == nil {
+		err = a.dropOIDCSignupBinding(r.Context(), tx, id)
+	}
+	if err == nil {
+		_, err = tx.ExecContext(r.Context(), a.s.Bind("DELETE FROM oidc_identities WHERE user_id=? AND EXISTS (SELECT 1 FROM account_states WHERE user_id=? AND verification_required=TRUE AND email_verified=FALSE)"), id, id)
+	}
 	if err == nil {
 		_, err = tx.ExecContext(r.Context(), a.s.Bind("UPDATE users SET password_hash=?,password_method='ARGON2ID',password_salt='' WHERE id=?"), hash, id)
 	}

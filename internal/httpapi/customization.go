@@ -41,8 +41,12 @@ type appearance struct {
 }
 
 func (a *Server) readSetting(ctx context.Context, key string, target any) (bool, error) {
+	return a.readSettingFrom(ctx, a.s.DB, key, target)
+}
+
+func (a *Server) readSettingFrom(ctx context.Context, reader settingReader, key string, target any) (bool, error) {
 	var value string
-	err := a.s.DB.QueryRowContext(ctx, a.s.Bind("SELECT value FROM settings WHERE setting_key=?"), key).Scan(&value)
+	err := reader.QueryRowContext(ctx, a.s.Bind("SELECT value FROM settings WHERE setting_key=?"), key).Scan(&value)
 	if errors.Is(err, sql.ErrNoRows) {
 		return false, nil
 	}

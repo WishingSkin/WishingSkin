@@ -12,6 +12,7 @@ import (
 	"net/url"
 	"strings"
 	"testing"
+	"time"
 
 	oidc "github.com/coreos/go-oidc/v3/oidc"
 )
@@ -61,12 +62,19 @@ func TestOAuthProviderAndRefreshBothDatabases(t *testing.T) {
 				Refresh string `json:"refresh_token"`
 				ID      string `json:"id_token"`
 			}
-			issue := func() tokens {
+			issueCode := func() string {
 				t.Helper()
 				w := submit("/oauth/authorize?"+q.Encode(), url.Values{"decision": {"allow"}, "csrf": {csrf(fmt.Sprintf("%064d", 1))}}, true)
 				webStatus(t, w, 303)
 				location, _ := url.Parse(w.Header().Get("Location"))
-				w = submit("/oauth/token", url.Values{"grant_type": {"authorization_code"}, "code": {location.Query().Get("code")}, "code_verifier": {verifier}, "redirect_uri": {created.Client.Redirects[0]}}, false)
+				return location.Query().Get("code")
+			}
+			exchange := func(code string) *httptest.ResponseRecorder {
+				return submit("/oauth/token", url.Values{"grant_type": {"authorization_code"}, "code": {code}, "code_verifier": {verifier}, "redirect_uri": {created.Client.Redirects[0]}}, false)
+			}
+			issue := func() tokens {
+				t.Helper()
+				w := exchange(issueCode())
 				webStatus(t, w, 200)
 				var v tokens
 				if json.Unmarshal(w.Body.Bytes(), &v) != nil || v.Refresh == "" || v.ID == "" {
@@ -115,13 +123,26 @@ func TestOAuthProviderAndRefreshBothDatabases(t *testing.T) {
 			if introspect(second.Access) || introspect(first.Access) {
 				t.Fatal("replay must revoke family access tokens")
 			}
-			for _, action := range []string{"revoke", "account", "password", "client", "plugin", "ban"} {
+			for _, action := range []string{"revoke", "account", "totp", "password", "client", "plugin", "ban"} {
 				current := issue()
 				switch action {
 				case "revoke":
 					webStatus(t, submit("/oauth/revoke", url.Values{"token": {current.Refresh}}, false), 200)
 				case "account":
+					pending := issueCode()
 					webStatus(t, f.call(1, "DELETE", "/api/account/oauth/"+created.Client.ID, nil), 204)
+					webStatus(t, exchange(pending), 400)
+				case "totp":
+					password := fmt.Sprintf("account-test-%d!", 42)
+					seedPassword(t, f, 1, password)
+					current = issue()
+					setup := f.call(1, "POST", "/api/account/totp/setup", map[string]string{"currentPassword": password})
+					webStatus(t, setup, 200)
+					var result struct{ Secret string }
+					if json.Unmarshal(setup.Body.Bytes(), &result) != nil || result.Secret == "" {
+						t.Fatal("missing setup secret")
+					}
+					webStatus(t, f.call(1, "POST", "/api/account/totp/enable", map[string]string{"code": totpCode(result.Secret, time.Now().Unix()/30)}), 200)
 				case "password":
 					f.exec("UPDATE users SET password_hash='changed' WHERE id=1")
 				case "ban":

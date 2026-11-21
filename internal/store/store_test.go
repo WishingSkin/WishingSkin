@@ -92,6 +92,9 @@ func assertEmbeddedSchemasAgree(t *testing.T, migration string) {
 	if migration == "021_oauth_extensions" {
 		tables = []string{"oauth_access_families", "oauth_refresh_metadata", "web_session_auth"}
 	}
+	if migration == "022_account_verification" {
+		tables = nil
+	}
 	if migration == "019_admin_event_changes" {
 		tables = []string{"admin_event_changes"}
 	}

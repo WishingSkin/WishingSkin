@@ -72,12 +72,16 @@ func validOIDCIssuer(raw string) bool {
 }
 
 func (a *Server) oidcConfiguration(ctx context.Context) (OIDCSettings, error) {
+	return a.readOIDCConfiguration(ctx, a.s.DB)
+}
+
+func (a *Server) readOIDCConfiguration(ctx context.Context, reader settingReader) (OIDCSettings, error) {
 	value := a.cfg.OIDC
 	if value.Name == "" {
 		value.Name = "OIDC"
 	}
 	var sealed string
-	saved, err := a.readSetting(ctx, "oidc_config", &sealed)
+	saved, err := a.readSettingFrom(ctx, reader, "oidc_config", &sealed)
 	if err == nil && !saved {
 		return value, nil
 	}
@@ -128,7 +132,12 @@ func (a *Server) updateOIDC(w http.ResponseWriter, r *http.Request) {
 	if !decode(w, r, &body) {
 		return
 	}
-	value, err := a.oidcConfiguration(r.Context())
+	tx, ok := a.beginAdminWrite(w, r, u)
+	if !ok {
+		return
+	}
+	defer tx.Rollback()
+	value, err := a.readOIDCConfiguration(r.Context(), tx)
 	if err != nil {
 		failure(w, 503, "无法读取 OIDC 设置，请检查设置密钥")
 		return
@@ -155,11 +164,6 @@ func (a *Server) updateOIDC(w http.ResponseWriter, r *http.Request) {
 		failure(w, 503, "本地设置密钥尚不可用")
 		return
 	}
-	tx, ok := a.beginAdminWrite(w, r, u)
-	if !ok {
-		return
-	}
-	defer tx.Rollback()
 	err = a.putSetting(r.Context(), tx, "oidc_config", sealed)
 	if err == nil {
 		err = a.putPluginEnabled(r.Context(), tx, "wishingskin.oidc", "1.0.0", value.Enabled)

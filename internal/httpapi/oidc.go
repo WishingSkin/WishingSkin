@@ -279,10 +279,14 @@ func (a *Server) callbackOIDC(w http.ResponseWriter, r *http.Request) {
 }
 
 func (a *Server) oidcUser(ctx context.Context, id int64) (User, error) {
+	return a.readOIDCUser(ctx, a.s.DB, id)
+}
+
+func (a *Server) readOIDCUser(ctx context.Context, reader settingReader, id int64) (User, error) {
 	var u User
 	var permission int
 	var banned, required bool
-	err := a.s.DB.QueryRowContext(ctx, a.s.Bind("SELECT u.id,u.email,u.nickname,u.permission,u.banned,u.password_hash,COALESCE(s.email_verified,FALSE),s.user_id IS NULL,COALESCE(s.verification_required,FALSE) FROM users u LEFT JOIN account_states s ON s.user_id=u.id WHERE u.id=?"), id).Scan(&u.ID, &u.Email, &u.Nickname, &permission, &banned, &u.credentialHash, &u.EmailVerified, &u.LegacyAccount, &required)
+	err := reader.QueryRowContext(ctx, a.s.Bind("SELECT u.id,u.email,u.nickname,u.permission,u.banned,u.password_hash,COALESCE(s.email_verified,FALSE),s.user_id IS NULL,COALESCE(s.verification_required,FALSE) FROM users u LEFT JOIN account_states s ON s.user_id=u.id WHERE u.id=?"), id).Scan(&u.ID, &u.Email, &u.Nickname, &permission, &banned, &u.credentialHash, &u.EmailVerified, &u.LegacyAccount, &required)
 	u.IsAdmin = permission >= 2
 	if err == nil && (banned || required && !u.EmailVerified) {
 		err = errCredentials

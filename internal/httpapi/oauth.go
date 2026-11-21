@@ -659,7 +659,10 @@ func (a *Server) revokeAccountOAuth(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	defer tx.Rollback()
-	_, err = tx.ExecContext(r.Context(), a.s.Bind("DELETE FROM oauth_tokens WHERE client_id=? AND user_id=?"), r.PathValue("id"), u.ID)
+	_, err = tx.ExecContext(r.Context(), a.s.Bind("DELETE FROM oauth_codes WHERE client_id=? AND user_id=?"), r.PathValue("id"), u.ID)
+	if err == nil {
+		_, err = tx.ExecContext(r.Context(), a.s.Bind("DELETE FROM oauth_tokens WHERE client_id=? AND user_id=?"), r.PathValue("id"), u.ID)
+	}
 	if err == nil {
 		_, err = tx.ExecContext(r.Context(), a.s.Bind("DELETE FROM oauth_refresh_tokens WHERE client_id=? AND user_id=?"), r.PathValue("id"), u.ID)
 	}

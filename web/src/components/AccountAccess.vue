@@ -30,6 +30,10 @@ onMounted(async () => {
   } catch { error.value = 'OIDC 注册已失效，请重新登录' }
 })
 const title = computed(() => ({ register: '创建账号', mail: '账号邮件', verify: '确认邮箱', reset: '设置新密码' })[props.mode])
+const mailPurpose = computed({
+  get: () => props.site.manualEmailVerification ? 'reset' : purpose.value,
+  set: (value: 'verify' | 'reset') => { purpose.value = value },
+})
 watch(() => props.mode, () => { error.value = ''; message.value = '' })
 async function submit() {
   if (busy.value || !oidcReady.value) return
@@ -40,7 +44,7 @@ async function submit() {
   }
   busy.value = true
   const body = props.mode === 'register' ? { email: address.value.trim(), nickname: nickname.value.trim(), password: password.value, invitation: invitation.value.trim(), turnstileToken: challengeToken.value, oidc: oidcRegistration }
-    : props.mode === 'mail' ? { email: address.value.trim(), purpose: purpose.value }
+    : props.mode === 'mail' ? { email: address.value.trim(), purpose: mailPurpose.value }
     : props.mode === 'verify' ? { token: props.token } : { token: props.token, newPassword: password.value }
   const endpoint = props.mode === 'mail' ? 'email' : props.mode
   try {
@@ -73,8 +77,8 @@ async function submit() {
           <template v-if="site.registration === 'invitation'"><label for="access-invitation">{{ t('邀请码') }}</label><input id="access-invitation" v-model="invitation" autocomplete="off" required /></template>
         </template>
         <template v-if="mode === 'mail'">
-          <label for="mail-purpose">{{ t('邮件用途') }}</label><select id="mail-purpose" v-model="purpose"><option value="verify">{{ t('验证邮箱') }}</option><option value="reset">{{ t('找回密码') }}</option></select>
-          <p class="password-rule">{{ purpose === 'verify' ? t('验证链接 24 小时内有效。') : t('找回链接 30 分钟内有效。') }} {{ t('重发后旧链接将失效，请以最新邮件为准。') }}</p>
+          <label for="mail-purpose">{{ t('邮件用途') }}</label><select id="mail-purpose" v-model="mailPurpose"><option v-if="!site.manualEmailVerification" value="verify">{{ t('验证邮箱') }}</option><option value="reset">{{ t('找回密码') }}</option></select>
+          <p class="password-rule">{{ mailPurpose === 'verify' ? t('验证链接 24 小时内有效。') : t('找回链接 30 分钟内有效。') }} {{ t('重发后旧链接将失效，请以最新邮件为准。') }}</p>
         </template>
         <template v-if="mode === 'register' || mode === 'reset'">
           <p v-if="mode === 'register' && oidcRegistration" class="password-rule">{{ t('设置本站密码，用于 Minecraft 登录和账号恢复。') }}</p>

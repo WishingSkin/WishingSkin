@@ -227,6 +227,9 @@ func (a *Server) updateAdminUser(w http.ResponseWriter, r *http.Request) {
 		}
 		_, err = tx.ExecContext(r.Context(), a.s.Bind(query), id)
 		if err == nil {
+			err = a.dropOIDCSignupBinding(r.Context(), tx, id)
+		}
+		if err == nil {
 			_, err = tx.ExecContext(r.Context(), a.s.Bind("DELETE FROM account_tokens WHERE user_id=? AND purpose='verify'"), id)
 		}
 		if err == nil {

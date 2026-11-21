@@ -505,20 +505,91 @@ func TestOIDCRegistrationRulesBothDatabases(t *testing.T) {
 				t.Fatal("failed registration did not roll back")
 			}
 			mailbox.fail = false
-			webStatus(t, register(), 201)
+			registered := register()
+			webStatus(t, registered, 201)
 			webStatus(t, register(), 400) // Pending flow is single-use.
 			var uid int64
-			if err := f.db.DB.QueryRow("SELECT user_id FROM oidc_identities").Scan(&uid); err != nil {
+			if err := f.db.DB.QueryRow("SELECT id FROM users WHERE email_key='new@example.test'").Scan(&uid); err != nil {
 				t.Fatal(err)
+			}
+			if err := f.db.DB.QueryRow("SELECT COUNT(*) FROM oidc_identities").Scan(&count); err != nil || count != 0 {
+				t.Fatal("OIDC identity became active before local verification", err)
 			}
 			if _, err := f.app.oidcUser(context.Background(), uid); err == nil {
 				t.Fatal("upstream verification bypassed local email verification")
 			}
-			webStatus(t, f.call(0, "POST", "/api/auth/verify", map[string]string{"token": mailbox.token()}), 204)
+			webStatus(t, verifyOIDCSignupEmail(f, mailbox.token(), registered.Result().Cookies()), 204)
+			if err := f.db.DB.QueryRow(f.db.Bind("SELECT COUNT(*) FROM oidc_identities WHERE user_id=?"), uid).Scan(&count); err != nil || count != 1 {
+				t.Fatal("the original registration browser did not confirm its pending OIDC identity", err)
+			}
 			if _, err := f.app.oidcUser(context.Background(), uid); err != nil {
 				t.Fatal(err)
 			}
 			webStatus(t, f.call(0, "POST", "/api/auth/login", map[string]string{"email": "new@example.test", "password": "Register123!"}), 200)
+		})
+	}
+}
+
+func verifyOIDCSignupEmail(f *managementApp, token string, cookies []*http.Cookie) *httptest.ResponseRecorder {
+	body, _ := json.Marshal(map[string]string{"token": token})
+	r := httptest.NewRequest(http.MethodPost, "http://example.test/api/auth/verify", strings.NewReader(string(body)))
+	r.Header.Set("Origin", "http://example.test")
+	for _, cookie := range cookies {
+		r.AddCookie(cookie)
+	}
+	w := httptest.NewRecorder()
+	f.app.ServeHTTP(w, r)
+	return w
+}
+
+func TestOIDCSignupFallbackBothDatabases(t *testing.T) {
+	for _, dialect := range []string{"mysql", "postgres"} {
+		t.Run(dialect, func(t *testing.T) {
+			f, mailbox := accessApp(t, dialect)
+			provider := newOIDCProviderFixture(t)
+			f.app.cfg.OIDC = OIDCSettings{Enabled: true, Name: "Test", Issuer: provider.server.URL, ClientID: "test-client", ClientSecret: "synthetic"}
+			f.exec("UPDATE settings SET value='open' WHERE setting_key='registration_mode'")
+			for _, scenario := range []string{"other-browser", "recovery"} {
+				t.Run(scenario, func(t *testing.T) {
+					clearMailLimits(f)
+					provider.subject = scenario
+					email := scenario + "@example.test"
+					address, browser := startOIDCTest(t, f, provider, 0)
+					started := callbackOIDCTest(f, address, browser, 0)
+					if !strings.Contains(started.Header().Get("Location"), "mode=register&oidc=1") {
+						t.Fatal("missing OIDC signup handoff")
+					}
+					body := registrationBody(email)
+					signup, _ := json.Marshal(map[string]any{"email": email, "password": body["password"], "oidc": true, "turnstileToken": "valid"})
+					r := httptest.NewRequest(http.MethodPost, "http://example.test/api/auth/register", strings.NewReader(string(signup)))
+					r.Header.Set("Origin", "http://example.test")
+					for _, cookie := range started.Result().Cookies() {
+						if cookie.MaxAge >= 0 {
+							r.AddCookie(cookie)
+						}
+					}
+					reg := httptest.NewRecorder()
+					f.app.ServeHTTP(reg, r)
+					webStatus(t, reg, 201)
+					var cookies []*http.Cookie
+					password := body["password"]
+					if scenario == "recovery" {
+						cookies = reg.Result().Cookies()
+						clearMailLimits(f)
+						webStatus(t, mailRequest(f, email, "reset"), 202)
+						password += "1!"
+						webStatus(t, f.call(0, "POST", "/api/auth/reset", map[string]string{"token": mailbox.token(), "newPassword": password}), 204)
+						clearMailLimits(f)
+						webStatus(t, mailRequest(f, email, "verify"), 202)
+					}
+					webStatus(t, verifyOIDCSignupEmail(f, mailbox.token(), cookies), 204)
+					webStatus(t, f.call(0, "POST", "/api/auth/login", map[string]string{"email": email, "password": password}), 200)
+					var linked int
+					if err := f.db.DB.QueryRow(f.db.Bind("SELECT COUNT(*) FROM oidc_identities i JOIN users u ON u.id=i.user_id WHERE u.email_key=?"), email).Scan(&linked); err != nil || linked != 0 {
+						t.Fatal("the account activated with an unconfirmed OIDC identity", err)
+					}
+				})
+			}
 		})
 	}
 }
