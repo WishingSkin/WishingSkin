@@ -42,7 +42,7 @@
 - **默认内置层**：前端动态生成轻量 16×16 像素方块纹理与 8×8 锐边像素粒子。
 - **导入原版或资源包层**：管理员在“Minecraft 方块材质资源”区域上传 Minecraft 客户端 `client.jar` 或任意资源包 `.zip`（最大 80 MiB）。
   - 服务端按白名单提取 112 张贴图（94 个方块键 + 18 个 `assets/minecraft/textures/particle/` 粒子键），自动裁剪动画贴图首帧，并按群系温度/湿度读取 `colormap/grass.png` 与 `foliage.png` 完成染色合成。
-  - 贴图重新编码为 PNG，与元数据分开存入数据库。升级后仍通过原地址 `/api/theme-assets/{version}/{key}.png` 提供贴图。原始 `.jar` 或 `.zip` 在处理后删除。
+  - 贴图会重新编码为 PNG，与元数据分表行存入数据库，并在升级后保持原有 `/api/theme-assets/{version}/{key}.png` 访问地址；原始 `.jar` 或 `.zip` 在提取完成后立即删除。
   - 导入后的方块贴图会以完整像素正方形展示在主题选择卡片与后台预览条中，粒子贴图会直接替换首页氛围粒子。
 - **合规说明**：启用 MC 系列主题或已导入 Minecraft 贴图时，页脚会自动展示非官方合规声明。
 
@@ -56,9 +56,9 @@
 | Monocraft（`monocraft`） | 英文与数字使用 MC 像素体，中文保持系统清晰字体 |
 | 缝合像素（`fusion_pixel`） | 英文 Monocraft + 简体中文 Fusion Pixel 12px 点阵字体 |
 | 方舟像素（`ark_pixel`） | 英文 Monocraft + 简体中文 Ark Pixel 12px 硬朗像素体 |
-| 自定义字体（`custom`） | 上传不超过 2 MiB 的 WOFF2 字体文件（服务端校验 `wOF2` 魔数），或填写 HTTPS / 站内字体地址（填写地址时优先使用地址） |
+| 自定义字体（`custom`） | 上传不超过 2 MiB 的 WOFF2 字体文件（服务端校验 `wOF2` 魔数），或填写 HTTPS / 站内字体地址（填写地址时优先使用地址；CSS 样式表会自动解析 `?family=` 参数，也可手动指定字体族名称） |
 
-上传的字体与元数据分开保存，升级后保留原访问地址。
+上传的字体文件与元数据分开保存，升级后仍保留原访问地址。
 
 内置像素字体均采用 SIL OFL 1.1 开源许可，按需懒加载，许可全文见 [THIRD_PARTY_NOTICES.md](../THIRD_PARTY_NOTICES.md)。
 

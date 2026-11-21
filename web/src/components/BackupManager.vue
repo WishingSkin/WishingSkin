@@ -18,9 +18,9 @@ async function action(entry: Entry, kind: 'verify' | 'restore-plan') {
  try {
   const data = await request('/' + encodeURIComponent(entry.id) + '/' + kind, 'POST')
   const sourcesVerified = !data.unverifiedFiles
-  results.value[entry.id] = t(sourcesVerified ? '校验通过' : '待校验')
+  results.value[entry.id] = t(sourcesVerified ? '校验通过' : '部分来源待核验')
   if (kind === 'restore-plan') restore.value = data
-  if (!sourcesVerified) toast('这份备份有材质来源待核验，不计入自动保留份数。', 'info')
+  if (!sourcesVerified) toast('该备份包含无法核验来源的旧材质，可正常恢复，但不计入自动保留份数。', 'info')
   else if (kind === 'verify') toast('备份校验通过。')
  }
  catch (e) { results.value[entry.id] = t('校验未通过'); toast((e as Error).message, 'error') }
