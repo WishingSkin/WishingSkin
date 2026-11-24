@@ -2,6 +2,12 @@
 
 本文件记录 WishingSkin 各版本的主要变更。版本号遵循 [Semantic Versioning 2.0.0](https://semver.org/)，详见[开发指南](docs/development-guide.md)。
 
+## [Unreleased]
+
+- 新增后台“站点设置 → 存储与备份 → 存储配额”可视化配置（单账号与全站配额，MiB 为单位，`0` 表示不限，保存后热生效并覆盖环境变量默认值）。
+- 新增后台删除历史公告接口（`DELETE /api/admin/notices/{id}`）与管理界面，支持清理不再需要的历史公告记录（删除当前公告时同步撤下首页展示）。
+- 同步修正 `README.md` 与多篇公开手册中的 Schema 25 与新功能说明，补充预编译发行包与 GHCR 容器镜像使用指引。
+
 ## [0.1.0] - 2026-11-21
 
 WishingSkin 首个公开版本（数据库 Schema 25）。

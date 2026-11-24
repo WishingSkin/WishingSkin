@@ -35,9 +35,11 @@ docker compose --env-file .env -f deploy/compose.postgres.yaml up -d app
 
 `create-admin` 要求真实交互终端，不从命令行参数或管道读取密码。如果准备从 Blessing Skin 迁入旧数据，请跳过此步，迁入的权限 2 账号会自动保留管理员身份。
 
-## 方式二：原生二进制部署
+## 方式二：预编译二进制或源码构建
 
-构建环境需与 `Dockerfile` 保持一致（Go 1.26.11、Node.js 24.19.0、pnpm 11.24.0）。先构建前端 `web/dist`，再编译 Go 程序：
+推荐直接从 [GitHub Releases](https://github.com/WishingSkin/WishingSkin/releases) 下载对应平台（`linux` / `windows` / `darwin` 的 `amd64` / `arm64`）压缩包并核对 `SHA256SUMS.txt`；若使用预构建容器镜像，也可将编排文件中的 `build:` 替换为官方多架构镜像 `ghcr.io/wishingskin/wishingskin:<版本>`。
+
+如需自行从源码构建，环境需与 `Dockerfile` 保持一致（Go 1.26.11、Node.js 24.19.0、pnpm 11.24.0），先构建前端 `web/dist`，再编译 Go 程序：
 
 ```powershell
 pnpm --dir web install --frozen-lockfile

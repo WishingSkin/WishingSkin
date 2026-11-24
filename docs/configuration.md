@@ -13,8 +13,8 @@ WishingSkin 从进程环境变量读取启动配置，不会自动加载 `.env` 
 | `WS_LISTEN` | 否 | `127.0.0.1:8090` | HTTP 监听地址；公网访问请置于 TLS 反向代理之后 |
 | `WS_PUBLIC_URL` | 建议填写 | `http://localhost:8090` | 对外公开访问的完整 origin（如 `https://skin.example.com`），用于生成 Yggdrasil、OIDC、OAuth2 回调和材质链接 |
 | `WS_TEXTURE_DIR` | 否 | `data/textures` | 材质文件持久化目录；默认同时存放 `.settings.key` 与 `.plugins` |
-| `WS_TEXTURE_ACCOUNT_LIMIT_BYTES` | 否 | `268435456`（256 MiB） | 每个账号的上传配额，按未删除的自有材质记录累计；设为 `0` 关闭此限制 |
-| `WS_TEXTURE_SITE_LIMIT_BYTES` | 否 | `10737418240`（10 GiB） | 全站上传配额，按去重后的材质文件累计，含尚未回收的文件；设为 `0` 关闭此限制 |
+| `WS_TEXTURE_ACCOUNT_LIMIT_BYTES` | 否 | `268435456`（256 MiB） | 单账号上传配额初始默认值（按未删除的自有材质记录累计，设为 `0` 不限）；后台“存储与备份”保存配额后优先生效 |
+| `WS_TEXTURE_SITE_LIMIT_BYTES` | 否 | `10737418240`（10 GiB） | 全站上传配额初始默认值（按去重材质文件累计含待回收文件，设为 `0` 不限）；后台“存储与备份”保存配额后优先生效 |
 | `WS_PLUGIN_DIR` | 否 | `<WS_TEXTURE_DIR>/.plugins` | 动态插件包存放目录，需具备读写与执行权限 |
 | `WS_SETTINGS_KEY_FILE` | 否 | `<WS_TEXTURE_DIR>/.settings.key` | 32 字节站点设置加密密钥文件路径；生产环境建议放在材质目录之外的受限位置并单独备份 |
 | `WS_TRUSTED_PROXIES` | 否 | 空 | 允许信任 `X-Forwarded-For` 的反向代理网段，逗号分隔的 IPv4/IPv6 CIDR（如 `127.0.0.1/32,172.18.0.0/16`）；切勿填入公网用户可达网段 |

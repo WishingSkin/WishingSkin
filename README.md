@@ -14,18 +14,24 @@
 
 ---
 
-WishingSkin 是一个面向自托管服主与社区的开源 Minecraft 皮肤站。单个二进制文件即可提供网页端、皮肤与披风管理、Yggdrasil（authlib-injector）认证、CustomSkinLoader 兼容接口、官方/社区插件运行以及完整的备份恢复工具，支持 MySQL 8 与 PostgreSQL（当前数据库 schema 24）。
+WishingSkin 是一个面向自托管服主与社区的开源 Minecraft 皮肤站。单个二进制文件即可提供网页端、皮肤与披风管理、Yggdrasil（authlib-injector）认证、CustomSkinLoader 兼容接口、官方/社区插件运行以及完整的备份恢复工具，支持 MySQL 8 与 PostgreSQL（当前数据库 schema 25）。
 
 ## 核心特性
 
-- **角色与外观管理**：支持多角色、稳定 UUID（改名不变）、3D 实时交互预览与静态模型缩略图、标准/纤细手臂覆盖、公开库与个人衣柜。
-- **游戏接入**：内置 Yggdrasil 外置登录（兼容 PCL2、HMCL、Prism Launcher 及服务端 authlib-injector），同时提供 CustomSkinLoader 配置导出与传统链接模板。
+- **角色与外观管理**：支持多角色、稳定 UUID（改名不变）、静态模型缩略图与增强 3D 预览（待机/行走/奔跑动作、外层饰品开关、披风/鞘翅切换、2× 立绘导出 PNG）、标准/纤细手臂覆盖与个人衣柜。
+- **社区互动与榜单**：支持公开材质点赞、近期热门 / 点赞最多 / 收藏最多榜单与首页热门材质橱窗；支持按账号与全站配置材质存储配额（含用量进度条与后台热调整）。
+- **游戏接入**：内置 Yggdrasil 外置登录（提供 `authlib-injector` 一键拖拽启动器接入链接，兼容 PCL2、HMCL、BakaXL 与 Prism Launcher），同时提供 CustomSkinLoader 配置导出与传统链接模板。
 - **账号与安全**：本地邮箱验证与找回、管理员审核激活、邮箱域名白黑名单、Cloudflare Turnstile、TOTP 两步验证与一次性恢复码、可切换递增或 10 位随机用户 ID。
-- **主题与个性化**：内置默认 + 13 套主题（含 8 套 Minecraft 地上/地下成对群系实景壁纸与全群系原版像素粒子）、支持上传 `client.jar`/材质包服务端白名单提取、内置开源像素字体与自定义 WOFF2、半透明/毛玻璃不透明度与模糊度微调、中英文界面文案覆写与多区块首页。
+- **主题与个性化**：内置默认 + 13 套主题（含 8 套 Minecraft 地上/地下成对群系实景壁纸与全群系原版像素粒子）、支持上传 `client.jar`/材质包服务端白名单提取、内置开源像素字体与自定义 WOFF2 / 外链 CSS 字体、半透明/毛玻璃实时调节、中英文文案覆写、多区块首页及历史公告管理。
 - **插件与第三方集成**：内置邀请码、积分签到、多 OIDC 登录、本站 OAuth2/OIDC 授权服务、AuthMe/HTTP 外部账号连接与 S3 兼容对象存储；支持 Go SDK 源码插件和 ZIP / 静态市场源动态可执行插件。
-- **运维与迁移**：支持每日定时备份、完整性校验与隔离恢复、公开材质签名 CDN、孤立文件回收，以及从固定版本 Blessing Skin 6.0.2 迁入账号、角色 UUID、材质与衣柜数据。
+- **运维与迁移**：管理后台运行概览与字段级操作审计、每日定时备份、完整性校验与隔离恢复、公开材质签名 CDN、孤立文件回收，以及从固定版本 Blessing Skin 6.0.2 迁入账号、角色 UUID、材质与衣柜数据。
 
 ## 快速开始
+
+### 使用预编译包或官方镜像
+
+- **预编译二进制**：前往 [GitHub Releases](https://github.com/WishingSkin/WishingSkin/releases) 下载对应平台压缩包（提供 Linux / Windows / macOS 的 `amd64` 与 `arm64` 构建及 `SHA256SUMS.txt`）。
+- **Docker 镜像**：多架构官方镜像发布在 `ghcr.io/wishingskin/wishingskin`（例如 `ghcr.io/wishingskin/wishingskin:0.1.0` 或 `:latest`），可替换 `deploy/compose.*.yaml` 中的 `build:` 直接运行。
 
 ### Docker Compose（推荐）
 
