@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict'
 import { test } from 'node:test'
-import { adminRoute, canonicalWorkspaceURL, isPagePath, isProtectedPath, navigationRegion, resourcePath } from '../src/workspaceRoutes.ts'
+import { adminRoute, canonicalWorkspaceURL, isPagePath, isProtectedPath, libraryItemId, libraryItemPath, navigationRegion, resourcePath } from '../src/workspaceRoutes.ts'
 
 test('legacy resource and management links keep their destination and filters', () => {
   assert.equal(canonicalWorkspaceURL('/user/materials', '?tab=upload'), '/user/resources/upload')
@@ -31,8 +31,14 @@ test('unknown management pages do not fall back to a parent panel', () => {
 })
 
 test('page matching accepts complete routes and rejects extra or misspelled segments', () => {
-  for (const path of ['/', '/login', '/library', '/user/account/profile', '/user/resources/upload', '/admin/settings/appearance/', '/admin/plugins/wishingskin.oidc', '/admin/settings', '/user/materials']) assert.equal(isPagePath(path), true, path)
-  for (const path of ['/missing', '/library/extra', '/login/extra', '/user/missing', '/user/account/profiles', '/user/resources/uploads', '/admin/settings/appearances', '/admin/plugins/example.plugin/extra', '/admin/plugins/%invalid']) assert.equal(isPagePath(path), false, path)
+  const validId = '0123456789abcdef0123456789abcdef'
+  for (const path of ['/', '/login', '/library', `/library/${validId}`, `/library/${validId}/`, '/user/account/profile', '/user/resources/upload', '/admin/settings/appearance/', '/admin/plugins/wishingskin.oidc', '/admin/settings', '/user/materials']) assert.equal(isPagePath(path), true, path)
+  for (const path of ['/missing', '/library/extra', '/library/short', `/library/${validId}/extra`, '/login/extra', '/user/missing', '/user/account/profiles', '/user/resources/uploads', '/admin/settings/appearances', '/admin/plugins/example.plugin/extra', '/admin/plugins/%invalid']) assert.equal(isPagePath(path), false, path)
+  assert.equal(libraryItemId(`/library/${validId}`), validId)
+  assert.equal(libraryItemId('/library'), '')
+  assert.equal(libraryItemPath(validId), `/library/${validId}`)
+  assert.equal(libraryItemPath(''), '/library')
+  assert.equal(navigationRegion('/library', `/library/${validId}`), '')
 })
 
 test('subpage navigation transitions only the changed content', () => {

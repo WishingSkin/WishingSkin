@@ -22,13 +22,13 @@ type libraryRecord struct {
 	Liked           bool   `json:"liked"`
 }
 
-const libraryColumns = "r.record_id,r.file_hash,r.name,r.description,r.kind,r.model,r.is_public,r.owner_id,COALESCE(u.nickname,''),(SELECT COUNT(*) FROM wardrobe c WHERE c.record_id=r.record_id),(SELECT COUNT(*) FROM texture_likes l WHERE l.record_id=r.record_id),COALESCE(m.category,''),COALESCE(m.tags,'[]'),COALESCE(m.review_state,'approved'),COALESCE(m.review_reason,'')"
+const libraryColumns = "r.record_id,r.file_hash,r.name,r.description,r.kind,r.model,r.is_public,r.owner_id,COALESCE(u.nickname,''),(SELECT COUNT(*) FROM wardrobe c WHERE c.record_id=r.record_id),(SELECT COUNT(*) FROM texture_likes l WHERE l.record_id=r.record_id),COALESCE(m.category,''),COALESCE(m.tags,'[]'),COALESCE(m.review_state,'approved'),COALESCE(m.review_reason,''),r.created_at"
 const libraryTables = " FROM texture_records r JOIN textures f ON f.hash=r.file_hash LEFT JOIN users u ON u.id=r.owner_id LEFT JOIN texture_metadata m ON m.record_id=r.record_id"
 
 func scanLibraryRecord(row interface{ Scan(...any) error }, item *libraryRecord, wardrobe bool) error {
 	var owner sql.NullInt64
 	var tags string
-	fields := []any{&item.ID, &item.FileHash, &item.Name, &item.Description, &item.Kind, &item.Model, &item.Public, &owner, &item.OwnerName, &item.CollectionCount, &item.LikeCount, &item.Category, &tags, &item.ReviewState, &item.ReviewReason}
+	fields := []any{&item.ID, &item.FileHash, &item.Name, &item.Description, &item.Kind, &item.Model, &item.Public, &owner, &item.OwnerName, &item.CollectionCount, &item.LikeCount, &item.Category, &tags, &item.ReviewState, &item.ReviewReason, &item.CreatedAt}
 	if wardrobe {
 		fields = append(fields, &item.DisplayName)
 	}
@@ -130,6 +130,8 @@ func (a *Server) publicLibrary(w http.ResponseWriter, r *http.Request) {
 		order = "r.name DESC,r.record_id"
 	case "collections":
 		order = "(SELECT COUNT(*) FROM wardrobe c WHERE c.record_id=r.record_id) DESC,r.name,r.record_id"
+	case "newest":
+		order = "r.created_at DESC,r.record_id DESC"
 	case "likes":
 		order = "(SELECT COUNT(*) FROM texture_likes l WHERE l.record_id=r.record_id) DESC,(SELECT COUNT(*) FROM wardrobe c WHERE c.record_id=r.record_id) DESC,r.name,r.record_id"
 	case "trending":

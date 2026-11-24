@@ -22,6 +22,7 @@ import (
 	"slices"
 	"strconv"
 	"strings"
+	"time"
 	"unicode/utf8"
 
 	mysqlDriver "github.com/go-sql-driver/mysql"
@@ -52,6 +53,7 @@ type textureRecord struct {
 	Model        string   `json:"model"`
 	Public       bool     `json:"public"`
 	Owned        bool     `json:"owned"`
+	CreatedAt    int64    `json:"createdAt"`
 }
 
 func (a *Server) createCharacter(w http.ResponseWriter, r *http.Request) {
@@ -86,7 +88,7 @@ func (a *Server) createCharacter(w http.ResponseWriter, r *http.Request) {
 		sessionError(w, err)
 		return
 	}
-	limit, err := lockedCharacterLimit(ctx, tx, a.s.Bind)
+	limit, err := lockedEffectiveCharacterLimit(ctx, tx, a.s.Bind, u.ID)
 	if err != nil {
 		failure(w, 503, "暂时无法读取角色数量限制")
 		return
@@ -342,7 +344,7 @@ func (a *Server) listTextures(w http.ResponseWriter, r *http.Request) {
 		limit = " LIMIT ? OFFSET ?"
 		args = append(args, size, (page-1)*size)
 	}
-	rows, err := a.s.DB.QueryContext(r.Context(), a.s.Bind("SELECT r.record_id,r.file_hash,r.name,r.description,r.kind,r.model,r.is_public,r.owner_id,COALESCE(m.category,''),COALESCE(m.tags,'[]'),COALESCE(m.review_state,'approved'),COALESCE(m.review_reason,'') FROM texture_records r JOIN textures f ON f.hash=r.file_hash LEFT JOIN texture_metadata m ON m.record_id=r.record_id"+where+" ORDER BY r.name,r.record_id"+limit), args...)
+	rows, err := a.s.DB.QueryContext(r.Context(), a.s.Bind("SELECT r.record_id,r.file_hash,r.name,r.description,r.kind,r.model,r.is_public,r.owner_id,COALESCE(m.category,''),COALESCE(m.tags,'[]'),COALESCE(m.review_state,'approved'),COALESCE(m.review_reason,''),r.created_at FROM texture_records r JOIN textures f ON f.hash=r.file_hash LEFT JOIN texture_metadata m ON m.record_id=r.record_id"+where+" ORDER BY r.name,r.record_id"+limit), args...)
 	if err != nil {
 		failure(w, 503, "暂时无法读取材质")
 		return
@@ -353,7 +355,7 @@ func (a *Server) listTextures(w http.ResponseWriter, r *http.Request) {
 		var item textureRecord
 		var owner sql.NullInt64
 		var tags string
-		if err := rows.Scan(&item.ID, &item.FileHash, &item.Name, &item.Description, &item.Kind, &item.Model, &item.Public, &owner, &item.Category, &tags, &item.ReviewState, &item.ReviewReason); err != nil {
+		if err := rows.Scan(&item.ID, &item.FileHash, &item.Name, &item.Description, &item.Kind, &item.Model, &item.Public, &owner, &item.Category, &tags, &item.ReviewState, &item.ReviewReason, &item.CreatedAt); err != nil {
 			failure(w, 503, "暂时无法读取材质")
 			return
 		}
@@ -554,7 +556,8 @@ func (a *Server) uploadTexture(w http.ResponseWriter, r *http.Request) {
 		failure(w, 503, "暂时无法保存材质文件记录")
 		return
 	}
-	if _, err := tx.ExecContext(r.Context(), a.s.Bind("INSERT INTO texture_records(record_id,file_hash,owner_id,name,description,kind,model,is_public,deleted) VALUES(?,?,?,?,?,?,?,?,?)"), recordID, hash, u.ID, name, description, kind, model, isPublic, false); err != nil {
+	now := time.Now().Unix()
+	if _, err := tx.ExecContext(r.Context(), a.s.Bind("INSERT INTO texture_records(record_id,file_hash,owner_id,name,description,kind,model,is_public,deleted,created_at) VALUES(?,?,?,?,?,?,?,?,?,?)"), recordID, hash, u.ID, name, description, kind, model, isPublic, false, now); err != nil {
 		failure(w, 503, "暂时无法保存材质记录")
 		return
 	}
@@ -576,7 +579,7 @@ func (a *Server) uploadTexture(w http.ResponseWriter, r *http.Request) {
 	}
 	releaseStorage()
 	a.publishPluginEvent(r.Context(), "texture.upload", u.ID, recordID)
-	respond(w, 201, textureRecord{ID: recordID, FileHash: hash, Name: name, Description: description, Kind: kind, Model: model, Public: isPublic, Owned: true, Category: category, Tags: tags, ReviewState: reviewState})
+	respond(w, 201, textureRecord{ID: recordID, FileHash: hash, Name: name, Description: description, Kind: kind, Model: model, Public: isPublic, Owned: true, Category: category, Tags: tags, ReviewState: reviewState, CreatedAt: now})
 }
 
 func (a *Server) updateAdminSettings(w http.ResponseWriter, r *http.Request) {
@@ -585,12 +588,17 @@ func (a *Server) updateAdminSettings(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	var body struct {
-		CharacterLimit int64 `json:"characterLimit"`
+		CharacterLimit   *int64 `json:"characterLimit"`
+		YggNonEmailLogin *bool  `json:"yggNonEmailLogin"`
 	}
 	if !decode(w, r, &body) {
 		return
 	}
-	if body.CharacterLimit < 1 {
+	if body.CharacterLimit == nil && body.YggNonEmailLogin == nil {
+		failure(w, 400, "请选择要保存的站点设置")
+		return
+	}
+	if body.CharacterLimit != nil && *body.CharacterLimit < 1 {
 		failure(w, 400, "角色数量上限至少为 1")
 		return
 	}
@@ -603,25 +611,53 @@ func (a *Server) updateAdminSettings(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	defer tx.Rollback()
-	var previous string
-	err := tx.QueryRowContext(r.Context(), "SELECT value FROM settings WHERE setting_key='character_limit'").Scan(&previous)
-	if err != nil {
-		failure(w, 503, "暂时无法读取站点设置")
-		return
+	if body.CharacterLimit != nil {
+		var previous string
+		err := tx.QueryRowContext(r.Context(), "SELECT value FROM settings WHERE setting_key='character_limit'").Scan(&previous)
+		if err != nil {
+			failure(w, 503, "暂时无法读取站点设置")
+			return
+		}
+		nextValue := strconv.FormatInt(*body.CharacterLimit, 10)
+		a.auditChange(r.Context(), "character_limit", previous, nextValue)
+		if _, err = tx.ExecContext(r.Context(), a.s.Bind(query), "character_limit", nextValue); err != nil {
+			failure(w, 503, "暂时无法保存站点设置")
+			return
+		}
+		if err = a.s.RecordAdminEvent(r.Context(), tx, u.ID, "settings.character_limit", "site", "character_limit"); err != nil {
+			failure(w, 503, "暂时无法保存站点设置")
+			return
+		}
 	}
-	a.auditChange(r.Context(), "character_limit", previous, strconv.FormatInt(body.CharacterLimit, 10))
-	_, err = tx.ExecContext(r.Context(), a.s.Bind(query), "character_limit", strconv.FormatInt(body.CharacterLimit, 10))
+	if body.YggNonEmailLogin != nil {
+		previousNonEmail, err := yggNonEmailLogin(r.Context(), tx)
+		if err != nil {
+			failure(w, 503, "暂时无法读取站点设置")
+			return
+		}
+		if err = a.putSetting(r.Context(), tx, "ygg_non_email_login", *body.YggNonEmailLogin); err != nil {
+			failure(w, 503, "暂时无法保存站点设置")
+			return
+		}
+		if previousNonEmail != *body.YggNonEmailLogin {
+			if err = a.s.RecordAdminEvent(r.Context(), tx, u.ID, "settings.yggdrasil", "site", "yggdrasil"); err != nil {
+				failure(w, 503, "暂时无法保存站点设置")
+				return
+			}
+		}
+	}
+	currentLimit, err := characterLimit(r.Context(), tx, a.s.Bind)
 	if err == nil {
-		err = a.s.RecordAdminEvent(r.Context(), tx, u.ID, "settings.character_limit", "site", "character_limit")
+		var currentNonEmail bool
+		currentNonEmail, err = yggNonEmailLogin(r.Context(), tx)
+		if err == nil {
+			if err = tx.Commit(); err == nil {
+				respond(w, 200, map[string]any{"characterLimit": currentLimit, "yggNonEmailLogin": currentNonEmail})
+				return
+			}
+		}
 	}
-	if err == nil {
-		err = tx.Commit()
-	}
-	if err != nil {
-		failure(w, 503, "暂时无法保存站点设置")
-		return
-	}
-	respond(w, 200, map[string]int64{"characterLimit": body.CharacterLimit})
+	failure(w, 503, "暂时无法保存站点设置")
 }
 
 func (a *Server) validWriteRequest(w http.ResponseWriter, r *http.Request, token string) bool {
@@ -648,6 +684,32 @@ func characterLimit(ctx context.Context, q interface {
 		return 0, errors.New("invalid character limit setting")
 	}
 	return limit, nil
+}
+
+func effectiveCharacterLimit(ctx context.Context, q interface {
+	QueryRowContext(context.Context, string, ...any) *sql.Row
+}, bind func(string) string, userID int64) (int64, error) {
+	var override sql.NullInt64
+	err := q.QueryRowContext(ctx, bind("SELECT character_limit FROM users WHERE id=?"), userID).Scan(&override)
+	if err != nil && !errors.Is(err, sql.ErrNoRows) {
+		return 0, err
+	}
+	if override.Valid && override.Int64 >= 1 {
+		return override.Int64, nil
+	}
+	return characterLimit(ctx, q, bind)
+}
+
+func lockedEffectiveCharacterLimit(ctx context.Context, tx *sql.Tx, bind func(string) string, userID int64) (int64, error) {
+	var override sql.NullInt64
+	err := tx.QueryRowContext(ctx, bind("SELECT character_limit FROM users WHERE id=?"), userID).Scan(&override)
+	if err != nil {
+		return 0, err
+	}
+	if override.Valid && override.Int64 >= 1 {
+		return override.Int64, nil
+	}
+	return lockedCharacterLimit(ctx, tx, bind)
 }
 
 func lockedCharacterLimit(ctx context.Context, tx *sql.Tx, bind func(string) string) (int64, error) {

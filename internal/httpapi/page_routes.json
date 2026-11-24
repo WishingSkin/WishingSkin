@@ -12,5 +12,6 @@
     "/admin/textures": "/admin/resources",
     "/admin/settings": "/admin/settings/site"
   },
+  "libraryPath": "^/library/[a-f0-9]{32}$",
   "pluginPath": "^/admin/plugins/[a-z0-9]+(?:[._-][a-z0-9]+)*$"
 }

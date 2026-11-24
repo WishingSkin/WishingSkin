@@ -23,11 +23,22 @@ export function canonicalWorkspaceURL(path: string, search = '') {
 }
 
 const pagePaths = new Set(pageRoutes.paths)
+const libraryPagePattern = new RegExp(pageRoutes.libraryPath)
 const pluginPagePattern = new RegExp(pageRoutes.pluginPath)
+
+export function libraryItemId(path: string) {
+  const normalized = normalizePath(path)
+  return libraryPagePattern.test(normalized) ? normalized.slice('/library/'.length) : ''
+}
+
+export function libraryItemPath(id: string) {
+  return id ? `/library/${encodeURIComponent(id)}` : '/library'
+}
+
 export function isPagePath(path: string) {
   const normalized = normalizePath(path)
   const canonical = (pageRoutes.aliases as Record<string, string>)[normalized] || normalized
-  return pagePaths.has(canonical) || (pluginPagePattern.test(canonical) && canonical.slice('/admin/plugins/'.length).length <= 64)
+  return pagePaths.has(canonical) || libraryPagePattern.test(canonical) || (pluginPagePattern.test(canonical) && canonical.slice('/admin/plugins/'.length).length <= 64)
 }
 
 export function isProtectedPath(path: string) {
@@ -55,6 +66,8 @@ export function adminRoute(path: string) {
 // Keep each workspace's heading and navigation still when only its panel changes.
 export function navigationRegion(from: string, to: string) {
   if (from === to) return ''
+  const inLibrary = (path: string) => path === '/library' || libraryPagePattern.test(path)
+  if (inLibrary(from) && inLibrary(to)) return ''
   const within = (prefix: string) => [from, to].every(path => path === prefix || path.startsWith(prefix + '/'))
   if (within('/user/account')) return '[data-panel-region="account"]'
   if (within('/user/resources')) return '[data-panel-region="resources"]'

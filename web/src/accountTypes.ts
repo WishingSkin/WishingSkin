@@ -69,6 +69,7 @@ export interface SiteAccess {
   manualEmailVerification?: boolean
   mailEnabled: boolean
   turnstileSiteKey: string
+  yggNonEmailLogin?: boolean
 }
 
 export type AccessMode = 'register' | 'mail' | 'verify' | 'reset'

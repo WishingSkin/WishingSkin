@@ -24,9 +24,25 @@
       "zh-CN": "设为普通用户",
       "en": "Make regular user"
     },
+    "user.adjust_points": {
+      "zh-CN": "调整用户积分",
+      "en": "Adjust user points"
+    },
+    "user.reset_password": {
+      "zh-CN": "重置用户密码",
+      "en": "Reset user password"
+    },
+    "user.character_limit": {
+      "zh-CN": "修改用户角色上限",
+      "en": "Change user character limit"
+    },
     "settings.character_limit": {
       "zh-CN": "修改角色上限",
       "en": "Change character limit"
+    },
+    "settings.yggdrasil": {
+      "zh-CN": "修改外置登录设置",
+      "en": "Update Yggdrasil settings"
     },
     "registration.closed": {
       "zh-CN": "关闭注册",
@@ -259,6 +275,10 @@
     "character_limit": {
       "zh-CN": "角色数量上限",
       "en": "Character limit"
+    },
+    "yggdrasil": {
+      "zh-CN": "外置登录",
+      "en": "Yggdrasil"
     },
     "branding": {
       "zh-CN": "品牌与公告",

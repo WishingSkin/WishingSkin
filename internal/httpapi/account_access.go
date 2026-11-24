@@ -141,7 +141,12 @@ func (a *Server) site(w http.ResponseWriter, r *http.Request) {
 		failure(w, 503, "暂时无法读取自定义字体")
 		return
 	}
-	respond(w, 200, map[string]any{"contentPolicy": content, "appearance": custom, "themeAssets": assets, "themeFont": customFont, "homepage": publicHomepage(homepage), "loginImageUrl": loginImageURL, "oidcProviders": providers, "oidc": map[string]any{"enabled": oidcConfig.Enabled, "name": oidcConfig.Name}, "noticeFormat": brand.NoticeFormat, "noticeHtml": renderNotice(brand.Notice, brand.NoticeFormat), "name": brand.Name, "tagline": brand.Tagline, "footer": brand.Footer, "notice": brand.Notice, "registration": mode, "randomUserIds": randomIDs, "emailDomains": domains, "blockedEmailDomains": blockedDomains, "manualEmailVerification": manualVerification, "mailEnabled": services.Mail != nil, "turnstileSiteKey": services.SiteKey, "points": points})
+	nonEmailLogin, err := yggNonEmailLogin(r.Context(), a.s.DB)
+	if err != nil {
+		failure(w, 503, "暂时无法读取外置登录设置")
+		return
+	}
+	respond(w, 200, map[string]any{"contentPolicy": content, "appearance": custom, "themeAssets": assets, "themeFont": customFont, "homepage": publicHomepage(homepage), "loginImageUrl": loginImageURL, "oidcProviders": providers, "oidc": map[string]any{"enabled": oidcConfig.Enabled, "name": oidcConfig.Name}, "noticeFormat": brand.NoticeFormat, "noticeHtml": renderNotice(brand.Notice, brand.NoticeFormat), "name": brand.Name, "tagline": brand.Tagline, "footer": brand.Footer, "notice": brand.Notice, "registration": mode, "randomUserIds": randomIDs, "emailDomains": domains, "blockedEmailDomains": blockedDomains, "manualEmailVerification": manualVerification, "mailEnabled": services.Mail != nil, "turnstileSiteKey": services.SiteKey, "points": points, "yggNonEmailLogin": nonEmailLogin})
 }
 
 func validEmail(value string) bool {

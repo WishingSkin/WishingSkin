@@ -14,8 +14,9 @@ import PluginWorkspace from './PluginWorkspace.vue'
 import eventLabels from '../../../internal/httpapi/admin_event_labels.json'
 import { adminPath, type AdminTab } from '../workspaceRoutes'
 import { fontPresetNames, fontScopeNames, themePackNames } from '../themePacks'
+import { validNewPassword } from '../passwordPolicy'
 
-interface AdminUser { id: string; email: string; nickname: string; isAdmin: boolean; banned: boolean; emailVerified: boolean; verificationRequired: boolean }
+interface AdminUser { id: string; email: string; nickname: string; isAdmin: boolean; banned: boolean; emailVerified: boolean; verificationRequired: boolean; score: string; characterLimit: number | null; characterCount: number }
 interface AdminEvent { id: string; actorId: string; action: string; targetType: string; targetId: string; createdAt: number; changes?: { field: string; before: string; after: string }[] }
 interface AdminOverview {
   users: number
@@ -50,13 +51,18 @@ const eventError = feedbackRef('error')
 const actionError = feedbackRef('error')
 const message = feedbackRef('success')
 const pending = ref<{ user: AdminUser; field: 'banned' | 'isAdmin' | 'emailVerified'; value: boolean } | null>(null)
+const managedUser = ref<AdminUser | null>(null)
+const manageScore = ref('0')
+const manageScoreReason = ref('')
+const manageCharLimit = ref('')
+const managePassword = ref('')
 const confirmButton = ref<HTMLButtonElement | null>(null)
 const pendingLabel = computed(() => pending.value ? actionLabel(pending.value.field, pending.value.value) : '')
 const actionNames = Object.fromEntries(Object.entries(eventLabels.actions).map(([key, labels]) => [key, labels['zh-CN']]))
 const targetNames = Object.fromEntries(Object.entries(eventLabels.targets).map(([key, labels]) => [key, labels['zh-CN']]))
 const settingNames = Object.fromEntries(Object.entries(eventLabels.settings).map(([key, labels]) => [key, labels['zh-CN']]))
 const tabNames = { users: '用户管理', characters: '角色管理', wardrobe: '衣柜管理', resources: '材质管理', reports: '举报管理', events: '管理记录', settings: '站点设置', plugins: '插件管理' }
-const fieldNames: Record<string, string> = { homepage_blocks: '首页区块', homepage_background: '首页背景', site_appearance: '界面外观', backup_schedule: '自动备份', cdn_config: 'CDN', storage_quota: '存储配额', accountLimitBytes: '单账号配额（字节）', siteLimitBytes: '全站配额（字节）', content_policy: '内容设置', services: '邮件与验证', smtpEnabled: 'SMTP', turnstileEnabled: 'Turnstile', address: '服务地址', from: '发件人', tlsMode: '连接加密', smtpPassword: 'SMTP 凭据', turnstileSecret: 'Turnstile 凭据', objectStorage: '对象存储', object_storage_config: '对象存储', external_connectors: '账号连接器', oidc_config: 'OIDC 配置', oidc_providers: 'OIDC 提供商', oidc: 'OIDC', connectors: '账号连接器', plugin: '插件', oauth: '授权应用', credentials: '访问凭据', endpoint: '服务地址', bucket: '存储桶', prefix: '存储前缀', region: '区域', issuer: 'Issuer', clientId: '应用 ID', clientSecret: '应用密钥', kind: '类型', dailyReward: '每日签到积分', uploadCost: '上传消耗积分', characterCost: '创建角色消耗积分', points: '积分规则', public: '公开客户端', redirects: '回调地址',  site_name: '站点名称', site_tagline: '站点简介', site_footer: '页脚信息', site_notice: '站点公告', site_notice_format: '公告格式', character_limit: '角色数量上限', registration_mode: '注册模式', name: '名称', model: '手臂模型', banned: '封禁状态', permission: '用户权限', emailVerified: '邮箱验证', review_state: '审核状态', review_reason: '审核备注', title: '标题', body: '正文', image: '图片', imageAlt: '图片说明', enabled: '启用', overlay: '背景遮罩', time: '每日备份时间', timezone: '备份时区', directory: '备份目录', accent: '主题配色', themePack: '主题包', defaultTheme: '默认明暗模式', surfaceEffect: '面板效果', surfaceOpacity: '面板不透明度', surfaceBlur: '毛玻璃模糊度', allowUserTheme: '允许用户自选主题', disableParticles: '关闭氛围粒子', fontPreset: '字体预设', fontScope: '字体应用范围', customFontUrl: '自定义字体地址', customFontFamily: 'CSS 字体族名称', source: '展示内容来源', reviewUploads: '上传审核', categories: '分类', buttonHref: '按钮链接', buttonLabel: '按钮文字', skin: '皮肤', cape: '披风', reason: '备注', registration_email_domains: '允许注册域名', registration_blocked_domains: '禁止注册域名', manual_email_verification: '管理员邮箱验证', random_user_ids: '随机用户 ID', maxAge: '缓存上限', baseUrl: 'CDN 地址' }
+const fieldNames: Record<string, string> = { homepage_blocks: '首页区块', homepage_background: '首页背景', site_appearance: '界面外观', backup_schedule: '自动备份', cdn_config: 'CDN', storage_quota: '存储配额', accountLimitBytes: '单账号配额（字节）', siteLimitBytes: '全站配额（字节）', content_policy: '内容设置', services: '邮件与验证', smtpEnabled: 'SMTP', turnstileEnabled: 'Turnstile', address: '服务地址', from: '发件人', tlsMode: '连接加密', smtpPassword: 'SMTP 凭据', turnstileSecret: 'Turnstile 凭据', objectStorage: '对象存储', object_storage_config: '对象存储', external_connectors: '账号连接器', oidc_config: 'OIDC 配置', oidc_providers: 'OIDC 提供商', oidc: 'OIDC', connectors: '账号连接器', plugin: '插件', oauth: '授权应用', credentials: '访问凭据', endpoint: '服务地址', bucket: '存储桶', prefix: '存储前缀', region: '区域', issuer: 'Issuer', clientId: '应用 ID', clientSecret: '应用密钥', kind: '类型', dailyReward: '每日签到积分', uploadCost: '上传消耗积分', characterCost: '创建角色消耗积分', points: '积分规则', score: '积分余额', password: '登录密码', ygg_non_email_login: 'Yggdrasil 非邮箱登录', public: '公开客户端', redirects: '回调地址',  site_name: '站点名称', site_tagline: '站点简介', site_footer: '页脚信息', site_notice: '站点公告', site_notice_format: '公告格式', character_limit: '角色数量上限', registration_mode: '注册模式', name: '名称', model: '手臂模型', banned: '封禁状态', permission: '用户权限', emailVerified: '邮箱验证', review_state: '审核状态', review_reason: '审核备注', title: '标题', body: '正文', image: '图片', imageAlt: '图片说明', enabled: '启用', overlay: '背景遮罩', time: '每日备份时间', timezone: '备份时区', directory: '备份目录', accent: '主题配色', themePack: '主题包', defaultTheme: '默认明暗模式', surfaceEffect: '面板效果', surfaceOpacity: '面板不透明度', surfaceBlur: '毛玻璃模糊度', allowUserTheme: '允许用户自选主题', disableParticles: '关闭氛围粒子', fontPreset: '字体预设', fontScope: '字体应用范围', customFontUrl: '自定义字体地址', customFontFamily: 'CSS 字体族名称', source: '展示内容来源', reviewUploads: '上传审核', categories: '分类', buttonHref: '按钮链接', buttonLabel: '按钮文字', skin: '皮肤', cape: '披风', reason: '备注', registration_email_domains: '允许注册域名', registration_blocked_domains: '禁止注册域名', manual_email_verification: '管理员邮箱验证', random_user_ids: '随机用户 ID', maxAge: '缓存上限', baseUrl: 'CDN 地址' }
 function changeField(value: string) { return value.split('.').map(part => { const match = part.match(/^(.*?)(\[\d+\])?$/); return t(fieldNames[match?.[1] || part] || match?.[1] || part) + (match?.[2] || '') }).join(' / ') }
 const changeValues: Record<string, Record<string, string>> = {
   themePack: themePackNames,
@@ -123,6 +129,75 @@ async function apply() {
   } catch { actionError.value = '无法确认操作结果，请刷新用户列表后检查。' }
   finally { saving.value = false }
   await Promise.all([loadUsers(), loadOverview()])
+}
+function openManageModal(user: AdminUser) {
+  managedUser.value = user
+  manageScore.value = user.score || '0'
+  manageScoreReason.value = ''
+  manageCharLimit.value = user.characterLimit !== null ? String(user.characterLimit) : ''
+  managePassword.value = ''
+  actionError.value = ''
+  message.value = ''
+}
+async function patchManagedUser(payload: Record<string, unknown>, successText: string, expireSelf = false) {
+  const target = managedUser.value
+  if (!target || saving.value) return false
+  saving.value = true; actionError.value = ''; message.value = ''
+  try {
+    const response = await fetch(`/api/admin/users/${target.id}`, {
+      method: 'PATCH',
+      credentials: 'same-origin',
+      headers: { 'Content-Type': 'application/json', 'X-CSRF-Token': props.csrfToken },
+      body: JSON.stringify(payload),
+    })
+    if (response.status === 401) { emit('expired'); return false }
+    if (!response.ok) {
+      const data = await response.json().catch(() => ({}))
+      actionError.value = data.error || '管理操作未完成，请重试'
+      return false
+    }
+    if (expireSelf && target.id === props.userId) { emit('expired'); return true }
+    message.value = successText
+    await loadUsers()
+    const refreshed = users.value.find(item => item.id === target.id)
+    if (refreshed) {
+      managedUser.value = refreshed
+      manageScore.value = refreshed.score || '0'
+      manageCharLimit.value = refreshed.characterLimit !== null ? String(refreshed.characterLimit) : ''
+    }
+    return true
+  } catch {
+    actionError.value = '无法确认操作结果，请刷新用户列表后检查。'
+    return false
+  } finally {
+    saving.value = false
+  }
+}
+async function saveUserScore() {
+  const raw = manageScore.value.trim()
+  if (!/^\d+$/.test(raw)) { actionError.value = '积分须为不小于 0 的整数。'; return }
+  const value = Number(raw)
+  if (!Number.isSafeInteger(value) || value > 1_000_000_000_000) { actionError.value = '积分须为 0–1000000000000 的整数。'; return }
+  if (await patchManagedUser({ score: value, scoreReason: manageScoreReason.value.trim() }, '用户积分已更新。')) {
+    manageScoreReason.value = ''
+  }
+}
+async function saveUserCharacterLimit(clear = false) {
+  if (clear || !manageCharLimit.value.trim()) {
+    await patchManagedUser({ clearCharacterLimit: true }, '已恢复使用站点默认角色上限。')
+    return
+  }
+  const raw = manageCharLimit.value.trim()
+  if (!/^\d+$/.test(raw)) { actionError.value = '角色上限须为正整数。'; return }
+  const value = Number(raw)
+  if (value < 1 || value > 10000) { actionError.value = '角色上限须为 1–10000 的整数。'; return }
+  await patchManagedUser({ characterLimit: value }, '用户角色上限已更新。')
+}
+async function resetUserPassword() {
+  if (!validNewPassword(managePassword.value)) { actionError.value = '新密码须为 8–128 个字符，且同时包含英文字母、数字和符号'; return }
+  if (await patchManagedUser({ newPassword: managePassword.value }, '用户密码已重置，所有会话与游戏令牌已撤销。', true)) {
+    managePassword.value = ''
+  }
 }
 async function loadOverview() {
   if (overviewBusy.value) return
@@ -192,10 +267,38 @@ watch(tab, value => { if (value === 'users') void loadUsers(); if (value === 'ev
         <p class="admin-identity">{{ pending.user.nickname }} / {{ pending.user.email }} / #{{ pending.user.id }}</p><p id="admin-confirm-description">{{ pending.field === 'emailVerified' ? t('将此用户的邮箱标记为已验证。') : t('确认修改此用户的账号状态？') }}</p>
         <div class="admin-actions"><button ref="confirmButton" :class="pending.field === 'emailVerified' ? 'primary-button' : 'danger-button'" type="button" :disabled="saving" @click="apply">{{ saving ? t('正在保存…') : t('确认{action}', { action: t(pendingLabel) }) }}</button><button class="secondary-button" type="button" :disabled="saving" @click="pending = null; actionError = ''">{{ t('取消') }}</button></div>
       </div></AppModal>
+      <AppModal v-if="managedUser" :title="t('管理账号：{name}', { name: managedUser.nickname || managedUser.email })" :busy="saving" @close="managedUser = null">
+        <div class="admin-manage-modal">
+          <p class="admin-identity">{{ managedUser.email }} / #{{ managedUser.id }}</p>
+          <form class="admin-manage-section" @submit.prevent="saveUserScore">
+            <h3>{{ t('调整积分') }}</h3>
+            <div class="admin-manage-fields">
+              <label class="binding-field"><span>{{ t('目标积分') }}</span><input v-model="manageScore" type="number" min="0" step="1" required :disabled="saving" /></label>
+              <label class="binding-field"><span>{{ t('调整备注（可选）') }}</span><input v-model="manageScoreReason" maxlength="48" :placeholder="t('例如：活动奖励')" :disabled="saving" /></label>
+            </div>
+            <button type="submit" class="secondary-button" :disabled="saving">{{ t('保存积分') }}</button>
+          </form>
+          <form class="admin-manage-section" @submit.prevent="saveUserCharacterLimit(false)">
+            <h3>{{ t('角色数量上限') }}</h3>
+            <label class="binding-field"><span>{{ t('独立上限（留空则使用站点默认）') }}</span><input v-model="manageCharLimit" type="number" min="1" max="10000" step="1" :placeholder="t('使用站点默认')" :disabled="saving" /></label>
+            <div class="admin-manage-actions">
+              <button type="submit" class="secondary-button" :disabled="saving">{{ t('保存上限') }}</button>
+              <button v-if="managedUser.characterLimit !== null" type="button" class="text-button" :disabled="saving" @click="saveUserCharacterLimit(true)">{{ t('恢复站点默认') }}</button>
+            </div>
+          </form>
+          <form class="admin-manage-section" @submit.prevent="resetUserPassword">
+            <h3>{{ t('重置密码') }}</h3>
+            <p class="password-rule">{{ t('重置后将立即撤销该用户全部网页会话与游戏登录令牌。') }}</p>
+            <label class="binding-field"><span>{{ t('新密码') }}</span><input v-model="managePassword" type="password" autocomplete="new-password" required :disabled="saving" /></label>
+            <p class="password-rule">{{ t('8–128 个字符，须同时包含英文字母、数字和符号；空白不计作符号。') }}</p>
+            <button type="submit" class="danger-button" :disabled="saving">{{ t('重置密码') }}</button>
+          </form>
+        </div>
+      </AppModal>
 
       <LoadingSkeleton v-if="usersBusy" class="panel" label="正在加载用户…" />
       <div v-else-if="userError" class="empty-state panel" role="alert"><button class="secondary-button" type="button" @click="loadUsers">{{ t('重新加载') }}</button></div>
-      <div v-else class="panel admin-list"><p v-if="!users.length" class="empty-state">{{ t('没有找到匹配的用户。') }}</p><article v-for="item in users" :key="item.id" class="admin-user"><div class="admin-user-copy"><h2>{{ item.nickname || t('用户') }} <small>#{{ item.id }}{{ item.id === userId ? ` / ${t('你自己')}` : '' }}</small></h2><p>{{ item.email }}</p><div class="admin-status"><span>{{ item.isAdmin ? t('管理员') : t('普通用户') }}</span><span :class="{ 'form-error': item.banned }">{{ item.banned ? t('已封禁') : t('正常') }}</span><span>{{ item.emailVerified ? t('邮箱已验证') : item.verificationRequired ? t('待验证邮箱后登录') : t('邮箱未验证') }}</span></div></div><div class="admin-actions"><button v-if="!item.emailVerified" type="button" class="secondary-button" :disabled="saving" @click="confirm(item, 'emailVerified')">{{ t('完成邮箱验证') }}</button><button type="button" class="secondary-button" :disabled="saving" @click="confirm(item, 'isAdmin')">{{ t(actionLabel('isAdmin', !item.isAdmin)) }}</button><button type="button" :class="item.banned ? 'secondary-button' : 'danger-button'" :disabled="saving" @click="confirm(item, 'banned')">{{ t(actionLabel('banned', !item.banned)) }}</button></div></article>
+      <div v-else class="panel admin-list"><p v-if="!users.length" class="empty-state">{{ t('没有找到匹配的用户。') }}</p><article v-for="item in users" :key="item.id" class="admin-user"><div class="admin-user-copy"><h2>{{ item.nickname || t('用户') }} <small>#{{ item.id }}{{ item.id === userId ? ` / ${t('你自己')}` : '' }}</small></h2><p>{{ item.email }}</p><div class="admin-status"><span>{{ item.isAdmin ? t('管理员') : t('普通用户') }}</span><span :class="{ 'form-error': item.banned }">{{ item.banned ? t('已封禁') : t('正常') }}</span><span>{{ item.emailVerified ? t('邮箱已验证') : item.verificationRequired ? t('待验证邮箱后登录') : t('邮箱未验证') }}</span><span>{{ t('积分 {score}', { score: item.score }) }}</span><span>{{ item.characterLimit !== null ? t('角色 {count} / {limit}', { count: item.characterCount, limit: item.characterLimit }) : t('角色 {count}（默认上限）', { count: item.characterCount }) }}</span></div></div><div class="admin-actions"><button type="button" class="secondary-button" :disabled="saving" @click="openManageModal(item)">{{ t('管理账号') }}</button><button v-if="!item.emailVerified" type="button" class="secondary-button" :disabled="saving" @click="confirm(item, 'emailVerified')">{{ t('完成邮箱验证') }}</button><button type="button" class="secondary-button" :disabled="saving" @click="confirm(item, 'isAdmin')">{{ t(actionLabel('isAdmin', !item.isAdmin)) }}</button><button type="button" :class="item.banned ? 'secondary-button' : 'danger-button'" :disabled="saving" @click="confirm(item, 'banned')">{{ t(actionLabel('banned', !item.banned)) }}</button></div></article>
         <div class="library-pagination"><button class="secondary-button" type="button" :disabled="userPage <= 1 || saving" @click="turnPage('users', -1)">{{ t('上一页') }}</button><span>{{ t('第 {page} 页，共 {total} 位用户', { page: userPage, total: userTotal }) }}</span><button class="secondary-button" type="button" :disabled="userPage * 20 >= userTotal || saving" @click="turnPage('users', 1)">{{ t('下一页') }}</button></div>
       </div>
     </section>

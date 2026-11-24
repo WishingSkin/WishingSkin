@@ -312,3 +312,12 @@ button.admin-overview-card:hover{border-color:var(--accent);transform:translateY
 .notice-history-head{display:flex;align-items:center;flex-wrap:wrap;gap:10px;font-size:var(--font-small);color:var(--muted)}
 .notice-history-head>button{margin-left:auto}
 .notice-current-badge{padding:2px 8px;border-radius:var(--radius-control);background:var(--accent-soft);color:var(--accent);font-weight:600}
+
+.integration-login-mode{margin-top:12px;padding:10px 14px;border-radius:var(--radius-control);background:var(--subtle);font-size:var(--font-small);color:var(--muted)}
+.admin-manage-modal{display:grid;gap:18px}
+.admin-manage-section{display:grid;gap:12px;padding-top:16px;border-top:1px solid var(--border)}
+.admin-manage-section:first-of-type{padding-top:4px;border-top:0}
+.admin-manage-section h3{font-size:var(--font-body);font-weight:600}
+.admin-manage-fields{display:grid;grid-template-columns:repeat(auto-fit,minmax(180px,1fr));gap:12px}
+.admin-manage-actions{display:flex;flex-wrap:wrap;gap:10px;align-items:center}
+.admin-manage-section>button{justify-self:start}

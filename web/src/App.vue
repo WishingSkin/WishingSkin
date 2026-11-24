@@ -25,7 +25,7 @@ import TexturePicker from './components/TexturePicker.vue'
 import ApplyTextureDialog from './components/ApplyTextureDialog.vue'
 import TextureBrowser from './components/TextureBrowser.vue'
 import ResourceFilters from './components/ResourceFilters.vue'
-import { adminRoute, canonicalWorkspaceURL, isPagePath, isProtectedPath, navigationRegion, normalizePath, resourcePath } from './workspaceRoutes'
+import { adminRoute, canonicalWorkspaceURL, isPagePath, isProtectedPath, libraryItemId, libraryItemPath, navigationRegion, normalizePath, resourcePath } from './workspaceRoutes'
 import AccountAccess from './components/AccountAccess.vue'
 import RegistrationSettings from './components/RegistrationSettings.vue'
 import Administration from './components/Administration.vue'
@@ -124,6 +124,7 @@ const uploadInput = ref<HTMLInputElement | null>(null)
 interface AccountQuota { accountUsedBytes: number; accountLimitBytes: number; siteUsedBytes: number; siteLimitBytes: number; maxFileBytes: number }
 const accountQuota = ref<AccountQuota | null>(null)
 const adminCharacterLimit = ref(1)
+const adminNonEmailLogin = ref(false)
 
 const descriptionLength = computed(() => Array.from(uploadDescription.value).length)
 let sessionVersion = 0
@@ -159,6 +160,7 @@ function openMaterialTab(tab: 'browse' | 'upload') {
 }
 function openUpload() { navigate(user.value ? '/user/resources/upload' : '/login?next=/user/resources/upload') }
 const adminView = computed(() => adminRoute(routePath.value))
+const libraryDetailId = computed(() => libraryItemId(routePath.value))
 function setRouteView(path: string, search = '') {
   const canonical = new URL(canonicalWorkspaceURL(path, search), window.location.origin)
   const normalized = canonical.pathname
@@ -173,9 +175,10 @@ function setRouteView(path: string, search = '') {
     return
   }
   const params = canonical.searchParams
+  const isLibrary = normalized === '/library' || !!libraryItemId(normalized)
   publicHome.value = normalized === '/'
-  publicLibraryOpen.value = normalized === '/library' && !user.value
-  if (normalized === '/library' && user.value) page.value = 'library'
+  publicLibraryOpen.value = isLibrary && !user.value
+  if (isLibrary && user.value) page.value = 'library'
   else if (normalized === '/user/resources' || normalized === '/user/resources/upload') page.value = 'resources'
   else if (normalized === '/user/wardrobe') page.value = 'wardrobe'
   else if (normalized === '/user/account' || normalized.startsWith('/user/account/')) {
@@ -267,6 +270,7 @@ async function loadSite() {
     const response = await api('/api/site')
     if (!response.ok) throw new Error('site')
     site.value = await response.json() as SiteAccess
+    adminNonEmailLogin.value = !!site.value.yggNonEmailLogin
     siteTheme()
     siteError.value = false
   } catch { siteError.value = true }
@@ -430,7 +434,7 @@ function acceptSession(session: Session) {
   const currentPath = normalizePath(window.location.pathname)
   const destination = notFound.value ? currentPath + window.location.search : currentPath === '/login' && accessMode.value === 'mail'
     ? '/login?mode=mail'
-    : pendingNext.value || (currentPath === '/' || currentPath === '/library' ? currentPath : '/user')
+    : pendingNext.value || (currentPath === '/' || currentPath === '/library' || !!libraryItemId(currentPath) ? currentPath : '/user')
   if (destination.startsWith('/user/oauth/authorize?')) { window.location.assign(destination); return }
   navigate(destination, true)
   pendingNext.value = null
@@ -488,6 +492,7 @@ function clearSession() {
   passwordError.value = ''
   characterLimit.value = 1
   adminCharacterLimit.value = 1
+  adminNonEmailLogin.value = false
   failedImages.value = []
   fallbackViewer.value = ''
   navigate('/', true)
@@ -720,6 +725,13 @@ async function saveCharacterLimit() {
   actionMessage.value = '站点角色数量上限已保存。'
 }
 
+async function saveYggdrasilLogin() {
+  const ok = await mutate('/api/admin/settings', 'PATCH', JSON.stringify({ yggNonEmailLogin: adminNonEmailLogin.value }))
+  if (!ok) return
+  actionMessage.value = '外置登录设置已保存。'
+  await loadSite()
+}
+
 function editTexture() {
   if (!selectedTexture.value?.owned) return
   editingTextureId.value = selectedTexture.value.id
@@ -910,7 +922,7 @@ onBeforeUnmount(() => {
     <header class="topbar">
       <a class="brand" href="/" :aria-label="t('{name} 首页', { name: site.name })" :title="site.name"><img v-if="site.appearance.logoImage" class="brand-logo" :src="site.appearance.logoImage" alt="" width="36" height="36" /><BrandMark v-else :size="36" /><span class="brand-name"><template v-if="site.name === 'WishingSkin'">Wishing<span class="brand-light">Skin</span></template><template v-else>{{ site.name }}</template></span></a>
       <div class="topbar-actions">
-        <button class="topbar-link" :class="{ active: routePath === '/library' }" type="button" :aria-current="routePath === '/library' ? 'page' : undefined" @click="navigate('/library')"><InterfaceIcon name="library" />{{ t('公开库') }}</button>
+        <button class="topbar-link" :class="{ active: routePath === '/library' || !!libraryDetailId }" type="button" :aria-current="(routePath === '/library' || !!libraryDetailId) ? 'page' : undefined" @click="navigate('/library')"><InterfaceIcon name="library" />{{ t('公开库') }}</button>
         <NoticeCenter :notice="site.notice" :format="site.noticeFormat" />
         <AccountMenu :user="user" :avatar-version="avatarVersion" :dark="dark" :dark-only="effectiveDarkOnly" :mc-biome="effectiveMCBiome" :particles-enabled="effectiveParticlesEnabled" :allow-user-theme="!!site.appearance.allowUserTheme" :user-theme-pack="userThemePack" :user-font-preset="userFontPreset" :logout-busy="logoutBusy" @navigate="navigate" @theme="toggleTheme" @toggle-particles="toggleParticles" @update:theme-pack="setUserThemePack" @update:font-preset="setUserFontPreset" @logout="logout" />
       </div>
@@ -922,7 +934,7 @@ onBeforeUnmount(() => {
 
     <main v-else-if="accessMode" class="access-layout"><AccountAccess :mode="accessMode" :token="linkToken" :site="site" :email="user?.email || email" :dark="dark" @back="navigate('/login'); linkToken = ''" @completed="accessCompleted" /></main>
 
-    <main v-else-if="!user && publicLibraryOpen" class="public-library-layout"><button class="secondary-button public-library-back" type="button" @click="navigate('/')">{{ t("返回主页") }}</button><TextureBrowser mode="library" csrf-token="" :wardrobe="[]" :wardrobe-busy="false" wardrobe-error="" @login="navigate('/login')" @upload="openUpload" /></main>
+    <main v-else-if="!user && publicLibraryOpen" class="public-library-layout"><button class="secondary-button public-library-back" type="button" @click="navigate('/')">{{ t("返回主页") }}</button><TextureBrowser mode="library" csrf-token="" :detail-id="libraryDetailId" :wardrobe="[]" :wardrobe-busy="false" wardrobe-error="" @open-detail="id => navigate(libraryItemPath(id))" @login="navigate(libraryDetailId ? `/login?next=${encodeURIComponent(libraryItemPath(libraryDetailId))}` : '/login')" @upload="openUpload" /></main>
     <main v-else-if="publicHome" class="public-home-page"><HomepageContent :homepage="site.homepage" :name="site.name" :tagline="site.tagline" :notice="site.notice" :notice-html="site.noticeHtml" :theme-pack="effectiveThemePack" :dark="dark" :mc-biome="effectiveMCBiome" :particles-enabled="effectiveParticlesEnabled" :theme-assets="site.themeAssets" @navigate="homepageLink" /></main>
     <main v-else-if="!user" class="login-layout">
       <section class="welcome-panel" aria-labelledby="welcome-title">
@@ -969,10 +981,11 @@ onBeforeUnmount(() => {
         <Administration v-if="page === 'administration' && user.isAdmin && adminView" :csrf-token="csrfToken" :user-id="String(user.id)" :active-tab="adminView.tab" :plugin-id="adminView.pluginId" @navigate="navigate" @expired="expireSession" @updated="loadSite"><template #settings>
           <SettingsWorkspace :active-tab="adminView.settingsTab" @navigate="navigate" :site="site" :csrf-token="csrfToken" @updated="loadSite" @expired="expireSession">
           <section class="character-setting" :aria-label="t('角色数量设置')"><form class="inline-form" @submit.prevent="saveCharacterLimit"><label for="character-limit">{{ t("站点每账号角色上限") }}</label><div class="inline-controls"><input id="character-limit" v-model.number="adminCharacterLimit" type="number" min="1" step="1" required :disabled="actionBusy" /><button class="secondary-button" type="submit" :disabled="actionBusy">{{ t("保存设置") }}</button></div><small>{{ t("降低上限不影响已有角色，超出上限的账号暂不可继续新增。") }}</small></form></section>
+          <section class="character-setting" :aria-label="t('外置登录方式')"><form class="inline-form" @submit.prevent="saveYggdrasilLogin"><label class="registration-id-option"><input v-model="adminNonEmailLogin" type="checkbox" :disabled="actionBusy" /><span><strong>{{ t('允许启动器使用角色名登录（Yggdrasil 非邮箱登录）') }}</strong><small>{{ t('开启后，玩家在 authlib-injector 启动器中除账号邮箱外，也可直接填写游戏角色名与密码登录，并自动选中对应角色。') }}</small></span></label><button class="secondary-button" type="submit" :disabled="actionBusy">{{ t('保存设置') }}</button></form></section>
 
           <RegistrationSettings :site="site" :csrf-token="csrfToken" @updated="loadSite" @expired="expireSession" />
           </SettingsWorkspace></template></Administration>
-        <TextureBrowser v-if="page === 'wardrobe' || page === 'library'" :key="`${user.id}:${page}`" :mode="page" :csrf-token="csrfToken" :wardrobe="wardrobe" :wardrobe-busy="wardrobeBusy" :wardrobe-error="wardrobeError" @refresh="loadWardrobe" @changed="loadWardrobe" @wear="wearCollected" @upload="openUpload" @expired="expireSession" />
+        <TextureBrowser v-if="page === 'wardrobe' || page === 'library'" :key="`${user.id}:${page}`" :mode="page" :csrf-token="csrfToken" :detail-id="page === 'library' ? libraryDetailId : ''" :wardrobe="wardrobe" :wardrobe-busy="wardrobeBusy" :wardrobe-error="wardrobeError" @open-detail="id => { if (page === 'library') navigate(libraryItemPath(id)) }" @refresh="loadWardrobe" @changed="loadWardrobe" @wear="wearCollected" @upload="openUpload" @expired="expireSession" />
         <template v-if="page === 'characters'">
           <div class="page-heading"><div><h1>{{ t("角色管理") }}</h1></div><button class="secondary-button" type="button" :disabled="charactersBusy || actionBusy" @click="loadCharacters">{{ charactersBusy ? t('正在刷新…') : t('刷新列表') }}</button></div>
 
@@ -1071,7 +1084,7 @@ onBeforeUnmount(() => {
           </section>
           <section v-else-if="accountTab === 'profile'" class="account-panel panel" aria-labelledby="account-title"><div class="account-block account-overview"><div class="account-section-heading"><div><h2>{{ t('个人资料') }}</h2><p>{{ t('头像、昵称和站内身份信息。') }}</p></div></div><div class="account-profile"><img class="user-avatar large" :src="'/api/avatars/' + user.id + '.png?v=' + avatarVersion" alt="" width="64" height="64" /><div><h2 id="account-title">{{ user.nickname || t('我的账号') }}</h2><p>{{ t('已登录 {name}', { name: site.name }) }}</p></div></div><dl class="account-fields"><div><dt>{{ t("昵称") }}</dt><dd>{{ user.nickname || t('未设置') }}</dd></div><div><dt>{{ t("邮箱") }}</dt><dd>{{ user.email }}</dd></div><div><dt>{{ t('邮箱状态') }}</dt><dd>{{ user.emailVerified ? t('已验证') : t('未验证') }}</dd></div></dl></div><div class="account-block account-security"><div class="account-section-heading"><div><h2>{{ t('登录与安全') }}</h2><p>{{ t('更新个人资料、邮箱验证和密码。') }}</p></div></div><ProfileSettings :csrf-token="csrfToken" :characters="characters" @updated="profileUpdated" @expired="expireSession" /><ConnectorAccount :csrf-token="csrfToken" @expired="clearSession" /><OAuthAccount :csrf-token="csrfToken" @expired="clearSession" /><OIDCAccount :csrf-token="csrfToken" @expired="expireSession" /><TOTPSettings :csrf-token="csrfToken" @expired="expireSession" /><section v-if="!user.emailVerified && !site.manualEmailVerification" class="account-password"><h3>{{ t('验证邮箱') }}</h3><button class="secondary-button" type="button" :disabled="verificationBusy || !site.mailEnabled" @click="sendVerificationMail">{{ verificationBusy ? t('正在发送验证邮件…') : t('发送验证邮件') }}</button></section><section class="account-password" aria-labelledby="password-title"><h3 id="password-title">{{ t("修改密码") }}</h3><p>{{ t("修改密码后，所有网页会话与游戏令牌都将失效，需要重新登录。") }}</p><form class="password-form" @submit.prevent="changePassword"><fieldset :disabled="passwordBusy"><input type="hidden" name="username" :value="user.email" autocomplete="username" /><label class="binding-field"><span>{{ t("当前密码") }}</span><input v-model="currentPassword" type="password" autocomplete="current-password" required /></label><label class="binding-field"><span>{{ t("新密码") }}</span><input v-model="newPassword" type="password" autocomplete="new-password" required aria-describedby="password-rule" /></label><p id="password-rule" class="password-rule">{{ t("8–128 个字符，须同时包含英文字母、数字和符号；空白不计作符号。") }}</p><label class="binding-field"><span>{{ t("确认新密码") }}</span><input v-model="confirmPassword" type="password" autocomplete="new-password" required /></label><button class="primary-button" type="submit" :disabled="passwordBusy || actionBusy">{{ passwordBusy ? t('正在修改…') : t('修改密码并重新登录') }}</button></fieldset></form></section><div class="account-logout"><div><h3>{{ t("退出当前账号") }}</h3><p>{{ t("退出后需要重新登录才能访问工作台。") }}</p></div><button class="secondary-button" type="button" :disabled="logoutBusy || passwordBusy || actionBusy || charactersBusy || texturesBusy || wardrobeBusy" @click="logout">{{ logoutBusy ? t('正在退出…') : t('退出登录') }}</button></div></div></section>
           <PointsPanel v-else-if="accountTab === 'points'" :csrf-token="csrfToken" @expired="expireSession" />
-          <IntegrationPanel v-else-if="accountTab === 'integration'" />
+          <IntegrationPanel v-else-if="accountTab === 'integration'" :non-email-login="!!site.yggNonEmailLogin" />
           <ReportsView v-else-if="accountTab === 'reports'" :csrf-token="csrfToken" @expired="expireSession" />
           </div>
         </template>

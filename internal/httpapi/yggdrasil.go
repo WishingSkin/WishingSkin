@@ -129,7 +129,12 @@ func (a *Server) metadata(w http.ResponseWriter, r *http.Request) {
 	if version == "" {
 		version = "0.1.0-dev"
 	}
-	respond(w, 200, map[string]any{"meta": map[string]any{"serverName": brand.Name, "implementationName": "WishingSkin", "implementationVersion": version, "feature.non_email_login": false, "feature.username_check": true, "feature.enable_profile_key": false}, "skinDomains": []string{origin.Hostname()}, "signaturePublickey": string(pem.EncodeToMemory(&pem.Block{Type: "PUBLIC KEY", Bytes: pub}))})
+	nonEmailLogin, err := yggNonEmailLogin(r.Context(), a.s.DB)
+	if err != nil {
+		yfail(w, 503, "ServiceUnavailableException", "Site settings unavailable")
+		return
+	}
+	respond(w, 200, map[string]any{"meta": map[string]any{"serverName": brand.Name, "implementationName": "WishingSkin", "implementationVersion": version, "feature.non_email_login": nonEmailLogin, "feature.username_check": true, "feature.enable_profile_key": false}, "skinDomains": []string{origin.Hostname()}, "signaturePublickey": string(pem.EncodeToMemory(&pem.Block{Type: "PUBLIC KEY", Bytes: pub}))})
 }
 func (a *Server) gameAuthenticate(w http.ResponseWriter, r *http.Request) {
 	if !a.gameLoginLimit.allow(r) {
@@ -147,7 +152,7 @@ func (a *Server) gameAuthenticate(w http.ResponseWriter, r *http.Request) {
 		yfail(w, 400, "IllegalArgumentException", "Invalid client token")
 		return
 	}
-	u, err := a.passwordUser(r.Context(), body.Username, body.Password)
+	u, matchedProfile, err := a.gameAuthenticateUser(r.Context(), body.Username, body.Password)
 	if err != nil {
 		if errors.Is(err, errBusy) {
 			yfail(w, 429, "TooManyRequestsException", "Please retry later")
@@ -181,7 +186,10 @@ func (a *Server) gameAuthenticate(w http.ResponseWriter, r *http.Request) {
 		profiles = append(profiles, gameProfile{ID: c.UUID, Name: c.Name})
 	}
 	response := map[string]any{"accessToken": token, "clientToken": body.ClientToken, "availableProfiles": profiles}
-	if len(profiles) == 1 {
+	if matchedProfile != nil {
+		response["selectedProfile"] = *matchedProfile
+		selected = matchedProfile.ID
+	} else if len(profiles) == 1 {
 		response["selectedProfile"] = profiles[0]
 		selected = chars[0].UUID
 	}
@@ -249,12 +257,36 @@ func gameUser(id int64) map[string]any {
 	return map[string]any{"id": fmt.Sprintf("%032x", id), "properties": []any{}}
 }
 
-func (a *Server) passwordUser(ctx context.Context, username, password string) (User, error) {
-	account := tokenHash(strings.ToLower(strings.TrimSpace(username)))
-	if !a.loginLimit.allowKey("account:" + account) {
-		return User{}, errBusy
+func yggNonEmailLogin(ctx context.Context, reader settingReader) (bool, error) {
+	var raw string
+	err := reader.QueryRowContext(ctx, "SELECT value FROM settings WHERE setting_key='ygg_non_email_login'").Scan(&raw)
+	if errors.Is(err, sql.ErrNoRows) {
+		return false, nil
 	}
-	return a.authenticate(ctx, username, password)
+	return raw == "true", err
+}
+
+func (a *Server) gameAuthenticateUser(ctx context.Context, username, password string) (User, *gameProfile, error) {
+	trimmed := strings.TrimSpace(username)
+	account := tokenHash(strings.ToLower(trimmed))
+	if !a.loginLimit.allowKey("account:" + account) {
+		return User{}, nil, errBusy
+	}
+	if trimmed != "" && !strings.Contains(trimmed, "@") {
+		nonEmail, err := yggNonEmailLogin(ctx, a.s.DB)
+		if err != nil {
+			return User{}, nil, err
+		}
+		if nonEmail {
+			u, profile, err := a.authenticateCharacter(ctx, trimmed, password)
+			if err != nil {
+				return User{}, nil, err
+			}
+			return u, &profile, nil
+		}
+	}
+	u, err := a.authenticate(ctx, username, password)
+	return u, nil, err
 }
 
 func (a *Server) gameTokenError(w http.ResponseWriter, err error, unavailable string) {
@@ -415,7 +447,7 @@ func (a *Server) gameSignout(w http.ResponseWriter, r *http.Request) {
 	if !ydecode(w, r, &body) {
 		return
 	}
-	u, err := a.passwordUser(r.Context(), body.Username, body.Password)
+	u, _, err := a.gameAuthenticateUser(r.Context(), body.Username, body.Password)
 	if err != nil {
 		if errors.Is(err, errBusy) {
 			yfail(w, 429, "TooManyRequestsException", "Please retry later")

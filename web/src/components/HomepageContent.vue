@@ -120,8 +120,8 @@ function follow(event: MouseEvent, href: string) {
               v-for="item in showcaseFeeds[block.source]"
               :key="item.id"
               class="homepage-showcase-item"
-              href="/library"
-              @click="follow($event, '/library')"
+              :href="`/library/${encodeURIComponent(item.id)}`"
+              @click="follow($event, `/library/${encodeURIComponent(item.id)}`)"
             >
               <ModelThumbnail
                 class="homepage-showcase-thumb"

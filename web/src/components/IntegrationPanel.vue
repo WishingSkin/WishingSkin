@@ -4,6 +4,7 @@ import { feedbackRef, toast } from '../feedback'
 import { computed, onMounted, ref } from 'vue'
 import { authlibInjectorDragUrl } from '../formatBytes'
 import { t } from '../i18n'
+const props = defineProps<{ nonEmailLogin?: boolean }>()
 interface Configuration { authlibInjector: string; cslRoot: string; skinTemplate: string; capeTemplate: string; customSkinLoader: object }
 const config = ref<Configuration | null>(null)
 const dragAuthlibUrl = computed(() => config.value ? authlibInjectorDragUrl(config.value.authlibInjector) : '')
@@ -54,6 +55,7 @@ onMounted(load)
         <button class="secondary-button" type="button" :aria-label="t('复制{label}', { label: t(item.label) })" @click="copy(item.value)">{{ t('复制') }}</button>
       </div>
       <p>{{ t('使用传统链接模板时，请将 {USERNAME} 替换为游戏角色名。') }}</p>
+      <p class="integration-login-mode">{{ props.nonEmailLogin ? t('当前站点已开启非邮箱登录：在启动器外置登录界面既可填账号邮箱，也可直接填游戏角色名。') : t('当前站点需使用账号邮箱与密码在启动器内登录。') }}</p>
       <button class="secondary-button" type="button" @click="download">{{ t('下载 CustomSkinLoader 配置') }}</button>
       <p>{{ t('生成的配置会优先从本站加载外观，未命中时再回退至 Mojang。合并前建议备份原配置。') }}</p>
     </template>

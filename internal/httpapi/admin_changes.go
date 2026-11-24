@@ -46,7 +46,7 @@ func (a *Server) captureSettingChange(ctx context.Context, tx *sql.Tx, key, next
 		return nil
 	}
 	switch key {
-	case "homepage_blocks", "homepage_background", "site_appearance", "content_policy", "backup_schedule", "cdn_config", "storage_quota", "registration_email_domains", "registration_blocked_domains", "manual_email_verification", "random_user_ids", "official_invitation":
+	case "homepage_blocks", "homepage_background", "site_appearance", "content_policy", "backup_schedule", "cdn_config", "storage_quota", "ygg_non_email_login", "registration_email_domains", "registration_blocked_domains", "manual_email_verification", "random_user_ids", "official_invitation":
 		var before, after any
 		_ = json.Unmarshal([]byte(previous), &before)
 		if err := json.Unmarshal([]byte(next), &after); err != nil {

@@ -366,6 +366,11 @@ func (a *Server) authenticate(ctx context.Context, email, password string) (User
 		return User{}, err
 	}
 	u.IsAdmin = permission >= 2
+	return a.verifyUserCredential(ctx, u, hash, method, salt, password, banned, permission, verificationRequired)
+}
+
+func (a *Server) verifyUserCredential(ctx context.Context, u User, hash, method, salt, password string, banned bool, permission int, verificationRequired bool) (User, error) {
+	u.IsAdmin = permission >= 2
 	ok, err := credential.Verify(method, hash, salt, password)
 	if err != nil || !ok || banned {
 		return User{}, errCredentials
@@ -393,6 +398,37 @@ func (a *Server) authenticate(ctx context.Context, email, password string) (User
 		u.credentialHash = updated
 	}
 	return u, nil
+}
+
+func (a *Server) authenticateCharacter(ctx context.Context, characterName, password string) (User, gameProfile, error) {
+	var u User
+	var profile gameProfile
+	var hash, method, salt string
+	var banned bool
+	if characterName == "" || len(characterName) > 64 || len(password) > 1024 || password == "" {
+		return u, profile, errCredentials
+	}
+	select {
+	case a.hashes <- struct{}{}:
+		defer func() { <-a.hashes }()
+	default:
+		return u, profile, errBusy
+	}
+	var permission int
+	var verificationRequired bool
+	err := a.s.DB.QueryRowContext(ctx, a.s.Bind("SELECT u.id,u.email,u.nickname,u.password_hash,u.password_method,u.password_salt,u.banned,u.permission,COALESCE(s.email_verified,FALSE),s.user_id IS NULL,COALESCE(s.verification_required,FALSE),c.uuid,c.name FROM characters c JOIN users u ON u.id=c.user_id LEFT JOIN account_states s ON s.user_id=u.id WHERE c.name_key=?"), strings.ToLower(strings.TrimSpace(characterName))).Scan(&u.ID, &u.Email, &u.Nickname, &hash, &method, &salt, &banned, &permission, &u.EmailVerified, &u.LegacyAccount, &verificationRequired, &profile.ID, &profile.Name)
+	if errors.Is(err, sql.ErrNoRows) {
+		_, _ = credential.Verify("ARGON2ID", a.dummy, "", password)
+		return User{}, gameProfile{}, errCredentials
+	}
+	if err != nil {
+		return User{}, gameProfile{}, err
+	}
+	verified, err := a.verifyUserCredential(ctx, u, hash, method, salt, password, banned, permission, verificationRequired)
+	if err != nil {
+		return User{}, gameProfile{}, err
+	}
+	return verified, profile, nil
 }
 
 var errCredentials = errors.New("invalid credentials")
@@ -622,7 +658,7 @@ func (a *Server) characters(w http.ResponseWriter, r *http.Request) {
 		failure(w, 503, "暂时无法读取角色")
 		return
 	}
-	limit, err := characterLimit(r.Context(), a.s.DB, a.s.Bind)
+	limit, err := effectiveCharacterLimit(r.Context(), a.s.DB, a.s.Bind, u.ID)
 	if err != nil {
 		failure(w, 503, "暂时无法读取站点设置")
 		return

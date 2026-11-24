@@ -15,7 +15,7 @@ const saving = ref(false)
 const error = feedbackRef('error')
 const actionError = feedbackRef('error')
 const message = feedbackRef('success')
-const names: Record<string, string> = { checkin: '每日签到', upload: '上传材质', character: '新建角色' }
+const names: Record<string, string> = { checkin: '每日签到', upload: '上传材质', character: '新建角色', admin: '管理员调整' }
 function time(value: number) { return new Date(value * 1000).toLocaleString(locale.value === 'en' ? 'en-US' : 'zh-CN') }
 async function load() {
   if (busy.value || saving.value) return
