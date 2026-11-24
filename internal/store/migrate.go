@@ -13,12 +13,12 @@ import (
 //go:embed migrations/*.sql
 var migrationFiles embed.FS
 
-const schemaVersion = 25
+const schemaVersion = 26
 
 // CurrentSchemaVersion identifies the schema understood by offline backups.
 const CurrentSchemaVersion = schemaVersion
 
-var schemaMigrations = []string{"001_initial", "002_ygg_sessions", "003_texture_records", "004_wardrobe", "005_account_access", "006_admin_events", "007_reports", "008_points", "009_legacy_reports", "010_user_profiles", "011_site_notices", "012_plugins", "013_invitation_export", "014_homepage_blocks", "015_oidc", "016_totp", "017_account_integrations", "018_content_review", "019_admin_event_changes", "020_extensions", "021_oauth_extensions", "022_account_verification", "023_theme_assets", "024_storage_integrity", "025_texture_likes"}
+var schemaMigrations = []string{"001_initial", "002_ygg_sessions", "003_texture_records", "004_wardrobe", "005_account_access", "006_admin_events", "007_reports", "008_points", "009_legacy_reports", "010_user_profiles", "011_site_notices", "012_plugins", "013_invitation_export", "014_homepage_blocks", "015_oidc", "016_totp", "017_account_integrations", "018_content_review", "019_admin_event_changes", "020_extensions", "021_oauth_extensions", "022_account_verification", "023_theme_assets", "024_storage_integrity", "025_texture_likes", "026_user_limits_and_texture_dates"}
 
 // Migrate serializes initialization across processes using a session lock.
 // Each DDL statement is independently retryable; MySQL DDL is not transactional.
@@ -76,6 +76,15 @@ func (s *Store) Migrate(ctx context.Context) (err error) {
 					continue
 				}
 			}
+			if next == 26 {
+				exists, err := s.migration26DDLExists(ctx, conn, statement)
+				if err != nil {
+					return fmt.Errorf("inspect schema migration 26: %w", err)
+				}
+				if exists {
+					continue
+				}
+			}
 			if _, err := conn.ExecContext(ctx, statement); err != nil {
 				return fmt.Errorf("apply schema migration %d: %w", next, err)
 			}
@@ -113,6 +122,34 @@ func (s *Store) invitationExportDDLExists(ctx context.Context, conn *sql.Conn, s
 	}
 	var count int
 	err := conn.QueryRowContext(ctx, s.Bind(query), name).Scan(&count)
+	return count != 0, err
+}
+
+func (s *Store) migration26DDLExists(ctx context.Context, conn *sql.Conn, statement string) (bool, error) {
+	fields := strings.Fields(statement)
+	var query string
+	var args []any
+	switch {
+	case len(fields) >= 6 && strings.EqualFold(fields[0], "ALTER") && strings.EqualFold(fields[1], "TABLE") && strings.EqualFold(fields[3], "ADD") && strings.EqualFold(fields[4], "COLUMN"):
+		table, column := fields[2], fields[5]
+		query = "SELECT COUNT(*) FROM information_schema.columns WHERE table_schema=current_schema() AND table_name=? AND column_name=?"
+		if s.Dialect == "mysql" {
+			query = "SELECT COUNT(*) FROM information_schema.columns WHERE table_schema=DATABASE() AND table_name=? AND column_name=?"
+		}
+		args = []any{table, column}
+	case len(fields) >= 5 && strings.EqualFold(fields[0], "CREATE") && strings.EqualFold(fields[1], "INDEX"):
+		indexName := fields[2]
+		table := strings.SplitN(fields[4], "(", 2)[0]
+		query = "SELECT COUNT(*) FROM pg_indexes WHERE schemaname=current_schema() AND tablename=? AND indexname=?"
+		if s.Dialect == "mysql" {
+			query = "SELECT COUNT(*) FROM information_schema.statistics WHERE table_schema=DATABASE() AND table_name=? AND index_name=?"
+		}
+		args = []any{table, indexName}
+	default:
+		return false, fmt.Errorf("unexpected schema migration 26 DDL")
+	}
+	var count int
+	err := conn.QueryRowContext(ctx, s.Bind(query), args...).Scan(&count)
 	return count != 0, err
 }
 

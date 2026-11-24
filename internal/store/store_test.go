@@ -113,6 +113,14 @@ func assertEmbeddedSchemasAgree(t *testing.T, migration string) {
 			t.Error("texture_likes table must match the referenced record ID collation")
 		}
 	}
+	if migration == "026_user_limits_and_texture_dates" {
+		tables = nil
+		for _, fragment := range []string{"ALTER TABLE users ADD COLUMN character_limit", "ALTER TABLE texture_records ADD COLUMN created_at", "CREATE INDEX texture_records_created_idx"} {
+			if !strings.Contains(string(mysql), fragment) || !strings.Contains(string(postgres), fragment) {
+				t.Errorf("missing schema 26 DDL %q", fragment)
+			}
+		}
+	}
 	if migration == "019_admin_event_changes" {
 		tables = []string{"admin_event_changes"}
 	}
