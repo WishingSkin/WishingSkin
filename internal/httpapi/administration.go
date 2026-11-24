@@ -158,6 +158,11 @@ func (a *Server) adminOverview(w http.ResponseWriter, r *http.Request) {
 			}
 		}
 	}
+	accountLimit, siteLimit, err := a.effectiveTextureLimits(ctx, a.s.DB)
+	if err != nil {
+		failure(w, 503, "暂时无法读取站点概览")
+		return
+	}
 	respond(w, 200, map[string]any{
 		"users":          userTotal,
 		"characters":     characterTotal,
@@ -166,8 +171,8 @@ func (a *Server) adminOverview(w http.ResponseWriter, r *http.Request) {
 		"pendingReports": pendingReports,
 		"storage": map[string]any{
 			"siteUsedBytes":     siteUsed,
-			"siteLimitBytes":    a.cfg.TextureSiteLimitBytes,
-			"accountLimitBytes": a.cfg.TextureAccountLimitBytes,
+			"siteLimitBytes":    siteLimit,
+			"accountLimitBytes": accountLimit,
 		},
 		"plugins": map[string]any{
 			"enabled": enabledPlugins,

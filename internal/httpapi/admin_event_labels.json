@@ -203,9 +203,17 @@
     "storage.remote-gc": {
       "zh-CN": "远端存储回收",
       "en": "Clean up remote storage"
+    },
+    "notice.delete": {
+      "zh-CN": "删除历史公告",
+      "en": "Delete notice"
     }
   },
   "targets": {
+    "notice": {
+      "zh-CN": "公告",
+      "en": "Notice"
+    },
     "user": {
       "zh-CN": "用户",
       "en": "User"

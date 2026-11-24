@@ -50,7 +50,7 @@ const labels = { site: '站点', appearance: '个性化', services: '邮件与�
   <div v-if="appearanceVisited" v-show="tab === 'appearance'" class="personalization-workspace">
     <fieldset class="personalization-fields" :disabled="saving" @submit.prevent="saveAll">
       <AppearanceSettings ref="appearance" managed :appearance="site.appearance" :theme-assets="site.themeAssets" :theme-font="site.themeFont" :csrf-token="csrfToken" @updated="emit('updated')" @expired="emit('expired')" />
-      <BrandingSettings ref="branding" managed section="site" :site="site" :csrf-token="csrfToken" @expired="emit('expired')" />
+      <BrandingSettings ref="branding" managed section="site" :site="site" :csrf-token="csrfToken" @updated="emit('updated')" @expired="emit('expired')" />
       <BrandingSettings ref="homepage" managed section="homepage" :site="site" :csrf-token="csrfToken" @expired="emit('expired')" />
       <LoginImageSettings ref="loginImage" managed :csrf-token="csrfToken" @expired="emit('expired')" />
       <section v-if="appearance" class="settings-section"><AdvancedAppearanceSettings v-model="appearance.draft.advanced" /></section>

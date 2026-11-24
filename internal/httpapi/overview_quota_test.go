@@ -2,6 +2,7 @@ package httpapi
 
 import (
 	"encoding/json"
+	"strings"
 	"testing"
 )
 
@@ -96,6 +97,70 @@ func TestAccountQuotaAndAdminOverviewBothDatabases(t *testing.T) {
 			if overview.Plugins.Total == 0 || overview.Backup.Configured {
 				t.Fatalf("unexpected overview plugins/backup: %+v %+v", overview.Plugins, overview.Backup)
 			}
+
+			// Admin operations exposes current quota and supports runtime overrides.
+			opsResp := f.call(3, "GET", "/api/admin/operations", nil)
+			webStatus(t, opsResp, 200)
+			var ops struct {
+				Backup backupSchedule   `json:"backup"`
+				CDN    cdnSettings      `json:"cdn"`
+				Quota  storageQuotaView `json:"quota"`
+			}
+			if err := json.Unmarshal(opsResp.Body.Bytes(), &ops); err != nil {
+				t.Fatal(err)
+			}
+			if ops.Quota.AccountLimitBytes != 64<<20 || ops.Quota.SiteLimitBytes != 512<<20 {
+				t.Fatalf("unexpected operations quota: %+v", ops.Quota)
+			}
+
+			webStatus(t, f.call(3, "PATCH", "/api/admin/operations", map[string]any{
+				"backup": ops.Backup,
+				"cdn":    ops.CDN,
+				"quota":  storageQuotaView{AccountLimitBytes: -1, SiteLimitBytes: 512 << 20},
+			}), 400)
+
+			tightLimit := int64(len(pngBytes)) + 10
+			webStatus(t, f.call(3, "PATCH", "/api/admin/operations", map[string]any{
+				"backup": ops.Backup,
+				"cdn":    ops.CDN,
+				"quota":  storageQuotaView{AccountLimitBytes: tightLimit, SiteLimitBytes: 512 << 20},
+			}), 204)
+
+			qResp := f.call(1, "GET", "/api/account/quota", nil)
+			webStatus(t, qResp, 200)
+			if !strings.Contains(qResp.Body.String(), `"accountLimitBytes":`) {
+				t.Fatalf("missing accountLimitBytes in %s", qResp.Body.String())
+			}
+			var updatedQuota struct {
+				AccountLimitBytes int64 `json:"accountLimitBytes"`
+				SiteLimitBytes    int64 `json:"siteLimitBytes"`
+			}
+			if err := json.Unmarshal(qResp.Body.Bytes(), &updatedQuota); err != nil || updatedQuota.AccountLimitBytes != tightLimit || updatedQuota.SiteLimitBytes != 512<<20 {
+				t.Fatalf("updated quota not reflected: %+v err=%v", updatedQuota, err)
+			}
+
+			secondPNG := testPNG(t, 128, 64)
+			blockedUpload := f.upload(1, secondPNG, map[string]string{"name": "OverQuotaSkin"})
+			webStatus(t, blockedUpload, 409)
+			var blockedErr struct {
+				Code string `json:"code"`
+			}
+			if err := json.Unmarshal(blockedUpload.Body.Bytes(), &blockedErr); err != nil || blockedErr.Code != "texture_account_capacity" {
+				t.Fatalf("expected texture_account_capacity, got %s err=%v", blockedUpload.Body.String(), err)
+			}
+
+			// Setting 0 disables both runtime limits immediately.
+			webStatus(t, f.call(3, "PATCH", "/api/admin/operations", map[string]any{
+				"backup": ops.Backup,
+				"cdn":    ops.CDN,
+				"quota":  storageQuotaView{AccountLimitBytes: 0, SiteLimitBytes: 0},
+			}), 204)
+			ovAfterUnlimited := f.call(3, "GET", "/api/admin/overview", nil)
+			webStatus(t, ovAfterUnlimited, 200)
+			if err := json.Unmarshal(ovAfterUnlimited.Body.Bytes(), &overview); err != nil || overview.Storage.AccountLimitBytes != 0 || overview.Storage.SiteLimitBytes != 0 {
+				t.Fatalf("expected 0 unlimited quotas in overview: %+v err=%v", overview.Storage, err)
+			}
+			uploadedRecord(t, f.upload(1, secondPNG, map[string]string{"name": "UnlimitedNowSkin"}))
 		})
 	}
 }

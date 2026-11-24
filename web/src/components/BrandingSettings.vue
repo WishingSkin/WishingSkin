@@ -1,12 +1,12 @@
 <script setup lang="ts">
 import LoadingSkeleton from './LoadingSkeleton.vue'
-import { feedbackRef } from '../feedback'
+import { confirmAction, feedbackRef } from '../feedback'
 import { computed, onMounted, ref, watch } from 'vue'
 import HomepageContent from './HomepageContent.vue'
 import IconImageField from './IconImageField.vue'
 import { settingsSnapshot } from '../settingsDraft'
 import type { HomepageBlock, SiteAccess } from '../accountTypes'
-import { t } from '../i18n'
+import { locale, t } from '../i18n'
 const props = defineProps<{ site: SiteAccess; csrfToken: string; section?: 'site' | 'homepage'; managed?: boolean }>()
 const emit = defineEmits<{ updated: []; expired: [] }>()
 const name = ref(props.site.name || 'WishingSkin')
@@ -62,7 +62,68 @@ async function pickBackground(event: Event) {
   } catch { homepageError.value = '图片读取失败，请重新选择' }
   finally { processImage(false) }
 }
-onMounted(() => { if (props.section !== 'site') void loadHomepage() })
+onMounted(() => {
+  if (props.section !== 'site') void loadHomepage()
+  if (props.section !== 'homepage') void loadNoticeHistory()
+})
+interface NoticeHistoryItem { id: string; html: string; createdAt: number }
+const noticeHistory = ref<NoticeHistoryItem[]>([])
+const currentNoticeId = ref('')
+const noticeHistoryBusy = ref(false)
+async function loadNoticeHistory() {
+  noticeHistoryBusy.value = true
+  try {
+    const response = await fetch('/api/notices', { credentials: 'same-origin' })
+    if (!response.ok) return
+    const data = await response.json() as { notices: NoticeHistoryItem[]; currentId: string }
+    noticeHistory.value = data.notices || []
+    currentNoticeId.value = data.currentId || ''
+  } catch {
+    // Keep branding settings usable even if notice history fetch fails.
+  } finally {
+    noticeHistoryBusy.value = false
+  }
+}
+function formatNoticeTime(value: number) {
+  if (!value) return t('旧版公告')
+  return new Intl.DateTimeFormat(locale.value, { dateStyle: 'medium', timeStyle: 'short' }).format(new Date(value))
+}
+async function deleteHistoryNotice(item: NoticeHistoryItem) {
+  if (noticeHistoryBusy.value || busy.value) return
+  if (!await confirmAction({ title: '删除历史公告', message: t('确定删除这条公告记录？此操作无法撤销。'), danger: true, confirmLabel: '删除' })) return
+  noticeHistoryBusy.value = true
+  error.value = ''
+  message.value = ''
+  try {
+    const response = await fetch(`/api/admin/notices/${encodeURIComponent(item.id)}`, {
+      method: 'DELETE',
+      credentials: 'same-origin',
+      headers: { 'X-CSRF-Token': props.csrfToken },
+    })
+    if (response.status === 401) { emit('expired'); return }
+    if (!response.ok) {
+      const data = await response.json().catch(() => ({}))
+      error.value = data.error || '暂时无法删除公告'
+      return
+    }
+    const deletedCurrent = item.id === currentNoticeId.value
+    message.value = '历史公告已删除。'
+    if (deletedCurrent) {
+      if (!brandingDirty.value) {
+        notice.value = ''
+        preview.value = ''
+        savedBranding.value = settingsSnapshot(brandingValue.value)
+      }
+      emit('updated')
+    }
+    noticeHistoryBusy.value = false
+    await loadNoticeHistory()
+  } catch {
+    error.value = '暂时无法删除公告'
+  } finally {
+    noticeHistoryBusy.value = false
+  }
+}
 const homepageKinds: Array<{ value: HomepageBlock['kind']; label: string }> = [
   { value: 'intro', label: '介绍' },
   { value: 'features', label: '功能卡' },
@@ -89,7 +150,7 @@ async function save() {
     const response = await fetch('/api/admin/branding', { method: 'PATCH', credentials: 'same-origin', headers: { 'Content-Type': 'application/json', 'X-CSRF-Token': props.csrfToken }, body: JSON.stringify({ name: name.value, tagline: tagline.value, footer: footer.value, notice: notice.value, noticeFormat: format.value }) })
     if (response.status === 401) { emit('expired'); return false }
     if (!response.ok) { const data = await response.json().catch(() => ({})); error.value = data.error || '暂时无法保存站点设置'; return false }
-    savedBranding.value = settingsSnapshot(brandingValue.value); if (!props.managed) { message.value = '站点文案已保存。'; emit('updated') }; return true
+    savedBranding.value = settingsSnapshot(brandingValue.value); void loadNoticeHistory(); if (!props.managed) { message.value = '站点文案已保存。'; emit('updated') }; return true
   } catch { error.value = '无法确认操作结果，请重新检查设置。'; return false }
   finally { busy.value = false }
 }
@@ -156,7 +217,26 @@ defineExpose({ dirty: computed(() => props.section === 'homepage' ? homepageDirt
 </script>
 
 <template>
-  <section v-if="section !== 'homepage'" class="account-password branding-settings" aria-labelledby="branding-title"><h3 id="branding-title">{{ t('品牌与公告') }}</h3><form class="password-form" @submit.prevent="!managed && save()"><fieldset :disabled="busy"><label class="binding-field"><span>{{ t('站点名称') }} <small>{{ nameLength }}/64</small></span><input v-model="name" required /></label><label class="binding-field"><span>{{ t('站点简介') }} <small>{{ taglineLength }}/200</small></span><input v-model="tagline" /></label><label class="binding-field"><span>{{ t('自定义页脚信息') }} <small>{{ Array.from(footer).length }}/200</small></span><input v-model="footer" :placeholder="t('显示在页脚的自定义文字')" /></label><label class="binding-field"><span>{{ t('公告格式') }}</span><select v-model="format"><option value="plain">{{ t('纯文本') }}</option><option value="markdown">Markdown + HTML</option></select></label><label class="binding-field"><span>{{ t('站点公告') }} <small>{{ noticeLength }}/1000</small></span><textarea v-model="notice" rows="5"></textarea></label><p v-if="format === 'markdown'" class="password-rule">{{ t('支持粗体、链接、列表等排版，脚本、图片和自定义样式会被过滤。') }}</p><button class="secondary-button" type="button" @click="previewNotice">{{ t('预览公告') }}</button><div v-if="preview" class="notice-content notice-preview" v-html="preview"></div><p class="password-rule">{{ t('保存会发布新公告；清空后保留历史记录。') }}</p><button v-if="!managed" class="primary-button" type="submit">{{ busy ? t('正在保存…') : t('保存品牌与公告') }}</button></fieldset></form></section>
+  <section v-if="section !== 'homepage'" class="account-password branding-settings" aria-labelledby="branding-title"><h3 id="branding-title">{{ t('品牌与公告') }}</h3><form class="password-form" @submit.prevent="!managed && save()"><fieldset :disabled="busy"><label class="binding-field"><span>{{ t('站点名称') }} <small>{{ nameLength }}/64</small></span><input v-model="name" required /></label><label class="binding-field"><span>{{ t('站点简介') }} <small>{{ taglineLength }}/200</small></span><input v-model="tagline" /></label><label class="binding-field"><span>{{ t('自定义页脚信息') }} <small>{{ Array.from(footer).length }}/200</small></span><input v-model="footer" :placeholder="t('显示在页脚的自定义文字')" /></label><label class="binding-field"><span>{{ t('公告格式') }}</span><select v-model="format"><option value="plain">{{ t('纯文本') }}</option><option value="markdown">Markdown + HTML</option></select></label><label class="binding-field"><span>{{ t('站点公告') }} <small>{{ noticeLength }}/1000</small></span><textarea v-model="notice" rows="5"></textarea></label><p v-if="format === 'markdown'" class="password-rule">{{ t('支持粗体、链接、列表等排版，脚本、图片和自定义样式会被过滤。') }}</p><button class="secondary-button" type="button" @click="previewNotice">{{ t('预览公告') }}</button><div v-if="preview" class="notice-content notice-preview" v-html="preview"></div><p class="password-rule">{{ t('保存会发布新公告；清空后保留历史记录。') }}</p><button v-if="!managed" class="primary-button" type="submit">{{ busy ? t('正在保存…') : t('保存品牌与公告') }}</button></fieldset></form>
+<div class="notice-history-admin">
+  <div class="settings-section-heading">
+    <h4>{{ t('历史公告') }}</h4>
+    <button type="button" class="text-button" :disabled="noticeHistoryBusy" @click="loadNoticeHistory">{{ noticeHistoryBusy ? t('正在加载…') : t('刷新') }}</button>
+  </div>
+  <p v-if="!noticeHistory.length" class="password-rule">{{ t('暂无历史公告。') }}</p>
+  <ul v-else class="notice-history-list">
+    <li v-for="item in noticeHistory" :key="item.id" class="notice-history-row">
+      <div class="notice-history-head">
+        <span v-if="item.id === currentNoticeId" class="notice-current-badge">{{ t('最新公告') }}</span>
+        <time v-if="item.createdAt" :datetime="new Date(item.createdAt).toISOString()">{{ formatNoticeTime(item.createdAt) }}</time>
+        <span v-else>{{ t('旧版公告') }}</span>
+        <button type="button" class="text-button danger-text" :disabled="noticeHistoryBusy || busy" @click="deleteHistoryNotice(item)">{{ t('删除') }}</button>
+      </div>
+      <div class="notice-content" v-html="item.html"></div>
+    </li>
+  </ul>
+</div>
+</section>
 <section v-if="section !== 'site'" class="account-password homepage-settings" aria-labelledby="homepage-title">
   <div v-if="!homepageLoaded"><LoadingSkeleton v-if="!homepageError" :count="2" /><button v-else class="text-button" type="button" @click="loadHomepage">{{ t('重试') }}</button></div>
   <fieldset :disabled="!homepageLoaded || homepageBusy" class="homepage-editor-fields">

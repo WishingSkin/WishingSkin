@@ -7,6 +7,7 @@ import (
 	"encoding/hex"
 	"errors"
 	"net/http"
+	"strings"
 	"time"
 )
 
@@ -120,4 +121,79 @@ func (a *Server) notices(w http.ResponseWriter, r *http.Request) {
 		}
 	}
 	respond(w, 200, map[string]any{"notices": result, "currentId": currentID})
+}
+
+func (a *Server) deleteNotice(w http.ResponseWriter, r *http.Request) {
+	u, ok := a.adminRequest(w, r)
+	if !ok {
+		return
+	}
+	id := strings.TrimSpace(r.PathValue("id"))
+	if id == "" || len(id) > 64 {
+		failure(w, 404, "公告不存在")
+		return
+	}
+	tx, ok := a.beginAdminWrite(w, r, u)
+	if !ok {
+		return
+	}
+	defer tx.Rollback()
+	var current siteBranding
+	for _, field := range []struct {
+		key   string
+		value *string
+	}{{"site_notice", &current.Notice}, {"site_notice_format", &current.NoticeFormat}} {
+		err := tx.QueryRowContext(r.Context(), a.s.Bind("SELECT value FROM settings WHERE setting_key=?"), field.key).Scan(field.value)
+		if err != nil && !errors.Is(err, sql.ErrNoRows) {
+			failure(w, 503, "暂时无法删除公告")
+			return
+		}
+	}
+	var content, format string
+	err := tx.QueryRowContext(r.Context(), a.s.Bind("SELECT content,format FROM site_notices WHERE notice_id=?"), id).Scan(&content, &format)
+	clearCurrent := false
+	if errors.Is(err, sql.ErrNoRows) {
+		var total int
+		if err = tx.QueryRowContext(r.Context(), "SELECT COUNT(*) FROM site_notices").Scan(&total); err != nil {
+			failure(w, 503, "暂时无法删除公告")
+			return
+		}
+		if total == 0 && current.Notice != "" && legacyNotice(current).ID == id {
+			clearCurrent = true
+		} else {
+			failure(w, 404, "公告不存在")
+			return
+		}
+	} else if err != nil {
+		failure(w, 503, "暂时无法删除公告")
+		return
+	} else {
+		if _, err = tx.ExecContext(r.Context(), a.s.Bind("DELETE FROM site_notices WHERE notice_id=?"), id); err != nil {
+			failure(w, 503, "暂时无法删除公告")
+			return
+		}
+		if current.Notice != "" && content == current.Notice && normalizedNoticeFormat(format) == normalizedNoticeFormat(current.NoticeFormat) {
+			clearCurrent = true
+		}
+	}
+	if clearCurrent {
+		query := "INSERT INTO settings(setting_key,value) VALUES(?,?) ON CONFLICT(setting_key) DO UPDATE SET value=EXCLUDED.value"
+		if a.s.Dialect == "mysql" {
+			query = "INSERT INTO settings(setting_key,value) VALUES(?,?) ON DUPLICATE KEY UPDATE value=VALUES(value)"
+		}
+		a.auditChange(r.Context(), "site_notice", current.Notice, "")
+		if _, err = tx.ExecContext(r.Context(), a.s.Bind(query), "site_notice", ""); err != nil {
+			failure(w, 503, "暂时无法删除公告")
+			return
+		}
+	}
+	if err = a.s.RecordAdminEvent(r.Context(), tx, u.ID, "notice.delete", "notice", id); err != nil {
+		failure(w, 503, "暂时无法删除公告")
+		return
+	}
+	if tx.Commit() != nil {
+		failure(w, 503, "暂时无法删除公告")
+		return
+	}
+	w.WriteHeader(http.StatusNoContent)
 }

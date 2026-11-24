@@ -85,7 +85,17 @@ func (a *Server) adminOperations(w http.ResponseWriter, r *http.Request) {
 		failure(w, 503, "暂时无法读取任务状态")
 		return
 	}
-	respond(w, 200, map[string]any{"backup": schedule, "cdn": cdn, "job": job})
+	accountLimit, siteLimit, err := a.effectiveTextureLimits(r.Context(), a.s.DB)
+	if err != nil {
+		failure(w, 503, "暂时无法读取存储配额设置")
+		return
+	}
+	respond(w, 200, map[string]any{
+		"backup": schedule,
+		"cdn":    cdn,
+		"quota":  storageQuotaView{AccountLimitBytes: accountLimit, SiteLimitBytes: siteLimit},
+		"job":    job,
+	})
 }
 func independentBackupDirectory(textures, directory string) bool {
 	if !filepath.IsAbs(directory) {
@@ -119,10 +129,15 @@ func (a *Server) updateOperations(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	var body struct {
-		Backup backupSchedule `json:"backup"`
-		CDN    cdnSettings    `json:"cdn"`
+		Backup backupSchedule    `json:"backup"`
+		CDN    cdnSettings       `json:"cdn"`
+		Quota  *storageQuotaView `json:"quota"`
 	}
 	if !decode(w, r, &body) {
+		return
+	}
+	if body.Quota != nil && (body.Quota.AccountLimitBytes < 0 || body.Quota.AccountLimitBytes > maxConfigurableQuotaBytes || body.Quota.SiteLimitBytes < 0 || body.Quota.SiteLimitBytes > maxConfigurableQuotaBytes) {
+		failure(w, 400, "存储配额须为不小于 0 的有效数值")
 		return
 	}
 	body.Backup.Directory = strings.TrimSpace(body.Backup.Directory)
@@ -151,6 +166,14 @@ func (a *Server) updateOperations(w http.ResponseWriter, r *http.Request) {
 	err := a.putSetting(r.Context(), tx, "backup_schedule", body.Backup)
 	if err == nil {
 		err = a.putSetting(r.Context(), tx, "cdn_config", body.CDN)
+	}
+	if err == nil && body.Quota != nil {
+		accountLimit := body.Quota.AccountLimitBytes
+		siteLimit := body.Quota.SiteLimitBytes
+		err = a.putSetting(r.Context(), tx, "storage_quota", storageQuotaSettings{
+			AccountLimitBytes: &accountLimit,
+			SiteLimitBytes:    &siteLimit,
+		})
 	}
 	if err == nil {
 		err = a.s.RecordAdminEvent(r.Context(), tx, u.ID, "settings.operations", "site", "operations")

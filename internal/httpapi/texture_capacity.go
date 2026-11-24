@@ -9,7 +9,43 @@ import (
 	"strings"
 )
 
+const maxConfigurableQuotaBytes int64 = 100 << 40
+
+type storageQuotaSettings struct {
+	AccountLimitBytes *int64 `json:"accountLimitBytes,omitempty"`
+	SiteLimitBytes    *int64 `json:"siteLimitBytes,omitempty"`
+}
+
+type storageQuotaView struct {
+	AccountLimitBytes int64 `json:"accountLimitBytes"`
+	SiteLimitBytes    int64 `json:"siteLimitBytes"`
+}
+
+func (a *Server) effectiveTextureLimits(ctx context.Context, reader settingReader) (int64, int64, error) {
+	accountLimit := a.cfg.TextureAccountLimitBytes
+	siteLimit := a.cfg.TextureSiteLimitBytes
+	var stored storageQuotaSettings
+	ok, err := a.readSettingFrom(ctx, reader, "storage_quota", &stored)
+	if err != nil {
+		return 0, 0, err
+	}
+	if ok {
+		if stored.AccountLimitBytes != nil && *stored.AccountLimitBytes >= 0 {
+			accountLimit = *stored.AccountLimitBytes
+		}
+		if stored.SiteLimitBytes != nil && *stored.SiteLimitBytes >= 0 {
+			siteLimit = *stored.SiteLimitBytes
+		}
+	}
+	return accountLimit, siteLimit, nil
+}
+
 func (a *Server) checkTextureCapacity(w http.ResponseWriter, ctx context.Context, tx *sql.Tx, userID, size int64, existing bool) bool {
+	accountLimit, siteLimit, err := a.effectiveTextureLimits(ctx, tx)
+	if err != nil {
+		failure(w, 503, "暂时无法读取存储配额设置")
+		return false
+	}
 	type capacityCheck struct {
 		remaining int64
 		from      string
@@ -19,13 +55,13 @@ func (a *Server) checkTextureCapacity(w http.ResponseWriter, ctx context.Context
 		args      []any
 	}
 	var checks []capacityCheck
-	if a.cfg.TextureAccountLimitBytes > 0 {
-		checks = append(checks, capacityCheck{a.cfg.TextureAccountLimitBytes - size,
+	if accountLimit > 0 {
+		checks = append(checks, capacityCheck{accountLimit - size,
 			" FROM texture_records t LEFT JOIN texture_file_integrity i ON i.file_hash=t.file_hash WHERE t.owner_id=? AND t.deleted=FALSE",
 			"t.file_hash", "texture_account_capacity", http.StatusConflict, []any{userID}})
 	}
-	if !existing && a.cfg.TextureSiteLimitBytes > 0 {
-		checks = append(checks, capacityCheck{a.cfg.TextureSiteLimitBytes - size,
+	if !existing && siteLimit > 0 {
+		checks = append(checks, capacityCheck{siteLimit - size,
 			" FROM textures t LEFT JOIN texture_file_integrity i ON i.file_hash=t.hash WHERE TRUE",
 			"t.hash", "texture_site_capacity", http.StatusInsufficientStorage, nil})
 	}
@@ -121,11 +157,16 @@ func (a *Server) accountQuota(w http.ResponseWriter, r *http.Request) {
 		failure(w, 503, "暂时无法读取材质存储用量")
 		return
 	}
+	accountLimit, siteLimit, err := a.effectiveTextureLimits(r.Context(), a.s.DB)
+	if err != nil {
+		failure(w, 503, "暂时无法读取存储配额设置")
+		return
+	}
 	respond(w, 200, map[string]any{
 		"accountUsedBytes":  accountUsed,
-		"accountLimitBytes": a.cfg.TextureAccountLimitBytes,
+		"accountLimitBytes": accountLimit,
 		"siteUsedBytes":     siteUsed,
-		"siteLimitBytes":    a.cfg.TextureSiteLimitBytes,
+		"siteLimitBytes":    siteLimit,
 		"maxFileBytes":      int64(maxTextureBytes),
 	})
 }

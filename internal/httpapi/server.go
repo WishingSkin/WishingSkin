@@ -152,6 +152,7 @@ func New(s *store.Store, cfg Config) (*Server, error) {
 	a.connectorSlots = make(chan struct{}, 2)
 	a.mux.HandleFunc("GET /api/site", a.site)
 	a.mux.HandleFunc("GET /api/notices", a.notices)
+	a.mux.HandleFunc("DELETE /api/admin/notices/{id}", a.deleteNotice)
 	a.registerAccountAccess()
 	a.totpNow = time.Now
 	a.totpLimit = limiter{entries: map[string]bucket{}, now: time.Now, max: 20, window: 5 * time.Minute}
