@@ -4,6 +4,11 @@
 
 ## [Unreleased]
 
+- 数据库升级至 Schema 26（`users.character_limit`、`texture_records.created_at` 与 `texture_records_created_idx` 索引，同步纳入离线备份与恢复契约）。
+- 新增 Yggdrasil 角色名 / 非邮箱登录开关（`feature.non_email_login`，`PATCH /api/admin/settings` `yggNonEmailLogin`）：启用后允许玩家在 `authlib-injector` 启动器直接填写角色名与密码登录，并自动选中对应角色；同步展示于游戏接入面板。
+- 新增公开材质独立可分享详情链接（`/library/{id}`，含前端一键复制分享链接按钮、公开库 `sort=newest` 按最新上传排序及展示上传日期；首页橱窗直达对应材质详情）。
+- 新增管理员单用户运营控制（`GET /api/admin/users` 返回积分、角色数与独立上限，`PATCH /api/admin/users/{id}` 与用户管理弹窗支持调整积分并写入流水与审计、设置/清除单用户独立角色上限、管理员重置用户密码并立即撤销全部网页会话与游戏令牌）。
+
 ## [0.1.1] - 2026-11-24
 
 ### 新增

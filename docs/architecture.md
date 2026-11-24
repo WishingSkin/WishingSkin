@@ -1,6 +1,6 @@
 # 架构与数据模型
 
-WishingSkin 采用 Go 模块化单体后端与 Vue 3 / TypeScript / Vite 前端。构建后的前端静态资源直接嵌入 Go 二进制，由同一个 HTTP 服务统一提供网页、管理 API、材质分发与 Yggdrasil 认证接口。数据库支持 MySQL 8 与 PostgreSQL，当前 schema 版本为 25。
+WishingSkin 采用 Go 模块化单体后端与 Vue 3 / TypeScript / Vite 前端。构建后的前端静态资源直接嵌入 Go 二进制，由同一个 HTTP 服务统一提供网页、管理 API、材质分发与 Yggdrasil 认证接口。数据库支持 MySQL 8 与 PostgreSQL，当前 schema 版本为 26。
 
 ## 代码模块
 
