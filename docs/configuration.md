@@ -57,5 +57,6 @@ wishingskin [command] [flags]
 | `export-bs` | 只读导出 Blessing Skin 6.0.2 快照 JSON | `--source-info <元数据 JSON> --output <新快照路径> [--table-prefix <前缀>]`，需设置 `WS_BS_SOURCE_DSN` |
 | `preflight` | 离线校验 BS 快照与源材质目录，不连接数据库 | `--snapshot <快照路径> --source-textures <源材质目录>` |
 | `import-bs` | 将通过预检查的 BS 快照导入全新空 WishingSkin 目标 | `--snapshot <快照路径> --source-textures <源材质目录>` |
+| `import-textures` | 批量导入本地目录 PNG 皮肤与披风到指定账号 | `--dir <PNG 目录> --owner <用户ID或邮箱>`，可选 `--recursive`、`--kind <auto\|skin\|cape>`、`--model <default\|slim>`、`--public`、`--category <分类>`、`--tags <逗号分隔>`、`--dry-run`、`--skip-review`、`--skip-duplicates`；遵循当前 `content_policy` 宽高与大小上限，正式导入自动执行 `migrate`，`--dry-run` 要求库已处于当前 schema（29） |
 
 详细操作顺序与回退边界请分别参考[生产自部署手册](deployment.md)、[备份与恢复](backup-restore.md)和[Blessing Skin 迁移手册](migration-runbook.md)。

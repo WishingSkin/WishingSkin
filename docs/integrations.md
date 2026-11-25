@@ -53,10 +53,10 @@
 | 公钥（JWKS） | `/oauth/jwks` |
 | 授权 | `/oauth/authorize` |
 | 令牌交换与刷新 | `/oauth/token` |
-| 用户资料 | `/oauth/userinfo` |
+| 用户资料与授权资源 | `/oauth/userinfo`、`/oauth/api/{characters,textures,points,minecraft}` |
 | 令牌撤销与内省 | `/oauth/revoke`、`/oauth/introspect` |
 
-授权码有效期 1 分钟且仅限使用一次；Access Token 有效期 1 小时。支持 `openid`（返回 RS256 ID Token）、`profile`、`email` 与 `offline_access`（签发最长 30 天、单次轮换的 Refresh Token）。不支持 Password、Implicit 或 Client Credentials 模式。完整接入参数见[本站 OAuth2 / OIDC 授权服务](oauth-provider.md)。
+授权码有效期 1 分钟且仅限使用一次；Access Token 有效期 1 小时。支持 `openid`（返回 RS256 ID Token）、`profile`、`email`、`offline_access`（签发最长 30 天、单次轮换的 Refresh Token）及四项只读资源 Scope（`characters:read`、`textures:read`、`points:read`、`minecraft:read`，可在后台按应用设置白名单）。不支持写操作 Scope、Password、Implicit 或 Client Credentials 模式。完整接入参数见[本站 OAuth2 / OIDC 授权服务](oauth-provider.md)。
 
 ## 外部账号连接器（AuthMe / 通用 HTTP）
 
@@ -82,6 +82,15 @@
 ```
 
 `subject` 必须是外部系统的长期稳定标识，不要使用可修改的昵称。
+
+## 正版 Minecraft Java 验证与绑定
+
+`wishingskin.minecraft` 默认关闭，用于在“账号 → 个人资料与安全”验证并绑定玩家的 Minecraft Java 版正版持有身份：
+
+1. 在 Microsoft Entra 管理中心注册应用（支持的账户类型须包含个人 Microsoft 账户），添加 Web 平台并将插件设置页展示的回调地址（`<WS_PUBLIC_URL>/api/account/minecraft/callback`）填入重定向 URI，创建 Client Secret。
+2. 新建应用需先通过 Mojang / Minecraft 应用审核后才能完成 `login_with_xbox` 鉴权与正版资料读取。
+3. 用户验证流程使用 Authorization Code + PKCE S256 与 `XboxLive.signin` 权限，服务端依次交换 Xbox Live XBL → XSTS → Minecraft Services 令牌，确认持有 Minecraft Java 权益并读取正式角色档案后，弹出包含正版角色名、UUID 与目标本站账号的确认弹窗。
+4. 绑定记录独立保存（每个正版 Minecraft UUID 至多绑定一个本站账号，每个本站账号至多绑定一个正版身份），不改变已有站内角色的 UUID 或名称，支持输入当前密码解除绑定并记入审计日志；短期授权流程不保存任何 OAuth/Xbox 令牌。
 
 ## S3 对象存储、维护与 CDN
 

@@ -1,8 +1,8 @@
 # 升级、回退与恢复手册
 
-当前版本使用数据库 schema 26。数据库迁移是单向演进的，`migrate` 不提供降级命令。每次升级前，务必用**当前正在运行的版本**做好数据库、材质目录、插件目录与 32 字节设置密钥的完整备份，并确认备份目录内已生成 `manifest.json`。
+当前版本使用数据库 schema 29。数据库迁移是单向演进的，`migrate` 不提供降级命令。每次升级前，务必用**当前正在运行的版本**做好数据库、材质目录、插件目录与 32 字节设置密钥的完整备份，并确认备份目录内已生成 `manifest.json`。
 
-## schema 20–26 关键变化
+## schema 20–29 关键变化
 
 - **schema 20**：新增动态插件数据与迁移记录、Webhook 订阅与投递队列、动态插件事件队列，以及 OAuth 授权元数据与刷新令牌表。
 - **schema 21**：新增授权会话时间、刷新令牌族及 Access Token 关联字段，并扩展凭据摘要。
@@ -11,8 +11,11 @@
 - **schema 24**：新增材质摘要记录，用于核验上传文件与备份源文件。
 - **schema 25**：新增 `texture_likes` 表与热门排序索引，支持公开材质点赞、近期热门与点赞榜单，并同步纳入完整备份与恢复。
 - **schema 26**：新增 `users.character_limit`、`texture_records.created_at` 与 `texture_records_created_idx` 索引，支持单用户独立角色上限及公开库按上传时间最新排序，并同步纳入完整备份与恢复。
+- **schema 27**：为 PostgreSQL `characters(user_id)` 补充索引 `characters_user_id_idx`（与 MySQL 外键索引对齐）。
+- **schema 28**：新增 `user_notifications`（个人通知收件箱及未读/分页索引）、`minecraft_verifications`（正版 Minecraft Java 验证绑定）与 `minecraft_flows`（短期正版授权状态），前两张业务表纳入完整备份与恢复。
+- **schema 29**：为 `oauth_clients` 增加 `allowed_scopes` 权限白名单列，新增 `point_codes` 活动积分码表与 `point_code_redemptions` 防重领记录表（`allowed_scopes` 随客户端配置纳入完整备份，活动积分码与兑换表按凭据策略排除）。
 - 现有账号与插件配置平滑保留；动态插件默认存放在 `<WS_TEXTURE_DIR>/.plugins`（使用自定义 `WS_PLUGIN_DIR` 时须单独持久化）；OAuth 签名密钥自动生成并用原站点设置密钥加密保存。
-- 低于 schema 26 的备份须先用对应旧版本恢复到独立空目标，再用新版程序升级至 schema 26。升级后不要让旧程序再连接该数据库。
+- 低于 schema 29 的备份须先用对应旧版本恢复到独立空目标，再用新版程序升级至 schema 29。升级后不要让旧程序再连接该数据库。
 
 ## 升级前检查清单
 

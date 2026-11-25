@@ -4,7 +4,7 @@
 
 ## 迁入范围概览
 
-- **迁入数据**：用户（含余额、原权限值与明确的邮箱验证状态）、角色与实际 UUID、材质文件与记录（v2 快照保留上传者与简短描述）、衣柜收藏与别名、Yggdrasil 签名私钥、纯文本站点品牌/简介/公告、邀请码，以及独立的只读旧举报历史。
+- **迁入数据**：用户（含余额、原权限值与明确的邮箱验证状态）、角色与实际 UUID、材质文件与记录（v2 快照保留上传者、简短描述与有效的材质上传时间）、衣柜收藏与别名、Yggdrasil 签名私钥、纯文本站点品牌/简介/公告、邀请码，以及独立的只读旧举报历史。
 - **不自动迁入**：OAuth 与其他运营配置、额外第三方插件数据与 PHP 运行逻辑；旧网页会话和游戏令牌明确不继承（用户需重新登录）。收藏数由衣柜关系实时计算，不照搬可能失真的源站 `likes` 缓存。
 - **积分说明**：保留用户积分余额，新站积分默认保持关闭，不自动换算 BS 的随机奖励、存储费或退款规则。v2 快照的 `score_rules` 会记录 14 项核心非敏感积分配置供管理员在核对报告中参考重配。
 - **导入报告**：成功导入后的状态固定标记为 `partial`，明确标示迁入边界与缺口。
@@ -31,7 +31,7 @@
 | `users` | `uid,email,nickname,password,score,permission,verified` | 保留 ID、展示邮箱、昵称、密码哈希、积分与原权限值；仅 `permission=2` 映射为管理员，`1` 作为普通用户由服主另行授权，`-1` 为封禁。邮箱去空白转小写去重，冲突即阻止；仅保留明确的 `verified=0/1`，不凭旧登录推断 |
 | `players` | `pid,uid,name,tid_skin,tid_cape` | 保留角色 ID 与归属；角色名小写判重且须符合 `[A-Za-z0-9_]{1,16}`，冲突或超限即阻止 |
 | `uuid` | `name,uuid`（按角色原名匹配） | 保留实际 UUID（去除连字符并转小写），不重算；缺失、非法或重复即阻止 |
-| `textures` | `tid,name,type,hash,public,uploader` | `steve→skin/default`、`alex→skin/slim`、`cape→cape/default`；保留 hash 与公开状态；v2 保留上传者（`0` 记为未知，指向不存在账号即阻止） |
+| `textures` | `tid,name,type,hash,public,uploader,upload_at` | `steve→skin/default`、`alex→skin/slim`、`cape→cape/default`；保留 hash 与公开状态；v2 保留上传者（`0` 记为未知，指向不存在账号即阻止）；有效的 `upload_at` 写入 `texture_records.created_at`，缺失、零值或不可解析时间回退为 `0` 并在报告中统计 |
 | `user_closet` | `user_uid,texture_tid,item_name` | v2 保留收藏与别名（含未公开材质的既有收藏授权）；`NULL` 别名回退原材质名，收藏时间填 `0` 表示未知；重复、断链或别名超过 255 码点即阻止 |
 | `textures_description` | 可选 `tid,description` | 按纯文本保存；超过 200 Unicode 码点阻止而不截断；重复或孤立描述拒绝导出 |
 | `options`（认证） | `ygg_private_key,ygg_uuid_algorithm` | 原 RSA 私钥（须为 ≥ 4096 位未加密 PKCS#1 或 PKCS#8）写入 `settings.setting_key=ygg_private_key`；UUID 算法仅记录来源，不重算已有 UUID |

@@ -1,14 +1,15 @@
 # 架构与数据模型
 
-WishingSkin 采用 Go 模块化单体后端与 Vue 3 / TypeScript / Vite 前端。构建后的前端静态资源直接嵌入 Go 二进制，由同一个 HTTP 服务统一提供网页、管理 API、材质分发与 Yggdrasil 认证接口。数据库支持 MySQL 8 与 PostgreSQL，当前 schema 版本为 26。
+WishingSkin 采用 Go 模块化单体后端与 Vue 3 / TypeScript / Vite 前端。构建后的前端静态资源直接嵌入 Go 二进制，由同一个 HTTP 服务统一提供网页、管理 API、材质分发与 Yggdrasil 认证接口。数据库支持 MySQL 8 与 PostgreSQL，当前 schema 版本为 29。
 
 ## 代码模块
 
 | 目录 | 职责 |
 | --- | --- |
-| `cmd/wishingskin` | 命令行入口，包含服务启动、管理员初始化、迁移与离线备份恢复命令 |
-| `internal/httpapi` | 业务 API、网页会话、权限校验、主题资源提取与第三方集成流程 |
+| `cmd/wishingskin` | 命令行入口，包含服务启动、管理员初始化、迁移、批量材质导入与离线备份恢复命令 |
+| `internal/httpapi` | 业务 API、网页会话、权限校验、个人通知、主题资源提取与第三方集成流程 |
 | `internal/store` | 数据库连接抽象、schema 迁移与跨进程数据库锁 |
+| `internal/textureimport` | PNG 材质校验、配额核算与目录批量导入引擎 |
 | `internal/bsmigration` | Blessing Skin 6.0.2 只读导出、离线预检查与空目标导入 |
 | `internal/backup` | 离线完整备份导出与隔离空目标恢复 |
 | `internal/credential` | 本站密码哈希与受支持的旧密码算法校验 |
@@ -36,7 +37,8 @@ WishingSkin 采用 Go 模块化单体后端与 Vue 3 / TypeScript / Vite 前端�
 ## 认证与插件体系
 
 - **登录边界**：网页登录使用本站账号密码（可选开启 TOTP）；OIDC 按 `issuer + subject` 绑定，不按同邮箱自动合并，未绑定新身份须遵守本站注册规则。Minecraft 客户端始终使用本站密码走 Yggdrasil 认证，TOTP 和 OIDC 不会替代游戏密码。
-- **授权与外部连接**：内置 OAuth2/OIDC 授权服务支持授权码 + PKCE S256、RS256 ID Token、Refresh Token 轮换、撤销与内省（详见[授权服务](oauth-provider.md)）；AuthMe 与 HTTP 连接器仅用于主动验证并绑定外部身份，不以源站密码直接登录本站。
+- **授权与外部连接**：内置 OAuth2/OIDC 授权服务支持授权码 + PKCE S256、应用 `allowed_scopes` 权限白名单、RS256 ID Token、Refresh Token 轮换、撤销、内省及窄范围 Bearer 只读资源端点（详见[授权服务](oauth-provider.md)）；AuthMe 与 HTTP 连接器仅用于主动验证并绑定外部身份，不以源站密码直接登录本站；官方 `wishingskin.minecraft` 插件将正版 Minecraft Java 验证映射独立保存在 `minecraft_verifications`，不修改站内角色 UUID。
+- **积分与活动积分码**：`wishingskin.points` 将账本流水记入 `point_entries`，活动积分码密文与防重领状态分别存于 `point_codes` 与 `point_code_redemptions`；单用户对同一积分码至多兑换一次。
 - **插件模型**：
   - 官方插件随主程序内置，启停与配置保存在数据库。
   - 源码插件通过 Go SDK 与主程序一同编译运行。
@@ -45,6 +47,6 @@ WishingSkin 采用 Go 模块化单体后端与 Vue 3 / TypeScript / Vite 前端�
 
 ## 存储、加密与恢复边界
 
-- **本地优先 + 远端可选**：材质默认落盘本地，S3 对象存储插件提供远端同步与异常回退；公开材质 CDN 只分发已审核的公开文件并使用短期签名 URL。上传、同步、回收与备份通过数据库命名空间级存储锁互斥协调。上传受单账号与全站配额限制，物理文件摘要记录在 `texture_file_integrity` 中用于备份来源核验；导入的主题贴图与自定义字体拆分为独立设置行保存。
-- **凭据加密**：SMTP、Turnstile、OIDC、OAuth 签名密钥、外部连接器、S3、Webhook 与插件配置均使用独立的 32 字节设置密钥加密后存入数据库；密文随业务备份保存，密钥文件必须单独备份。数据库连接、公开地址与可信代理来自环境变量。
-- **单向演进与隔离恢复**：Schema 只向前迁移，不提供降级命令。完整备份恢复与 BS 导入均要求使用匹配版本的程序和独立空目标，且不包含网页会话、游戏令牌与短期流程状态（详见[备份与恢复](backup-restore.md)及[迁移手册](migration-runbook.md)）。
+- **本地优先 + 远端可选**：材质默认落盘本地，S3 对象存储插件提供远端同步与异常回退；公开材质 CDN 只分发已审核的公开文件并使用短期签名 URL。上传、同步、回收、CLI 批量导入与备份通过数据库命名空间级存储锁互斥协调。上传受单账号与全站配额限制，物理文件摘要记录在 `texture_file_integrity` 中用于备份来源核验；个人通知收件箱存储在 `user_notifications`；导入的主题贴图与自定义字体拆分为独立设置行保存。
+- **凭据加密**：SMTP、Turnstile、OIDC、正版验证配置（`minecraft_verify_config`）、OAuth 签名密钥、邀请码/活动积分码（`invitation_codes`、`point_codes`）、外部连接器、S3、Webhook 与插件配置均使用独立的 32 字节设置密钥加密后存入数据库；业务密文（不含待领邀请码/积分码及短期流程状态）随业务备份保存，密钥文件必须单独备份。数据库连接、公开地址与可信代理来自环境变量。
+- **单向演进与隔离恢复**：Schema 只向前迁移，不提供降级命令。完整备份恢复与 BS 导入均要求使用匹配版本的程序和独立空目标，且不包含网页会话、游戏令牌与短期流程状态（如 `oidc_flows`、`minecraft_flows`，详见[备份与恢复](backup-restore.md)及[迁移手册](migration-runbook.md)）。

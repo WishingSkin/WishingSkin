@@ -1,6 +1,6 @@
 # Blessing Skin 迁移手册
 
-本手册用于将已核对的 Blessing Skin `6.0.2` 数据迁入一套全新的 WishingSkin（schema 26）实例。受支持的固定插件来源包括官方传统 `yggdrasil-api 5.2.1`，以及按源码树摘要固定的归档联合版 `5.2.2-0.2.5`，完整规则见[BS 来源契约](bs-source-contract.md)。
+本手册用于将已核对的 Blessing Skin `6.0.2` 数据迁入一套全新的 WishingSkin（schema 29）实例。受支持的固定插件来源包括官方传统 `yggdrasil-api 5.2.1`，以及按源码树摘要固定的归档联合版 `5.2.2-0.2.5`，完整规则见[BS 来源契约](bs-source-contract.md)。
 
 其他 BS 版本、远程对象存储文件系统、未知插件及 BS 写入 API 不在本迁移范围内。导入报告会标记为 `partial`，用于明确标示迁入边界，切换流量前请务必核对报告中的缺口项。
 
@@ -77,5 +77,5 @@ New-Item -ItemType Directory -Force data | Out-Null
 
 ## 迁移范围速览
 
-- **迁入**：账号与余额、权限映射（仅 `permission=2` 映射为管理员）、角色与实际 UUID、材质记录与物理文件、衣柜收藏与别名、Yggdrasil 签名私钥、纯文本品牌/公告、只读历史举报、明确的邮箱验证状态和邀请码。
+- **迁入**：账号与余额、权限映射（仅 `permission=2` 映射为管理员）、角色与实际 UUID、材质记录（含有效上传时间）与物理文件、衣柜收藏与别名、Yggdrasil 签名私钥、纯文本品牌/公告、只读历史举报、明确的邮箱验证状态和邀请码。
 - **不自动迁入**：未知第三方插件、任意 BS 运营配置、PHP 插件运行逻辑、远程对象存储文件及 BS 后台写入接口。详见[BS 来源契约](bs-source-contract.md)。

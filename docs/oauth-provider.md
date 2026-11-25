@@ -16,24 +16,28 @@
 | 签名公钥（JWKS） | `GET /oauth/jwks` |
 | 授权入口 | `GET /oauth/authorize` |
 | 令牌交换与续期 | `POST /oauth/token` |
-| 读取用户资料 | `GET /oauth/userinfo` |
+| 用户资料与授权资源接口 | `GET /oauth/userinfo`、`GET /oauth/api/characters`、`GET /oauth/api/textures`、`GET /oauth/api/points`、`GET /oauth/api/minecraft` |
 | 撤销令牌 | `POST /oauth/revoke` |
 | 令牌内省 | `POST /oauth/introspect` |
 
 - 所有令牌端点均使用 `application/x-www-form-urlencoded`。
-- `/oauth/userinfo` 通过 `Authorization: Bearer <access_token>` 认证。
+- `/oauth/userinfo` 与 `/oauth/api/*` 均通过 `Authorization: Bearer <access_token>` 认证；缺少所需 Scope 时返回 HTTP `403`（`error: "insufficient_scope"`）。
 - `/oauth/introspect` 仅供机密客户端查询自身签发的 Access Token。
 
 ## 授权码流程（PKCE S256）
 
-公开与机密客户端均强制使用 PKCE S256。发起授权请求需携带 `response_type=code`、`client_id`、`redirect_uri`、`scope`、`state`、`code_challenge` 与 `code_challenge_method=S256`（客户端负责生成高熵 `code_verifier` 并在回调校验 `state`）。
+公开与机密客户端均强制使用 PKCE S256。发起授权请求需携带 `response_type=code`、`client_id`、`redirect_uri`、`scope`、`state`、`code_challenge` 与 `code_challenge_method=S256`（客户端负责生成高熵 `code_verifier` 并在回调校验 `state`）。管理员可在客户端配置中限制每个应用允许申请的 Scope 白名单（未单独配置时默认仅允许身份类四项）。
 
-| Scope | 返回内容 |
+| Scope | 返回内容与适用端点 |
 | --- | --- |
-| `openid` | 返回 RS256 ID Token，并允许通过 UserInfo 读取 `sub` |
-| `profile` | 用户 ID 与昵称 |
-| `email` | 邮箱地址及验证状态 |
+| `openid` | 返回 RS256 ID Token，并允许通过 `/oauth/userinfo` 读取 `sub` |
+| `profile` | 用户 ID 与昵称（`/oauth/userinfo`） |
+| `email` | 邮箱地址及验证状态（`/oauth/userinfo`） |
 | `offline_access` | 经用户同意后签发 Refresh Token |
+| `characters:read` | 只读读取已授权用户的角色列表、UUID 与材质地址（`GET /oauth/api/characters`） |
+| `textures:read` | 只读分页列出已授权用户的材质元数据（`GET /oauth/api/textures`） |
+| `points:read` | 只读查询已授权用户的积分余额与流水（`GET /oauth/api/points`） |
+| `minecraft:read` | 只读查询已授权用户的正版 Minecraft Java 绑定状态与角色名，不含敏感主体标识（`GET /oauth/api/minecraft`） |
 
 - OIDC 登录推荐申请 `openid profile`（按需追加 `email`），同时发送随机 `nonce` 并在验签后核对。用户须在本站授权页手动同意，续期权限也会明确展示。
 - 回调返回的授权码 `code` 有效期 **1 分钟**且只能使用一次。换取令牌时提交 `grant_type=authorization_code`、`code`、登记的 `redirect_uri` 和原 `code_verifier`（公开客户端附带 `client_id`）。
