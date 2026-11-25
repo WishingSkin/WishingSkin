@@ -7,6 +7,7 @@ import (
 	"errors"
 	"fmt"
 	"net/http"
+	"slices"
 	"strings"
 	"unicode/utf8"
 	"github.com/WishingSkin/WishingSkin/internal/securebox"
@@ -112,7 +113,8 @@ func (h *communityHost) Settings(ctx context.Context, target any) error {
 	if err != nil {
 		return err
 	}
-	data, err := json.Marshal(raw)
+	effective := h.a.effectiveCommunitySettings(h.manifest.ID, raw)
+	data, err := json.Marshal(effective)
 	if err != nil {
 		return err
 	}
@@ -177,6 +179,30 @@ func (a *Server) isExternalPlugin(id string) bool {
 	return pluginOrigin(id) == "community"
 }
 
+func mergePluginSettingDefaults(manifest sdk.Manifest, stored map[string]any) map[string]any {
+	merged := make(map[string]any, len(stored)+len(manifest.Settings))
+	for k, v := range stored {
+		merged[k] = v
+	}
+	for _, f := range manifest.Settings {
+		if f.Type == "secret" || f.Default == nil {
+			continue
+		}
+		if v, exists := merged[f.Key]; !exists || v == nil {
+			merged[f.Key] = f.Default
+		}
+	}
+	return merged
+}
+
+func (a *Server) effectiveCommunitySettings(id string, stored map[string]any) map[string]any {
+	state, ok := a.plugins.State(id)
+	if !ok {
+		return stored
+	}
+	return mergePluginSettingDefaults(state.Manifest, stored)
+}
+
 func (a *Server) communitySettings(w http.ResponseWriter, r *http.Request) {
 	if _, ok := a.adminRead(w, r); !ok {
 		return
@@ -186,7 +212,7 @@ func (a *Server) communitySettings(w http.ResponseWriter, r *http.Request) {
 		http.NotFound(w, r)
 		return
 	}
-	data, err := a.readCommunitySettings(r.Context(), state.Manifest.ID)
+	raw, err := a.readCommunitySettings(r.Context(), state.Manifest.ID)
 	if err != nil {
 		failure(w, 503, "暂时无法读取插件配置")
 		return
@@ -194,11 +220,12 @@ func (a *Server) communitySettings(w http.ResponseWriter, r *http.Request) {
 	configured := map[string]bool{}
 	for _, f := range state.Manifest.Settings {
 		if f.Type == "secret" {
-			v, _ := data[f.Key].(string)
+			v, _ := raw[f.Key].(string)
 			configured[f.Key] = v != ""
-			delete(data, f.Key)
+			delete(raw, f.Key)
 		}
 	}
+	data := mergePluginSettingDefaults(state.Manifest, raw)
 	respond(w, 200, map[string]any{"values": data, "configured": configured})
 }
 func (a *Server) updateCommunitySettings(w http.ResponseWriter, r *http.Request) {
@@ -241,6 +268,11 @@ func (a *Server) updateCommunitySettings(w http.ResponseWriter, r *http.Request)
 		default:
 			text, ok := value.(string)
 			valid = ok && utf8.ValidString(text) && len(text) <= 4096
+			if valid && len(f.Options) > 0 && text != "" {
+				valid = slices.ContainsFunc(f.Options, func(opt sdk.SettingOption) bool {
+					return opt.Value == text
+				})
+			}
 			if valid && f.Type == "secret" && text == "" {
 				value = previous[f.Key]
 			}

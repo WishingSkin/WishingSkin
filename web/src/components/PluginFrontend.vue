@@ -2,6 +2,10 @@
 import { onBeforeUnmount, ref, watch } from 'vue'
 import { locale, t } from '../i18n'
 import { toast } from '../feedback'
+import { useUnsavedGuard } from '../unsavedGuard'
+import CharacterViewer from './CharacterViewer.vue'
+import TexturePicker from './TexturePicker.vue'
+import type { TextureRecord } from '../textureTypes'
 
 const props = defineProps<{
   pluginId: string
@@ -12,18 +16,33 @@ const props = defineProps<{
   frontendId?: string
   initialContext?: Record<string, unknown>
   tall?: boolean
+  settingsRevision?: number
 }>()
-const emit = defineEmits<{ expired: []; mutated: [kind: 'textures' | 'characters'] }>()
+const emit = defineEmits<{
+  expired: []
+  mutated: [kind: 'textures' | 'characters']
+  dirtyChange: [dirty: boolean]
+}>()
 
 const frame = ref<HTMLIFrameElement>()
 const html = ref('')
-const themeMode = ref<'dark' | 'light'>(
-  typeof document !== 'undefined' && document.documentElement.dataset.theme === 'dark' ? 'dark' : 'light',
-)
+const frameHeight = ref(props.tall ? 660 : 460)
+const iframeDirty = ref(false)
+useUnsavedGuard(iframeDirty)
+
+const pickerOpen = ref(false)
+const pickerKind = ref<'skin' | 'cape'>('skin')
+const pickerBusy = ref(false)
+let pickerResolver: ((value: Record<string, unknown>) => void) | undefined
+
+const livePreview = ref<{ title: string; model: string; dataUrl: string } | null>(null)
+
+const fontCache = new Map<string, string>()
 
 let routes: { method: string; path: string }[] = []
 let digest = ''
 let generation = 0
+let contextFrame: number | undefined
 const requests = new Map<string, AbortController>()
 const hostRequests = new Map<string, AbortController>()
 
@@ -49,29 +68,158 @@ function decodePNGBase64(raw: string): Uint8Array | null {
   }
 }
 
+async function copyTextFallback(text: string): Promise<boolean> {
+  try {
+    if (navigator.clipboard && typeof navigator.clipboard.writeText === 'function') {
+      await navigator.clipboard.writeText(text)
+      return true
+    }
+  } catch {
+    // Fall back to execCommand copy below.
+  }
+  if (typeof document === 'undefined') return false
+  const area = document.createElement('textarea')
+  area.value = text
+  area.setAttribute('readonly', '')
+  area.style.cssText = 'position:fixed;left:-9999px;top:0;opacity:0'
+  document.body.appendChild(area)
+  area.select()
+  let copied = false
+  try {
+    copied = document.execCommand('copy')
+  } catch {
+    copied = false
+  } finally {
+    area.remove()
+  }
+  return copied
+}
+
+async function loadFontFaceCss(fontPreset: string, fontScope: string): Promise<string> {
+  const key = `${fontPreset}:${fontScope}`
+  const cached = fontCache.get(key)
+  if (cached !== undefined) return cached
+
+  let url = ''
+  let family = ''
+  let format = 'woff2'
+  if (fontPreset === 'monocraft') {
+    url = '/fonts/monocraft.otf'
+    family = 'WishingMonocraft'
+    format = 'opentype'
+  } else if (fontPreset === 'fusion_pixel') {
+    url = '/fonts/fusion-pixel-12px-zh_hans.woff2'
+    family = 'WishingFusionPixel'
+  } else if (fontPreset === 'ark_pixel') {
+    url = '/fonts/ark-pixel-12px-zh_hans.woff2'
+    family = 'WishingArkPixel'
+  }
+  if (!url) {
+    fontCache.set(key, '')
+    return ''
+  }
+  try {
+    const resp = await fetch(url, { credentials: 'same-origin' })
+    if (!resp.ok) throw new Error('font fetch failed')
+    const buf = await resp.arrayBuffer()
+    const mime = format === 'opentype' ? 'font/otf' : 'font/woff2'
+    const dataUri = `data:${mime};base64,${arrayBufferToBase64(buf)}`
+    const css = `@font-face{font-family:"${family}";src:url("${dataUri}") format("${format}");font-weight:400 700;font-style:normal;font-display:swap;}`
+    fontCache.set(key, css)
+    return css
+  } catch {
+    return ''
+  }
+}
+
+function readHostThemeTokens() {
+  if (typeof document === 'undefined') {
+    return { mode: 'light' as const, themePack: 'default', accent: 'blue', surface: 'solid', fontPreset: 'system', fontScope: 'headings', tokens: {} }
+  }
+  const root = document.documentElement
+  const cs = getComputedStyle(root)
+  const prop = (name: string) => cs.getPropertyValue(name).trim()
+  const mode = root.dataset.theme === 'dark' ? 'dark' : 'light'
+  return {
+    mode,
+    themePack: root.dataset.themePack || 'default',
+    accent: root.dataset.accent || 'blue',
+    surface: root.dataset.surface || 'solid',
+    fontPreset: root.dataset.fontPreset || 'system',
+    fontScope: root.dataset.fontScope || 'headings',
+    tokens: {
+      bg: prop('--bg') || prop('--canvas'),
+      panel: prop('--panel'),
+      subtle: prop('--subtle'),
+      ink: prop('--ink'),
+      muted: prop('--muted'),
+      border: prop('--border'),
+      accent: prop('--accent'),
+      accentHover: prop('--accent-hover'),
+      accentSoft: prop('--accent-soft'),
+      buttonText: prop('--button-text') || '#ffffff',
+      error: prop('--error'),
+      errorBg: prop('--error-bg'),
+      radiusCard: prop('--radius-card') || '10px',
+      radiusControl: prop('--radius-control') || '8px',
+      shadowCard: prop('--shadow-card'),
+      fontSans: prop('--font-sans') || cs.fontFamily,
+      fontDisplay: prop('--font-display') || prop('--font-sans') || cs.fontFamily,
+    },
+  }
+}
+
 function clear() {
   generation++
   html.value = ''
   routes = []
   digest = ''
+  frameHeight.value = props.tall ? 660 : 460
+  iframeDirty.value = false
+  emit('dirtyChange', false)
+  livePreview.value = null
+  if (pickerResolver) {
+    pickerResolver({ cancelled: true })
+    pickerResolver = undefined
+  }
+  pickerOpen.value = false
+  pickerBusy.value = false
   for (const request of requests.values()) request.abort()
   requests.clear()
   for (const request of hostRequests.values()) request.abort()
   hostRequests.clear()
 }
 
-function postContext() {
-  if (!frame.value?.contentWindow || !html.value) return
+async function postContext() {
+  const version = generation
+  const themeSnap = readHostThemeTokens()
+  const fontFaceCss = await loadFontFaceCss(themeSnap.fontPreset, themeSnap.fontScope)
+  if (version !== generation || !frame.value?.contentWindow || !html.value) return
   frame.value.contentWindow.postMessage({
     type: 'wishingskin:context',
     context: {
       pluginId: props.pluginId,
       frontendId: props.frontendId || '',
       locale: locale.value,
-      theme: themeMode.value,
+      theme: themeSnap.mode,
+      themePack: themeSnap.themePack,
+      accent: themeSnap.accent,
+      surface: themeSnap.surface,
+      fontPreset: themeSnap.fontPreset,
+      fontScope: themeSnap.fontScope,
+      tokens: themeSnap.tokens,
+      fontFaceCss,
       ...(props.initialContext || {}),
     },
   }, '*')
+}
+
+function schedulePostContext() {
+  if (contextFrame !== undefined) cancelAnimationFrame(contextFrame)
+  contextFrame = requestAnimationFrame(() => {
+    contextFrame = undefined
+    void postContext()
+  })
 }
 
 async function load() {
@@ -103,13 +251,24 @@ async function handlePluginRequest(message: Record<string, unknown>, target: Win
   if (typeof id !== 'string' || !id || id.length > 80 || requests.has(id)) return
   const respond = (status: number, body: unknown) => target.postMessage({ type: 'wishingskin:response', id, status, body }, '*')
   const method = typeof message.method === 'string' ? message.method.toUpperCase() : 'GET'
-  const reqPath = typeof message.path === 'string' ? message.path : ''
+  const rawPath = typeof message.path === 'string' ? message.path : ''
+  let reqPath = rawPath
+  let inlineQuery = ''
+  const qIndex = rawPath.indexOf('?')
+  if (qIndex >= 0) {
+    reqPath = rawPath.slice(0, qIndex)
+    inlineQuery = rawPath.slice(qIndex + 1)
+  }
   const route = routes.find(r => r.method === method && r.path === reqPath)
   if (!route || !digest || requests.size >= 4) { respond(403, { error: 'Request unavailable' }); return }
   if (message.query !== undefined && (typeof message.query !== 'string' || message.query.length > 1024 || message.query.includes('#'))) {
     respond(400, { error: 'Invalid query' }); return
   }
-  const query = typeof message.query === 'string' ? message.query.replace(/^\?/, '') : ''
+  const rawQuery = typeof message.query === 'string' ? message.query : inlineQuery
+  if (rawQuery.length > 1024 || rawQuery.includes('#')) {
+    respond(400, { error: 'Invalid query' }); return
+  }
+  const query = rawQuery.replace(/^\?/, '')
   const expectedPath = `/api/plugins/${encodeURIComponent(props.pluginId)}${route.path}`
   const endpoint = new URL(expectedPath + (query ? `?${query}` : ''), window.location.origin)
   if (endpoint.origin !== window.location.origin || endpoint.pathname !== expectedPath || endpoint.hash) {
@@ -153,8 +312,46 @@ async function handlePluginRequest(message: Record<string, unknown>, target: Win
   }
 }
 
+async function handlePickSelection(item: TextureRecord, model?: string) {
+  if (!pickerResolver) {
+    pickerOpen.value = false
+    return
+  }
+  pickerBusy.value = true
+  try {
+    const r = await fetch(`/textures/${encodeURIComponent(item.fileHash)}`, { credentials: 'same-origin' })
+    if (!r.ok) {
+      toast('材质文件暂时无法加载。', 'error')
+      return
+    }
+    const buf = await r.arrayBuffer()
+    const resolve = pickerResolver
+    pickerResolver = undefined
+    pickerOpen.value = false
+    resolve({
+      cancelled: false,
+      id: item.id,
+      fileHash: item.fileHash,
+      name: ('displayName' in item && typeof item.displayName === 'string' && item.displayName) || item.name,
+      kind: item.kind,
+      model: model === 'slim' || item.model === 'slim' ? 'slim' : 'default',
+      dataUrl: `data:image/png;base64,${arrayBufferToBase64(buf)}`,
+    })
+  } catch {
+    toast('材质文件暂时无法加载。', 'error')
+  } finally {
+    pickerBusy.value = false
+  }
+}
+
+function handlePickCancel() {
+  const resolve = pickerResolver
+  pickerResolver = undefined
+  pickerOpen.value = false
+  resolve?.({ cancelled: true })
+}
+
 async function handleHostBridge(message: Record<string, unknown>, target: Window) {
-  if (props.scope !== 'user') return
   const id = message.id
   const action = message.action
   if (typeof id !== 'string' || !id || id.length > 80 || typeof action !== 'string' || hostRequests.has(id)) return
@@ -162,11 +359,74 @@ async function handleHostBridge(message: Record<string, unknown>, target: Window
     target.postMessage({ type: 'wishingskin:host-response', id, ok, status, data, error }, '*')
   }
   const payload = message.payload && typeof message.payload === 'object' ? message.payload as Record<string, unknown> : {}
+
   if (action === 'notify') {
     const text = typeof payload.message === 'string' ? payload.message.trim().slice(0, 240) : ''
     const kind = payload.kind === 'error' ? 'error' : 'success'
     if (text) toast(text, kind)
     reply(true, 200, { shown: !!text })
+    return
+  }
+  if (action === 'copyText') {
+    const text = typeof payload.text === 'string' ? payload.text : ''
+    if (!text || text.length > 8192) {
+      reply(false, 400, undefined, 'Invalid copy text')
+      return
+    }
+    const copied = await copyTextFallback(text)
+    if (!copied) {
+      toast('无法自动复制，请选择并复制文本。', 'error')
+      reply(false, 500, { copied: false }, 'Clipboard unavailable')
+      return
+    }
+    if (payload.silent !== true) toast('已复制到剪贴板。')
+    reply(true, 200, { copied: true })
+    return
+  }
+  if (action === 'setDirty') {
+    const nextDirty = payload.dirty === true
+    if (iframeDirty.value !== nextDirty) {
+      iframeDirty.value = nextDirty
+      emit('dirtyChange', nextDirty)
+    }
+    reply(true, 200, { dirty: nextDirty })
+    return
+  }
+  if (props.scope !== 'user') {
+    reply(false, 403, undefined, 'Forbidden in admin scope')
+    return
+  }
+  if (action === 'setPreview') {
+    const rawB64 = typeof payload.pngBase64 === 'string' ? payload.pngBase64.trim() : ''
+    if (!rawB64) {
+      livePreview.value = null
+      reply(true, 200, { cleared: true })
+      return
+    }
+    if (rawB64.length > 2 * 1024 * 1024) {
+      reply(false, 413, undefined, 'Preview PNG too large')
+      return
+    }
+    const dataUrl = rawB64.startsWith('data:image/png;base64,') ? rawB64 : `data:image/png;base64,${rawB64}`
+    livePreview.value = {
+      title: typeof payload.title === 'string' && payload.title.trim() ? payload.title.trim().slice(0, 64) : '3D 实时预览',
+      model: payload.model === 'slim' ? 'slim' : 'default',
+      dataUrl,
+    }
+    reply(true, 200, { active: true })
+    return
+  }
+  if (action === 'pickTexture') {
+    if (pickerResolver) {
+      reply(false, 409, undefined, 'Texture picker already open')
+      return
+    }
+    pickerKind.value = payload.kind === 'cape' ? 'cape' : 'skin'
+    pickerOpen.value = true
+    const result = await new Promise<Record<string, unknown>>(resolve => {
+      pickerResolver = resolve
+    })
+    reply(!result.cancelled, result.cancelled ? 499 : 200, result)
     return
   }
   if (hostRequests.size >= 4) { reply(false, 429, undefined, 'Too many host requests'); return }
@@ -175,13 +435,15 @@ async function handleHostBridge(message: Record<string, unknown>, target: Window
   const version = generation
   try {
     if (action === 'listTextures') {
+      const source = payload.source === 'wardrobe' ? 'wardrobe' : payload.source === 'library' ? 'library' : 'textures'
       const params = new URLSearchParams({ page: '1' })
       const size = typeof payload.pageSize === 'number' && Number.isFinite(payload.pageSize)
         ? Math.min(100, Math.max(1, Math.trunc(payload.pageSize)))
         : 50
       params.set('pageSize', String(size))
       if (payload.kind === 'skin' || payload.kind === 'cape') params.set('kind', payload.kind)
-      const r = await fetch(`/api/textures?${params.toString()}`, { credentials: 'same-origin', signal: controller.signal })
+      if (typeof payload.q === 'string' && payload.q.trim()) params.set('q', payload.q.trim().slice(0, 255))
+      const r = await fetch(`/api/${source}?${params.toString()}`, { credentials: 'same-origin', signal: controller.signal })
       if (version !== generation) return
       if (r.status === 401) emit('expired')
       const data = await r.json().catch(() => ({}))
@@ -277,25 +539,52 @@ function receive(event: MessageEvent) {
   const message = event.data as Record<string, unknown> | null
   if (!message || typeof message !== 'object') return
   const target = event.source as Window
+  if (message.type === 'wishingskin:resize' && typeof message.height === 'number' && Number.isFinite(message.height)) {
+    const next = Math.min(4800, Math.max(260, Math.ceil(message.height)))
+    frameHeight.value = next
+    return
+  }
   if (message.type === 'wishingskin:request') void handlePluginRequest(message, target)
   else if (message.type === 'wishingskin:host') void handleHostBridge(message, target)
 }
 
 let themeObserver: MutationObserver | undefined
 if (typeof MutationObserver !== 'undefined' && typeof document !== 'undefined') {
-  themeObserver = new MutationObserver(() => {
-    themeMode.value = document.documentElement.dataset.theme === 'dark' ? 'dark' : 'light'
+  themeObserver = new MutationObserver(schedulePostContext)
+  themeObserver.observe(document.documentElement, {
+    attributes: true,
+    attributeFilter: ['data-theme', 'data-theme-pack', 'data-accent', 'data-surface', 'data-font-preset', 'data-font-scope', 'style'],
   })
-  themeObserver.observe(document.documentElement, { attributes: true, attributeFilter: ['data-theme'] })
 }
 
 window.addEventListener('message', receive)
 watch(() => [props.pluginId, props.enabled, props.version, props.scope, props.frontendId], load, { immediate: true })
-watch([locale, themeMode, () => props.initialContext], postContext)
-onBeforeUnmount(() => { clear(); themeObserver?.disconnect(); window.removeEventListener('message', receive) })
+watch([locale, () => props.initialContext], schedulePostContext)
+watch(() => props.settingsRevision, (rev) => {
+  if (!rev || !frame.value?.contentWindow || !html.value) return
+  frame.value.contentWindow.postMessage({ type: 'wishingskin:settings-updated', revision: rev }, '*')
+})
+onBeforeUnmount(() => {
+  if (contextFrame !== undefined) cancelAnimationFrame(contextFrame)
+  clear()
+  themeObserver?.disconnect()
+  window.removeEventListener('message', receive)
+})
 </script>
-<template><iframe v-if="html" ref="frame" class="plugin-frame" :class="{ tall: props.tall }" sandbox="allow-scripts" :srcdoc="html" :title="t('插件界面')" @load="postContext" /></template>
+<template>
+  <TexturePicker v-if="pickerOpen" :kind="pickerKind" :busy="pickerBusy" :confirm-label="t('载入此皮肤')" @close="handlePickCancel" @select="handlePickSelection" @expired="emit('expired')" />
+  <div class="plugin-frontend-shell" :class="{ 'has-preview': Boolean(livePreview) }">
+    <iframe v-if="html" ref="frame" class="plugin-frame" :class="{ tall: props.tall }" :style="{ height: `${frameHeight}px` }" sandbox="allow-scripts" :srcdoc="html" :title="t('插件界面')" @load="postContext" />
+    <aside v-if="livePreview" class="plugin-preview-dock" :aria-label="t('3D 实时预览')">
+      <div class="plugin-preview-dock-head">
+        <h3>{{ t(livePreview.title) }}</h3>
+        <button type="button" class="text-button" @click="livePreview = null">{{ t('收起') }}</button>
+      </div>
+      <CharacterViewer compact :name="livePreview.title" :model="livePreview.model" skin-hash="" cape-hash="" :skin-data-url="livePreview.dataUrl" />
+    </aside>
+  </div>
+</template>
 <style scoped>
-.plugin-frame { width: 100%; min-height: 420px; margin-top: 24px; border: 1px solid var(--border); border-radius: var(--radius-card); background: var(--panel); }
-.plugin-frame.tall { min-height: 620px; margin-top: 0; }
+.plugin-frame { width: 100%; min-height: 260px; margin-top: 16px; border: 0; border-radius: var(--radius-card); background: transparent; display: block; }
+.plugin-frame.tall { min-height: 520px; margin-top: 0; }
 </style>

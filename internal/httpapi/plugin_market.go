@@ -14,6 +14,8 @@ import (
 
 const officialPluginMarketURL = "https://wishingskin.github.io/plugins/catalog.json"
 
+var errMarketChecksumMismatch = errors.New("checksum mismatch")
+
 type marketEntry struct {
 	ID      string `json:"id"`
 	Name    string `json:"name"`
@@ -146,10 +148,13 @@ func (a *Server) marketPackage(r *http.Request) ([]byte, error) {
 				return nil, err
 			}
 			if runtimeplugin.Digest(data) != strings.ToLower(entry.SHA256) {
-				return nil, errors.New("checksum mismatch")
+				return nil, errMarketChecksumMismatch
 			}
 			pkg, _, err := runtimeplugin.InspectWithKeys(data, a.officialPluginPublicKeys())
-			if err != nil || pkg.ValidateRoutePaths() != nil || pkg.Manifest.ID != entry.ID || pkg.Manifest.Version != entry.Version {
+			if err != nil {
+				return nil, err
+			}
+			if pkg.ValidateRoutePaths() != nil || pkg.Manifest.ID != entry.ID || pkg.Manifest.Version != entry.Version {
 				return nil, errors.New("catalog manifest mismatch")
 			}
 			return data, nil
@@ -169,7 +174,7 @@ func (a *Server) inspectMarketEntry(w http.ResponseWriter, r *http.Request) {
 	_ = http.NewResponseController(w).SetWriteDeadline(time.Now().Add(pluginPackageTimeout))
 	data, err := a.marketPackage(r)
 	if err != nil {
-		failure(w, 400, "无法下载或校验插件包")
+		failure(w, 400, marketInspectErrorMessage(err))
 		return
 	}
 	pkg, signed, _ := runtimeplugin.InspectWithKeys(data, a.officialPluginPublicKeys())
@@ -188,7 +193,7 @@ func (a *Server) installMarketEntry(w http.ResponseWriter, r *http.Request) {
 	_ = http.NewResponseController(w).SetWriteDeadline(time.Now().Add(pluginPackageTimeout))
 	data, err := a.marketPackage(r)
 	if err != nil {
-		failure(w, 400, "无法下载或校验插件包")
+		failure(w, 400, marketInspectErrorMessage(err))
 		return
 	}
 	var grants []string
@@ -203,4 +208,17 @@ func (a *Server) installMarketEntry(w http.ResponseWriter, r *http.Request) {
 	pkg, _, _ := runtimeplugin.InspectWithKeys(data, a.officialPluginPublicKeys())
 	_ = a.recordDynamicEvent(r.Context(), u.ID, "plugin.install", pkg.Manifest.ID)
 	respond(w, 200, map[string]bool{"installed": true})
+}
+
+func marketInspectErrorMessage(err error) string {
+	switch {
+	case errors.Is(err, runtimeplugin.ErrOfficialSignatureRequired),
+		errors.Is(err, runtimeplugin.ErrInvalidSignature),
+		errors.Is(err, runtimeplugin.ErrUnsupportedPlatform),
+		errors.Is(err, runtimeplugin.ErrUnsupportedProtocol),
+		errors.Is(err, errMarketChecksumMismatch):
+		return pluginInspectErrorMessage(err)
+	default:
+		return "无法下载或校验插件包"
+	}
 }

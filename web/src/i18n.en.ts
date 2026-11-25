@@ -2059,4 +2059,9 @@ export const english: Record<string, string> = {
   "打开工具": "Open Tool",
   "更多工具": "More Tools",
   "用户插件列表暂时无法加载": "User plugin tools could not be loaded.",
+  "自动 / 未指定": "Auto / Unspecified",
+  "恢复默认值": "Restore Defaults",
+  "载入此皮肤": "Load Skin",
+  "3D 实时预览": "Live 3D Preview",
+  "收起": "Collapse",
 }

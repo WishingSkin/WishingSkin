@@ -147,11 +147,30 @@ func (a *Server) inspectDynamicPackage(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	pkg, signed, err := runtimeplugin.InspectWithKeys(data, a.officialPluginPublicKeys())
-	if err != nil || pkg.ValidateRoutePaths() != nil {
-		failure(w, 400, "插件包格式无效或不支持当前平台")
+	if err != nil {
+		failure(w, 400, pluginInspectErrorMessage(err))
+		return
+	}
+	if pkg.ValidateRoutePaths() != nil {
+		failure(w, 400, "插件包路由配置无效")
 		return
 	}
 	respond(w, 200, map[string]any{"package": pkg, "digest": runtimeplugin.Digest(data), "signedOfficial": signed})
+}
+
+func pluginInspectErrorMessage(err error) string {
+	switch {
+	case errors.Is(err, runtimeplugin.ErrOfficialSignatureRequired), errors.Is(err, runtimeplugin.ErrInvalidSignature):
+		return "官方插件包签名校验失败或未配置受信任的官方公钥"
+	case errors.Is(err, runtimeplugin.ErrUnsupportedPlatform):
+		return "当前插件包不包含适用于本服务器平台的运行程序"
+	case errors.Is(err, runtimeplugin.ErrUnsupportedProtocol):
+		return "插件包运行协议版本不受支持，请升级主程序"
+	case errors.Is(err, errMarketChecksumMismatch):
+		return "插件包 SHA-256 校验失败，文件可能已损坏或被篡改"
+	default:
+		return "插件包格式无效或清单校验未通过"
+	}
 }
 func (a *Server) installDynamicPackage(w http.ResponseWriter, r *http.Request) {
 	u, ok := a.adminRequest(w, r)

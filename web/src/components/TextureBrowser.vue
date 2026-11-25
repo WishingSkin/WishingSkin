@@ -10,11 +10,12 @@ import ResourceFilters from './ResourceFilters.vue'
 import AppIcon from './AppIcon.vue'
 import CopyButton from './CopyButton.vue'
 import LoadingSkeleton from './LoadingSkeleton.vue'
-import type { LibraryRecord } from '../textureTypes'
+import type { LibraryRecord, TextureRecord } from '../textureTypes'
+import type { UserPluginEntry, UserPluginFrontend } from '../pluginModel'
 import { locale, t } from '../i18n'
 
-const props = defineProps<{ mode: 'library' | 'wardrobe'; csrfToken: string; detailId?: string; wardrobe: LibraryRecord[]; wardrobeBusy: boolean; wardrobeError: string }>()
-const emit = defineEmits<{ changed: []; refresh: []; wear: [texture: LibraryRecord]; openDetail: [id: string]; login: []; upload: []; expired: [] }>()
+const props = defineProps<{ mode: 'library' | 'wardrobe'; csrfToken: string; detailId?: string; wardrobe: LibraryRecord[]; wardrobeBusy: boolean; wardrobeError: string; textureActions?: { plugin: UserPluginEntry; frontend: UserPluginFrontend }[] }>()
+const emit = defineEmits<{ changed: []; refresh: []; wear: [texture: LibraryRecord]; openDetail: [id: string]; login: []; upload: []; expired: []; pluginAction: [item: { plugin: UserPluginEntry; frontend: UserPluginFrontend; texture: TextureRecord }] }>()
 const records = ref<LibraryRecord[]>([])
 const loading = ref(false)
 const loadError = feedbackRef('error')
@@ -313,6 +314,18 @@ onBeforeUnmount(() => { active = false; request?.abort(); detailRequest?.abort()
           </div>
           <details :key="selected.id" class="texture-sources" :open="fallback === selected.id"><summary>{{ t("PNG 材质与下载") }}</summary><div class="texture-preview checkerboard"><img v-if="!failedImages.includes(selected.fileHash)" :src="`/textures/${selected.fileHash}`" :alt="t('“{name}”的 PNG 材质平面图', { name: label(selected) })" @error="failedImages.push(selected.fileHash)" /><p v-else class="texture-placeholder">{{ t("材质预览加载失败，可尝试下载或刷新列表。") }}</p></div><a class="download-link material-download" :href="`/textures/${selected.fileHash}`" :download="`${label(selected)}.png`">{{ t("下载 PNG") }}</a></details>
           <button class="primary-button material-wear" type="button" :disabled="busy" @click="csrfToken ? applying = selected : emit('login')">{{ t("应用到角色") }}</button>
+          <div v-if="csrfToken && textureActions?.filter(item => !item.frontend.kinds?.length || item.frontend.kinds.includes(selected!.kind)).length" class="texture-plugin-actions">
+            <span class="texture-plugin-actions-label">{{ t('更多工具') }}</span>
+            <div class="settings-actions">
+              <button
+                v-for="item in textureActions.filter(entry => !entry.frontend.kinds?.length || entry.frontend.kinds.includes(selected!.kind))"
+                :key="`${item.plugin.id}:${item.frontend.id}`"
+                type="button"
+                class="secondary-button"
+                @click="emit('pluginAction', { plugin: item.plugin, frontend: item.frontend, texture: selected! })"
+              >{{ t(item.frontend.label) }}</button>
+            </div>
+          </div>
           <ReportForm :record-id="selected.id" :name="label(selected)" :csrf-token="csrfToken" @expired="emit('expired')" @login="emit('login')" />
         </div>
         <LoadingSkeleton v-else-if="detailBusy" layout="rows" label="正在加载材质…" :count="2" />

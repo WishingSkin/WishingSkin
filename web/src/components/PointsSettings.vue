@@ -272,7 +272,12 @@ onMounted(loadCodes)
     <p>{{ t('设置签到奖励、上传材质与新建角色费用。') }}</p>
     <p>{{ t('签到按 Asia/Shanghai 时区每日 00:00 重置。') }}</p>
     <form class="report-fields" @submit.prevent="save">
-      <label class="visibility-choice"><input v-model="enabled" type="checkbox" :disabled="busy" /><span>{{ t('启用积分与签到') }}</span></label>
+      <div class="toggle-setting">
+        <div class="toggle-setting__text">
+          <label class="toggle-setting__title" for="points-enabled-switch">{{ t('启用积分与签到') }}</label>
+        </div>
+        <input id="points-enabled-switch" v-model="enabled" class="switch" type="checkbox" role="switch" :disabled="busy" />
+      </div>
       <label class="binding-field"><span>{{ t('每日签到奖励') }}</span><input v-model.number="dailyReward" type="number" min="0" max="1000000000" step="1" required :disabled="busy" /></label>
       <label class="binding-field"><span>{{ t('上传材质费用') }}</span><input v-model.number="uploadCost" type="number" min="0" max="1000000000" step="1" required :disabled="busy" /></label>
       <label class="binding-field"><span>{{ t('新建角色费用') }}</span><input v-model.number="characterCost" type="number" min="0" max="1000000000" step="1" required :disabled="busy" /></label>

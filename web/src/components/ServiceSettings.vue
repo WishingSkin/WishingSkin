@@ -102,15 +102,17 @@ onMounted(load)
   <section class="settings-section"><h3>{{ t('邮件与验证') }}</h3><p>{{ t('注册始终需要验证邮箱和完成人机验证。请先配置邮件服务与 Turnstile。') }}</p>
     <LoadingSkeleton v-if="loading" label="正在加载…" :count="2" /><p v-if="error" class="form-error" role="alert"><button v-if="!draft && !loading" class="text-button" type="button" @click="load">{{ t('重试') }}</button></p>
     <form v-if="draft" class="settings-form" @submit.prevent="save"><p class="password-rule">{{ draft.source === 'database' ? t('当前使用后台保存的配置。') : t('当前使用启动时的配置，保存后将以后台配置为准。') }}</p><p v-if="!draft.editable" class="notice">{{ t('本地设置密钥尚不可用') }}</p><fieldset :disabled="busy || !draft.editable">
-      <h4>SMTP</h4><label class="settings-check"><input v-model="draft.smtpEnabled" type="checkbox" />{{ t('启用邮件服务') }}</label>
+      <h4>SMTP</h4>
+      <div class="toggle-setting plugin-settings-toggle"><div class="toggle-setting__text"><label class="toggle-setting__title" for="svc-smtp-switch">{{ t('启用邮件服务') }}</label></div><input id="svc-smtp-switch" v-model="draft.smtpEnabled" class="switch" type="checkbox" role="switch" /></div>
       <label class="binding-field"><span>{{ t('SMTP 服务器与端口') }}</span><input v-model="draft.address" placeholder="smtp.example.com:587" :required="draft.smtpEnabled" /></label>
       <label class="binding-field"><span>{{ t('发件人邮箱') }}</span><input v-model="draft.from" type="email" :required="draft.smtpEnabled" /></label>
       <label class="binding-field"><span>{{ t('加密方式') }}</span><select v-model="draft.tlsMode"><option value="starttls">STARTTLS</option><option value="tls">TLS</option><option value="local">{{ t('本机明文（仅回环地址）') }}</option></select></label>
       <label class="binding-field"><span>{{ t('SMTP 用户名') }}</span><input v-model="draft.username" autocomplete="off" /></label>
       <label class="binding-field"><span>{{ t('SMTP 密码') }} <small>{{ draft.passwordConfigured ? t('已配置') : t('未配置') }}</small></span><input v-model="password" type="password" autocomplete="new-password" :disabled="clearPassword" /></label>
       <label class="settings-check"><input v-model="clearPassword" type="checkbox" />{{ t('清除已保存的 SMTP 密码') }}</label>
-      <label class="settings-check"><input v-model="draft.notificationEmailEnabled" type="checkbox" :disabled="!draft.smtpEnabled" />{{ t('为审核、举报和积分变更发送个人通知邮件') }}</label>
-      <h4>Cloudflare Turnstile</h4><label class="settings-check"><input v-model="draft.turnstileEnabled" type="checkbox" />{{ t('启用人机验证') }}</label>
+      <div class="toggle-setting plugin-settings-toggle"><div class="toggle-setting__text"><label class="toggle-setting__title" for="svc-notif-mail-switch">{{ t('为审核、举报和积分变更发送个人通知邮件') }}</label></div><input id="svc-notif-mail-switch" v-model="draft.notificationEmailEnabled" class="switch" type="checkbox" role="switch" :disabled="!draft.smtpEnabled" /></div>
+      <h4>Cloudflare Turnstile</h4>
+      <div class="toggle-setting plugin-settings-toggle"><div class="toggle-setting__text"><label class="toggle-setting__title" for="svc-turnstile-switch">{{ t('启用人机验证') }}</label></div><input id="svc-turnstile-switch" v-model="draft.turnstileEnabled" class="switch" type="checkbox" role="switch" /></div>
       <label class="binding-field"><span>Site key</span><input v-model="draft.siteKey" :required="draft.turnstileEnabled" maxlength="256" autocomplete="off" /></label>
       <label class="binding-field"><span>Secret key <small>{{ draft.secretConfigured ? t('已配置') : t('未配置') }}</small></span><input v-model="secret" type="password" maxlength="256" autocomplete="new-password" :disabled="clearSecret" /></label>
       <label class="settings-check"><input v-model="clearSecret" type="checkbox" />{{ t('清除已保存的 Turnstile Secret') }}</label>

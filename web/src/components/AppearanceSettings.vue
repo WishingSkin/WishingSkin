@@ -387,14 +387,18 @@ defineExpose({ draft, dirty, busy: computed(() => busy.value || imageBusy.value 
             >{{ t('恢复默认透明与模糊参数') }}</button>
           </div>
 
-          <label class="settings-check">
-            <input v-model="draft.allowUserTheme" type="checkbox" />
-            <span>{{ t('允许用户在账号菜单中自行切换主题包与字体偏好') }}</span>
-          </label>
-          <label class="settings-check">
-            <input :checked="!draft.disableParticles" type="checkbox" @change="draft.disableParticles = !($event.target as HTMLInputElement).checked" />
-            <span>{{ t('启用 MC 主题原版像素氛围粒子动效') }}</span>
-          </label>
+          <div class="toggle-setting plugin-settings-toggle">
+            <div class="toggle-setting__text">
+              <label class="toggle-setting__title" for="app-user-theme-switch">{{ t('允许用户在账号菜单中自行切换主题包与字体偏好') }}</label>
+            </div>
+            <input id="app-user-theme-switch" v-model="draft.allowUserTheme" class="switch" type="checkbox" role="switch" />
+          </div>
+          <div class="toggle-setting plugin-settings-toggle">
+            <div class="toggle-setting__text">
+              <label class="toggle-setting__title" for="app-particles-switch">{{ t('启用 MC 主题原版像素氛围粒子动效') }}</label>
+            </div>
+            <input id="app-particles-switch" :checked="!draft.disableParticles" class="switch" type="checkbox" role="switch" @change="draft.disableParticles = !($event.target as HTMLInputElement).checked" />
+          </div>
 
           <h4>{{ t('界面字体') }}</h4>
           <label class="binding-field">

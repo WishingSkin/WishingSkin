@@ -36,3 +36,40 @@ func TestManifestContributionValidation(t *testing.T) {
 		t.Fatal("duplicate task accepted")
 	}
 }
+
+func TestManifestSettingDefaultsAndOptionsValidation(t *testing.T) {
+	base := Manifest{ID: "community.example", Version: "1", SettingsNamespace: "community.example"}
+
+	valid := base
+	valid.Settings = []SettingField{
+		{Key: "daily_limit", Label: "Daily Limit", Type: "number", Default: 5, Description: "Max per day"},
+		{Key: "enabled", Label: "Enabled", Type: "boolean", Default: true},
+		{
+			Key:     "provider",
+			Label:   "Provider",
+			Type:    "text",
+			Default: "openai",
+			Options: []SettingOption{{Value: "openai", Label: "OpenAI"}, {Value: "local", Label: "Local"}},
+		},
+	}
+	if err := valid.Validate(); err != nil {
+		t.Fatalf("expected valid settings, got %v", err)
+	}
+
+	invalidCases := []SettingField{
+		{Key: "bad_num", Label: "Bad", Type: "number", Default: "five"},
+		{Key: "bad_bool", Label: "Bad", Type: "boolean", Default: "yes"},
+		{Key: "bad_text", Label: "Bad", Type: "text", Default: 123},
+		{Key: "secret_default", Label: "Bad", Type: "secret", Default: "leaky"},
+		{Key: "secret_opts", Label: "Bad", Type: "secret", Options: []SettingOption{{Value: "a", Label: "A"}}},
+		{Key: "dup_opt", Label: "Bad", Type: "text", Options: []SettingOption{{Value: "a", Label: "A"}, {Value: "a", Label: "A2"}}},
+		{Key: "bad_opt_default", Label: "Bad", Type: "text", Default: "c", Options: []SettingOption{{Value: "a", Label: "A"}}},
+	}
+	for _, field := range invalidCases {
+		m := base
+		m.Settings = []SettingField{field}
+		if err := m.Validate(); err == nil {
+			t.Fatalf("expected invalid setting %#v to fail validation", field)
+		}
+	}
+}

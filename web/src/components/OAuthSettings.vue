@@ -192,7 +192,12 @@ onMounted(load)
           <legend>{{ t('基本信息') }}</legend>
           <label class="binding-field"><span>{{ t('应用名称') }}</span><input v-model="draft.name" maxlength="128" required /></label>
           <label class="binding-field"><span>{{ t('回调地址，每行一个') }}</span><textarea v-model="redirects" class="oauth-redirects" rows="3" required /></label>
-          <label class="settings-check"><input v-model="draft.enabled" type="checkbox" />{{ t('启用应用') }}</label>
+          <div class="toggle-setting plugin-settings-toggle">
+            <div class="toggle-setting__text">
+              <label class="toggle-setting__title" for="oauth-app-enabled-switch">{{ t('启用应用') }}</label>
+            </div>
+            <input id="oauth-app-enabled-switch" v-model="draft.enabled" class="switch" type="checkbox" role="switch" />
+          </div>
         </fieldset>
 
         <fieldset class="oauth-form-group">

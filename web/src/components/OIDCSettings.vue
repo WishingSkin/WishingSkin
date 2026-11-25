@@ -46,7 +46,12 @@ onMounted(load)
   <section class="settings-section oidc-settings"><h3>{{ t('OIDC 登录') }}</h3><p class="password-rule">{{ t('连接身份提供商。新账号仍遵守本站注册和邮箱验证规则。') }}</p>
     <LoadingSkeleton v-if="!loaded && !error" label="正在加载…" :count="2" /><p v-if="error" class="form-error" role="alert"><button v-if="!loaded" class="text-button" type="button" @click="load">{{ t('重试') }}</button></p>
     <div v-if="loaded" class="settings-actions"><label class="binding-field"><span>{{ t('身份提供商') }}</span><select :value="selected" @change="select(($event.target as HTMLSelectElement).value)"><option v-for="p in providers" :key="p.id" :value="p.id">{{ p.name }}{{ p.id ? '' : ' (' + t('默认') + ')' }}</option></select></label><button class="secondary-button" type="button" :disabled="busy || providers.length >= 12" @click="add">{{ t('添加提供商') }}</button><button v-if="selected" class="text-button" type="button" :disabled="busy" @click="remove">{{ t('移除提供商') }}</button></div><form v-if="loaded" class="settings-form" @submit.prevent="save"><fieldset :disabled="busy">
-      <label class="checkbox-label"><input v-model="draft.enabled" type="checkbox" /> {{ t('启用 OIDC 登录') }}</label>
+      <div class="toggle-setting plugin-settings-toggle">
+        <div class="toggle-setting__text">
+          <label class="toggle-setting__title" for="oidc-enabled-switch">{{ t('启用 OIDC 登录') }}</label>
+        </div>
+        <input id="oidc-enabled-switch" v-model="draft.enabled" class="switch" type="checkbox" role="switch" />
+      </div>
       <label class="binding-field"><span>{{ t('登录按钮名称') }}</span><input v-model="draft.name" maxlength="64" required /></label>
       <label class="binding-field"><span>Issuer</span><input v-model="draft.issuer" type="url" :required="draft.enabled" placeholder="https://identity.example.com/oidc" /></label>
       <label class="binding-field"><span>Client ID</span><input v-model="draft.clientId" maxlength="256" :required="draft.enabled" autocomplete="off" /></label>

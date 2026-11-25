@@ -18,6 +18,8 @@ import (
 
 const SignatureFile = "plugin.sig"
 
+var ErrInvalidSignature = errors.New("untrusted or invalid plugin signature")
+
 // BuiltInOfficialPublicKeys returns compiled-in Ed25519 public keys trusted for
 // official wishingskin.* dynamic packages. Additional keys may be supplied via
 // WS_OFFICIAL_PLUGIN_PUBKEYS.
@@ -191,7 +193,7 @@ func VerifyArchiveSignature(zipBytes []byte, pubKeys []ed25519.PublicKey) (bool,
 	for _, f := range zr.File {
 		if strings.TrimSuffix(f.Name, "/") == SignatureFile {
 			if sigFile != nil || f.FileInfo().IsDir() || f.Mode()&os.ModeSymlink != 0 || f.Mode()&os.ModeType != 0 {
-				return false, errors.New("invalid plugin signature")
+				return false, ErrInvalidSignature
 			}
 			sigFile = f
 		}
@@ -206,12 +208,12 @@ func VerifyArchiveSignature(zipBytes []byte, pubKeys []ed25519.PublicKey) (bool,
 	raw, err := io.ReadAll(io.LimitReader(rc, 1025))
 	rc.Close()
 	if err != nil || len(raw) > 1024 {
-		return false, errors.New("invalid plugin signature")
+		return false, ErrInvalidSignature
 	}
 	sigHex := strings.TrimSpace(string(raw))
 	sigBytes, err := hex.DecodeString(sigHex)
 	if err != nil || len(sigBytes) != ed25519.SignatureSize {
-		return false, errors.New("invalid plugin signature")
+		return false, ErrInvalidSignature
 	}
 	digest, err := CanonicalArchiveDigest(zipBytes)
 	if err != nil {
@@ -222,5 +224,5 @@ func VerifyArchiveSignature(zipBytes []byte, pubKeys []ed25519.PublicKey) (bool,
 			return true, nil
 		}
 	}
-	return false, errors.New("untrusted or invalid plugin signature")
+	return false, ErrInvalidSignature
 }

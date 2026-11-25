@@ -176,8 +176,18 @@ onMounted(load)
     <template v-if="options">
       <form class="settings-form" @submit.prevent="submit(false)">
         <fieldset :disabled="busy">
-          <label class="settings-check"><input v-model="enabled" type="checkbox" />{{ t('启用邀请码插件') }}</label>
-          <label class="settings-check"><input v-model="required" type="checkbox" :disabled="!enabled" />{{ t('注册时必须填写邀请码') }}</label>
+          <div class="toggle-setting plugin-settings-toggle">
+            <div class="toggle-setting__text">
+              <label class="toggle-setting__title" for="inv-enabled-switch">{{ t('启用邀请码插件') }}</label>
+            </div>
+            <input id="inv-enabled-switch" v-model="enabled" class="switch" type="checkbox" role="switch" />
+          </div>
+          <div class="toggle-setting plugin-settings-toggle">
+            <div class="toggle-setting__text">
+              <label class="toggle-setting__title" for="inv-required-switch">{{ t('注册时必须填写邀请码') }}</label>
+            </div>
+            <input id="inv-required-switch" v-model="required" class="switch" type="checkbox" role="switch" :disabled="!enabled" />
+          </div>
           <button class="primary-button" type="submit">{{ busy ? t('正在保存…') : t('保存插件设置') }}</button>
         </fieldset>
       </form>

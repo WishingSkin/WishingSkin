@@ -9,6 +9,7 @@ import (
 	"encoding/base64"
 	"encoding/hex"
 	"encoding/json"
+	"errors"
 	"os"
 	"os/exec"
 	"path/filepath"
@@ -283,5 +284,58 @@ func main() {
 	}
 	if payload["proto"] != "2" || payload["url"] != "http://127.0.0.1:45678" || payload["token"] != "tok-wishingskin.v2probe" || strings.TrimSpace(payload["token"]) == "" {
 		t.Fatalf("unexpected v2 env: %#v", payload)
+	}
+}
+
+func TestInspectWithKeysTypedSentinelErrors(t *testing.T) {
+	pub, _, err := ed25519.GenerateKey(rand.Reader)
+	if err != nil {
+		t.Fatal(err)
+	}
+	pub2, priv2, err := ed25519.GenerateKey(rand.Reader)
+	if err != nil {
+		t.Fatal(err)
+	}
+	_ = pub2
+	binEntry := "bin/demo"
+	base := rp.Package{
+		Manifest: sdk.Manifest{
+			ID:                "wishingskin.sentinel",
+			Version:           "0.1.0",
+			SettingsNamespace: "wishingskin.sentinel",
+		},
+		Protocol:    2,
+		Executables: map[string]string{runtime.GOOS + "/" + runtime.GOARCH: binEntry},
+	}
+
+	unsigned := buildTestArchive(t, base, map[string][]byte{binEntry: []byte("demo")})
+	if _, _, err := rp.InspectWithKeys(unsigned, []ed25519.PublicKey{pub}); !errors.Is(err, rp.ErrOfficialSignatureRequired) {
+		t.Fatalf("expected ErrOfficialSignatureRequired, got %v", err)
+	}
+
+	wrongSigned, err := rp.SignArchive(unsigned, priv2)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, _, err := rp.InspectWithKeys(wrongSigned, []ed25519.PublicKey{pub}); !errors.Is(err, rp.ErrInvalidSignature) {
+		t.Fatalf("expected ErrInvalidSignature, got %v", err)
+	}
+
+	badProto := base
+	badProto.Manifest.ID = "community.sentinel"
+	badProto.Manifest.SettingsNamespace = "community.sentinel"
+	badProto.Protocol = 99
+	protoArchive := buildTestArchive(t, badProto, map[string][]byte{binEntry: []byte("demo")})
+	if _, _, err := rp.InspectWithKeys(protoArchive, nil); !errors.Is(err, rp.ErrUnsupportedProtocol) {
+		t.Fatalf("expected ErrUnsupportedProtocol, got %v", err)
+	}
+
+	badPlatform := base
+	badPlatform.Manifest.ID = "community.sentinel"
+	badPlatform.Manifest.SettingsNamespace = "community.sentinel"
+	badPlatform.Executables = map[string]string{"plan9/mips64": binEntry}
+	platArchive := buildTestArchive(t, badPlatform, map[string][]byte{binEntry: []byte("demo")})
+	if _, _, err := rp.InspectWithKeys(platArchive, nil); !errors.Is(err, rp.ErrUnsupportedPlatform) {
+		t.Fatalf("expected ErrUnsupportedPlatform, got %v", err)
 	}
 }

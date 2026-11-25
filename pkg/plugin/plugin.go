@@ -7,6 +7,7 @@ import (
 	"net/http"
 	"regexp"
 	"time"
+	"unicode/utf8"
 )
 
 var idPattern = regexp.MustCompile(`^[a-z0-9]+(?:[._-][a-z0-9]+)*$`)
@@ -56,6 +57,45 @@ func (m Manifest) Validate() error {
 	for _, f := range m.Settings {
 		if !idPattern.MatchString(f.Key) || seen[f.Key] || f.Label == "" || (f.Type != "text" && f.Type != "secret" && f.Type != "boolean" && f.Type != "number") {
 			return fmt.Errorf("invalid plugin setting")
+		}
+		if f.Description != "" && (!utf8.ValidString(f.Description) || utf8.RuneCountInString(f.Description) > 512) {
+			return fmt.Errorf("invalid plugin setting description")
+		}
+		if f.Default != nil {
+			switch f.Type {
+			case "secret":
+				return fmt.Errorf("secret plugin setting cannot define default")
+			case "boolean":
+				if _, ok := f.Default.(bool); !ok {
+					return fmt.Errorf("invalid boolean plugin setting default")
+				}
+			case "number":
+				switch f.Default.(type) {
+				case float64, float32, int, int64:
+				default:
+					return fmt.Errorf("invalid number plugin setting default")
+				}
+			default:
+				text, ok := f.Default.(string)
+				if !ok || !utf8.ValidString(text) || len(text) > 4096 {
+					return fmt.Errorf("invalid text plugin setting default")
+				}
+			}
+		}
+		if len(f.Options) > 0 {
+			if f.Type != "text" || len(f.Options) > 32 {
+				return fmt.Errorf("invalid plugin setting options")
+			}
+			optSeen := map[string]bool{}
+			for _, opt := range f.Options {
+				if opt.Value == "" || opt.Label == "" || !utf8.ValidString(opt.Value) || !utf8.ValidString(opt.Label) || len(opt.Value) > 128 || len(opt.Label) > 256 || optSeen[opt.Value] {
+					return fmt.Errorf("invalid plugin setting option")
+				}
+				optSeen[opt.Value] = true
+			}
+			if def, ok := f.Default.(string); ok && def != "" && !optSeen[def] {
+				return fmt.Errorf("plugin setting default not in options")
+			}
 		}
 		seen[f.Key] = true
 	}
@@ -140,10 +180,18 @@ type Plugin interface {
 	Register(Host) error
 }
 
-type SettingField struct {
-	Key   string `json:"key"`
+type SettingOption struct {
+	Value string `json:"value"`
 	Label string `json:"label"`
-	Type  string `json:"type"`
+}
+
+type SettingField struct {
+	Key         string          `json:"key"`
+	Label       string          `json:"label"`
+	Type        string          `json:"type"`
+	Default     any             `json:"default,omitempty"`
+	Description string          `json:"description,omitempty"`
+	Options     []SettingOption `json:"options,omitempty"`
 }
 type UserFrontend struct {
 	ID          string   `json:"id"`

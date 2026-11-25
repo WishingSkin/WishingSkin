@@ -84,6 +84,7 @@ const userPlugins = ref<UserPluginEntry[]>([])
 const userPluginsLoading = ref(false)
 const userPluginsError = ref('')
 const activeTextureAction = ref<{ plugin: UserPluginEntry; frontend: UserPluginFrontend; texture: TextureRecord } | null>(null)
+const activeTextureActionDirty = ref(false)
 type AccountTab = 'dashboard' | 'profile' | 'points' | 'integration' | 'reports'
 const accountTab = ref<AccountTab>('dashboard')
 const publicHome = ref(true)
@@ -258,12 +259,15 @@ const hasUserTools = computed(() => userPlugins.value.some(p => p.frontends.some
 const selectedTextureActions = computed(() => {
   const tex = selectedTexture.value
   if (!tex || (tex.reviewState && tex.reviewState !== 'approved')) return []
-  return userPlugins.value.flatMap(plugin =>
-    plugin.frontends
-      .filter(frontend => frontend.slot === 'texture.action' && (!frontend.kinds?.length || frontend.kinds.includes(tex.kind)))
-      .map(frontend => ({ plugin, frontend })),
-  )
+  return allTextureActions.value.filter(entry => !entry.frontend.kinds?.length || entry.frontend.kinds.includes(tex.kind))
 })
+const allTextureActions = computed(() =>
+  userPlugins.value.flatMap(plugin =>
+    plugin.frontends
+      .filter(frontend => frontend.slot === 'texture.action')
+      .map(frontend => ({ plugin, frontend })),
+  ),
+)
 const siteSettingsDirty = computed(() => !!user.value?.isAdmin && adminView.value?.tab === 'settings' && adminView.value.settingsTab === 'site' && (
   adminCharacterLimit.value !== (site.value.characterLimit ?? 1) ||
   adminNonEmailLogin.value !== !!site.value.yggNonEmailLogin
@@ -589,6 +593,7 @@ function clearSession() {
   userPluginsLoading.value = false
   userPluginsError.value = ''
   activeTextureAction.value = null
+  activeTextureActionDirty.value = false
   wardrobeBusy.value = false
   wardrobeError.value = ''
   texturesBusy.value = false
@@ -1112,7 +1117,7 @@ onBeforeUnmount(() => {
   <FeedbackHost />
   <TexturePicker v-if="texturePicker && user && selected" :kind="texturePicker" :busy="actionBusy" @close="texturePicker = undefined" @select="pickTexture" @expired="expireSession" />
   <ApplyTextureDialog v-if="applyingTexture && user" :texture="applyingTexture" :csrf-token="csrfToken" @close="applyingTexture = undefined" @applied="loadCharacters" @expired="expireSession" />
-  <AppModal v-if="activeTextureAction && user" :title="t(activeTextureAction.frontend.label)" wide @close="activeTextureAction = null">
+  <AppModal v-if="activeTextureAction && user" :title="t(activeTextureAction.frontend.label)" wide :confirm-close="activeTextureActionDirty ? dirtyModalConfirm : false" @close="activeTextureAction = null; activeTextureActionDirty = false">
     <PluginFrontend
       :key="`${activeTextureAction.plugin.id}:${activeTextureAction.frontend.id}:${activeTextureAction.texture.id}`"
       :plugin-id="activeTextureAction.plugin.id"
@@ -1123,8 +1128,9 @@ onBeforeUnmount(() => {
       :version="activeTextureAction.plugin.version"
       :csrf-token="csrfToken"
       :initial-context="{ texture: activeTextureAction.texture }"
-      @expired="activeTextureAction = null; expireSession()"
+      @expired="activeTextureAction = null; activeTextureActionDirty = false; expireSession()"
       @mutated="onUserToolMutated"
+      @dirty-change="activeTextureActionDirty = $event"
     />
   </AppModal>
   <div class="app-shell">
@@ -1205,7 +1211,7 @@ onBeforeUnmount(() => {
 
           <RegistrationSettings :site="site" :csrf-token="csrfToken" @updated="loadSite" @expired="expireSession" />
           </SettingsWorkspace></template></Administration>
-        <TextureBrowser v-if="page === 'wardrobe' || page === 'library'" :key="`${user.id}:${page}`" :mode="page" :csrf-token="csrfToken" :detail-id="page === 'library' ? libraryDetailId : ''" :wardrobe="wardrobe" :wardrobe-busy="wardrobeBusy" :wardrobe-error="wardrobeError" @open-detail="id => { if (page === 'library') navigate(libraryItemPath(id)) }" @refresh="loadWardrobe" @changed="loadWardrobe" @wear="wearCollected" @upload="openUpload" @expired="expireSession" />
+        <TextureBrowser v-if="page === 'wardrobe' || page === 'library'" :key="`${user.id}:${page}`" :mode="page" :csrf-token="csrfToken" :detail-id="page === 'library' ? libraryDetailId : ''" :wardrobe="wardrobe" :wardrobe-busy="wardrobeBusy" :wardrobe-error="wardrobeError" :texture-actions="allTextureActions" @open-detail="id => { if (page === 'library') navigate(libraryItemPath(id)) }" @refresh="loadWardrobe" @changed="loadWardrobe" @wear="wearCollected" @upload="openUpload" @plugin-action="activeTextureActionDirty = false; activeTextureAction = $event" @expired="expireSession" />
         <template v-if="page === 'characters'">
           <div class="page-heading"><div><h1>{{ t("角色管理") }}</h1></div><button class="secondary-button" type="button" :disabled="charactersBusy || actionBusy" @click="loadCharacters">{{ charactersBusy ? t('正在刷新…') : t('刷新列表') }}</button></div>
 

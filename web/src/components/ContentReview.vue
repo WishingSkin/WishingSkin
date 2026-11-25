@@ -146,7 +146,12 @@ onBeforeUnmount(() => { request?.abort(); lifetime.abort() })
       <summary>{{ t('上传与审核设置') }}</summary>
       <form class="settings-form" @submit.prevent="savePolicy">
         <fieldset :disabled="busy">
-          <label class="checkbox-label"><input v-model="enabled" type="checkbox" />{{ t('新上传和资料修改需要审核') }}</label>
+          <div class="toggle-setting plugin-settings-toggle">
+            <div class="toggle-setting__text">
+              <label class="toggle-setting__title" for="review-enabled-switch">{{ t('新上传和资料修改需要审核') }}</label>
+            </div>
+            <input id="review-enabled-switch" v-model="enabled" class="switch" type="checkbox" role="switch" />
+          </div>
           <label class="binding-field"><span>{{ t('分类，每行一个') }}</span><textarea v-model="categories" rows="4" /></label>
           <fieldset class="policy-dimensions">
             <legend>{{ t('尺寸与文件大小') }}</legend>

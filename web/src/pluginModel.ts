@@ -16,6 +16,20 @@ export interface UserPluginEntry {
   frontends: UserPluginFrontend[]
 }
 
+export interface PluginSettingOption {
+  value: string
+  label: string
+}
+
+export interface PluginSettingField {
+  key: string
+  label: string
+  type: string
+  default?: string | number | boolean
+  description?: string
+  options?: PluginSettingOption[]
+}
+
 export interface PluginManifest {
   name?: string
   description?: string
@@ -24,7 +38,7 @@ export interface PluginManifest {
   signedOfficial?: boolean
   hooks?: string[]
   userFrontends?: UserPluginFrontend[]
-  settings?: { key: string; label: string; type: string }[]
+  settings?: PluginSettingField[]
   id: string
   version: string
   dependencies: string[]
@@ -46,6 +60,37 @@ function normalizeUserFrontends(value: unknown): UserPluginFrontend[] {
   })).filter(frontend => frontend.id !== '' && frontend.label !== '')
 }
 
+function normalizeSettings(value: unknown): PluginSettingField[] {
+  if (!Array.isArray(value)) return []
+  const out: PluginSettingField[] = []
+  for (const item of value) {
+    if (!item || typeof item !== 'object') continue
+    const raw = item as Record<string, unknown>
+    if (typeof raw.key !== 'string' || typeof raw.label !== 'string' || typeof raw.type !== 'string') continue
+    const field: PluginSettingField = {
+      key: raw.key,
+      label: raw.label,
+      type: raw.type,
+    }
+    if (typeof raw.description === 'string' && raw.description) {
+      field.description = raw.description
+    }
+    if (typeof raw.default === 'boolean' || (typeof raw.default === 'number' && Number.isFinite(raw.default)) || typeof raw.default === 'string') {
+      field.default = raw.default
+    }
+    if (Array.isArray(raw.options)) {
+      const options = raw.options
+        .filter((opt): opt is Record<string, unknown> => !!opt && typeof opt === 'object' && typeof opt.value === 'string' && typeof opt.label === 'string')
+        .map(opt => ({ value: opt.value as string, label: opt.label as string }))
+      if (options.length > 0) {
+        field.options = options
+      }
+    }
+    out.push(field)
+  }
+  return out
+}
+
 export function normalizePluginManifests(value: unknown): PluginManifest[] {
   if (!Array.isArray(value)) return []
   return value.filter((item): item is Record<string, unknown> => !!item && typeof item === 'object').map(item => ({
@@ -56,7 +101,7 @@ export function normalizePluginManifests(value: unknown): PluginManifest[] {
     signedOfficial: item.signedOfficial === true,
     hooks: Array.isArray(item.hooks) ? item.hooks.filter((h): h is string => typeof h === 'string') : [],
     userFrontends: normalizeUserFrontends(item.userFrontends),
-    settings: Array.isArray(item.settings) ? item.settings.filter((f): f is { key: string; label: string; type: string } => !!f && typeof f === 'object' && typeof f.key === 'string' && typeof f.label === 'string' && typeof f.type === 'string') : [],
+    settings: normalizeSettings(item.settings),
     id: typeof item.id === 'string' ? item.id : '',
     version: typeof item.version === 'string' ? item.version : '',
     dependencies: Array.isArray(item.dependencies) ? item.dependencies.filter((dependency): dependency is string => typeof dependency === 'string') : [],

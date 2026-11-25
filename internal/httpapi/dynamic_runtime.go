@@ -140,10 +140,11 @@ func (a *Server) callDynamicLocked(ctx context.Context, item runtimeplugin.Insta
 	if !enabled {
 		return nil, errPluginUnavailable
 	}
-	request.Settings, err = a.readCommunitySettingsFrom(ctx, database, id)
+	rawSettings, err := a.readCommunitySettingsFrom(ctx, database, id)
 	if err != nil {
 		return nil, err
 	}
+	request.Settings = a.effectiveCommunitySettings(id, rawSettings)
 	if hasData {
 		request.Data = map[string]json.RawMessage{}
 		rows, err := database.QueryContext(ctx, a.s.Bind("SELECT data_key,value_json FROM plugin_data WHERE plugin_id=?"), id)
@@ -342,7 +343,7 @@ func (a *Server) dynamicRoute(w http.ResponseWriter, r *http.Request) {
 		w.Header().Set("Content-Type", result.ContentType)
 		w.Header().Set("X-Content-Type-Options", "nosniff")
 		if result.ContentType == "image/svg+xml" {
-			w.Header().Set("Content-Security-Policy", "default-src 'none'; sandbox")
+			w.Header().Set("Content-Security-Policy", "default-src 'none'; img-src data:; style-src 'unsafe-inline'; sandbox")
 		}
 		w.WriteHeader(result.Status)
 		_, _ = w.Write(rawBytes)
@@ -375,7 +376,7 @@ func (a *Server) dynamicFrontend(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	// srcdoc runs in an opaque-origin sandbox. Only the explicit host bridge can make requests.
-	html := "<meta http-equiv=\"Content-Security-Policy\" content=\"default-src 'none'; script-src 'unsafe-inline'; style-src 'unsafe-inline'; img-src data:; connect-src 'none'; form-action 'none'; base-uri 'none'\">" + string(data)
+	html := "<meta http-equiv=\"Content-Security-Policy\" content=\"default-src 'none'; script-src 'unsafe-inline'; style-src 'unsafe-inline'; img-src data:; font-src data: blob:; connect-src 'none'; form-action 'none'; base-uri 'none'\">" + string(data)
 	routes := []runtimeplugin.Route{}
 	for _, route := range item.Package.Routes {
 		if runtimeplugin.ValidRoutePath(route.Path) {
@@ -417,7 +418,7 @@ func (a *Server) userDynamicFrontend(w http.ResponseWriter, r *http.Request) {
 		failure(w, 503, "暂时无法读取插件界面")
 		return
 	}
-	html := "<meta http-equiv=\"Content-Security-Policy\" content=\"default-src 'none'; script-src 'unsafe-inline'; style-src 'unsafe-inline'; img-src data: blob:; connect-src 'none'; form-action 'none'; base-uri 'none'\">" + string(data)
+	html := "<meta http-equiv=\"Content-Security-Policy\" content=\"default-src 'none'; script-src 'unsafe-inline'; style-src 'unsafe-inline'; img-src data: blob:; font-src data: blob:; connect-src 'none'; form-action 'none'; base-uri 'none'\">" + string(data)
 	routes := []runtimeplugin.Route{}
 	for _, route := range item.Package.Routes {
 		if route.Access != "admin" && runtimeplugin.ValidRoutePath(route.Path) {

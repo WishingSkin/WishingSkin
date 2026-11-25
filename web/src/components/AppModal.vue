@@ -2,7 +2,7 @@
 import AppIcon from './AppIcon.vue'
 import { onMounted, onBeforeUnmount, ref, useId } from 'vue'
 import { t } from '../i18n'
-import { confirmAction, notifications, dismissToast, modalStack } from '../feedback'
+import { confirmAction, modalStack } from '../feedback'
 
 export interface ModalCloseConfirm {
   title: string
@@ -82,7 +82,6 @@ onBeforeUnmount(() => {
     <Transition name="modal-motion" appear><dialog ref="dialog" :role="alert ? 'alertdialog' : 'dialog'" class="app-modal" :class="{ 'app-modal-wide': wide }" :aria-labelledby="titleId" :aria-busy="busy || undefined" @cancel.prevent="close" @pointerdown="onPointerDown" @click="backdrop">
       <header class="app-modal-heading"><h2 :id="titleId">{{ title }}</h2><button type="button" class="secondary-button modal-close" :disabled="busy" :aria-label="t('关闭')" @click="close"><AppIcon name="close" /></button></header>
       <div class="app-modal-body"><slot /></div>
-      <TransitionGroup v-if="modalStack.at(-1) === titleId" name="toast-motion" tag="div" class="toast-stack modal-toast-stack" :aria-label="t('通知')"><div v-for="item in notifications" :key="item.id" class="toast" :class="'toast-' + item.tone" :role="item.tone === 'error' ? 'alert' : 'status'"><span>{{ item.message }}</span><button type="button" :aria-label="t('关闭')" @click="dismissToast(item.id)"><AppIcon name="close" /></button></div></TransitionGroup>
     </dialog></Transition>
   </Teleport>
 </template>

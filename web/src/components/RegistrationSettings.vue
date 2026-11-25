@@ -81,10 +81,13 @@ async function submit() {
         <textarea v-model="blockedEmailDomains" rows="3" maxlength="5000" :placeholder="t('每行或逗号分隔，例如 example.com')" aria-describedby="registration-blocked-hint" :disabled="busy" />
         <small id="registration-blocked-hint">{{ t('按完整域名匹配；黑名单优先于允许列表。') }}</small>
       </label>
-      <label class="registration-id-option">
-        <input v-model="randomUserIds" type="checkbox" :disabled="busy" aria-describedby="registration-id-hint" />
-        <span><strong>{{ t('使用 10 位随机用户 ID') }}</strong><small id="registration-id-hint">{{ t('默认使用递增序号，仅影响新账号。') }}</small></span>
-      </label>
+      <div class="toggle-setting plugin-settings-toggle">
+        <div class="toggle-setting__text">
+          <label class="toggle-setting__title" for="reg-random-id-switch">{{ t('使用 10 位随机用户 ID') }}</label>
+          <p id="registration-id-hint" class="toggle-setting__desc">{{ t('默认使用递增序号，仅影响新账号。') }}</p>
+        </div>
+        <input id="reg-random-id-switch" v-model="randomUserIds" class="switch" type="checkbox" role="switch" :disabled="busy" aria-describedby="registration-id-hint" />
+      </div>
       <button class="primary-button" type="submit" :disabled="busy">{{ t('保存注册设置') }}</button>
     </form>
 

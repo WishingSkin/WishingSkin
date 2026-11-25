@@ -25,6 +25,12 @@ import (
 const MaxPackage = 128 << 20
 const maxUserFrontendBytes = 2 << 20
 
+var (
+	ErrOfficialSignatureRequired = errors.New("official plugin namespace requires valid signature")
+	ErrUnsupportedPlatform       = errors.New("package does not support this platform")
+	ErrUnsupportedProtocol       = errors.New("unsupported plugin protocol")
+)
+
 var v1Permissions = []string{
 	"routes.public", "routes.user", "routes.admin",
 	"events", "pages", "tasks", "frontend", "database", "webhooks",
@@ -95,7 +101,10 @@ func (p Package) validateStructure() error {
 	if err := p.Manifest.Validate(); err != nil {
 		return err
 	}
-	if (p.Protocol != 1 && p.Protocol != 2) || len(p.Manifest.Version) > 64 || !regexp.MustCompile(`^[A-Za-z0-9][A-Za-z0-9._+-]*$`).MatchString(p.Manifest.Version) {
+	if p.Protocol != 1 && p.Protocol != 2 {
+		return ErrUnsupportedProtocol
+	}
+	if len(p.Manifest.Version) > 64 || !regexp.MustCompile(`^[A-Za-z0-9][A-Za-z0-9._+-]*$`).MatchString(p.Manifest.Version) {
 		return errors.New("invalid package identity or protocol")
 	}
 	seen := map[string]bool{}
@@ -197,7 +206,7 @@ func (p Package) validateStructure() error {
 		}
 	}
 	if p.Executables[runtime.GOOS+"/"+runtime.GOARCH] == "" {
-		return errors.New("package does not support this platform")
+		return ErrUnsupportedPlatform
 	}
 	for i, m := range p.Migrations {
 		if m.Version != i+1 || len(m.MySQL) == 0 || len(m.Postgres) == 0 {
@@ -271,7 +280,7 @@ func InspectWithKeys(data []byte, officialKeys []ed25519.PublicKey) (Package, bo
 		return p, false, err
 	}
 	if strings.HasPrefix(p.Manifest.ID, "wishingskin.") && !signedOfficial {
-		return p, false, errors.New("official plugin namespace requires valid signature")
+		return p, false, ErrOfficialSignatureRequired
 	}
 	if err = p.validateStructure(); err != nil {
 		return p, false, err

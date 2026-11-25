@@ -7,7 +7,7 @@ import type { SkinViewer } from 'skinview3d'
 import { t } from '../i18n'
 import { defaultPreviewSkin, disposePreview } from './previewModel'
 
-const props = defineProps<{ name: string; model: string; skinHash: string; capeHash: string }>()
+const props = defineProps<{ name: string; model: string; skinHash: string; capeHash: string; skinDataUrl?: string; compact?: boolean }>()
 const emit = defineEmits<{ fallback: [] }>()
 const stage = ref<HTMLDivElement>()
 const canvas = ref<HTMLCanvasElement>()
@@ -173,8 +173,9 @@ async function initialize() {
     current.canvas.addEventListener('webglcontextlost', contextLost)
     resize()
     phase = 'texture'
+    const skinSource = props.skinDataUrl || (props.skinHash ? `/textures/${encodeURIComponent(props.skinHash)}` : defaultPreviewSkin(props.model))
     const [skin, cape] = await Promise.all([
-      loadTexture(props.skinHash ? `/textures/${encodeURIComponent(props.skinHash)}` : defaultPreviewSkin(props.model), '皮肤', request.signal, bitmaps),
+      loadTexture(skinSource, '皮肤', request.signal, bitmaps),
       props.capeHash ? loadTexture(`/textures/${encodeURIComponent(props.capeHash)}`, '披风', request.signal, bitmaps) : Promise.resolve(null),
     ])
     if (!mounted || run !== generation || request.signal.aborted) return
@@ -231,9 +232,37 @@ function motionChanged() {
 	else updateMotion()
 }
 
+let skinUpdateGeneration = 0
+
+async function refreshLiveSkin() {
+  if (!viewer || state.value !== 'ready' || !props.skinDataUrl) return
+  if (props.model !== 'default' && props.model !== 'slim') return
+  const run = ++skinUpdateGeneration
+  const current = viewer
+  try {
+    const response = await fetch(props.skinDataUrl)
+    if (!response.ok || !mounted || run !== skinUpdateGeneration || viewer !== current) return
+    const bitmap = await createImageBitmap(await response.blob())
+    try {
+      if (!mounted || run !== skinUpdateGeneration || viewer !== current) return
+      current.loadSkin(bitmap, { model: props.model })
+      applyAppearanceOptions()
+    } finally {
+      bitmap.close()
+    }
+  } catch {
+    // Keep last rendered skin frame on transient decode errors.
+  }
+}
+
 watch(rotating, updateMotion)
 watch(pose, updateMotion)
 watch([outerLayer, backEquipment], applyAppearanceOptions)
+watch([() => props.skinDataUrl, () => props.model], () => {
+  if (props.skinDataUrl && viewer && state.value === 'ready') {
+    void refreshLiveSkin()
+  }
+})
 onMounted(() => {
   mounted = true
   motionQuery = window.matchMedia('(prefers-reduced-motion: reduce)')
@@ -266,7 +295,7 @@ onBeforeUnmount(() => {
 </script>
 
 <template>
-  <section class="character-viewer" :aria-label="t('“{name}”的模型预览', { name })">
+  <section class="character-viewer" :class="{ compact: props.compact }" :aria-label="t('“{name}”的模型预览', { name })">
     <div class="appearance-heading"><h3>{{ t("角色外观") }}</h3><span>{{ t("3D 预览") }}</span></div>
     <div ref="stage" class="viewer-stage" :class="{ 'viewer-unavailable': state === 'error' }" :aria-busy="state === 'loading'">
       <canvas :key="attempt" ref="canvas" class="character-canvas" :class="{ 'canvas-ready': state === 'ready' }" role="img" :aria-label="t('“{name}”的三维角色外观，可使用下方按钮调整视角', { name })"></canvas>
@@ -304,7 +333,7 @@ onBeforeUnmount(() => {
 </template>
 
 <style scoped>
-.character-viewer{margin-top:24px}.appearance-heading{display:flex;align-items:center;justify-content:space-between;margin-bottom:12px}.appearance-heading h3{font-size:var(--font-body);font-weight:600}.appearance-heading>span{font-size:var(--font-small);color:var(--muted)}.viewer-stage{height:420px;position:relative;overflow:hidden;border:1px solid var(--border);border-radius:var(--radius-card);background:radial-gradient(ellipse at 50% 85%,var(--accent-soft),transparent 62%),var(--subtle)}.viewer-stage::after{content:"";position:absolute;left:22%;right:22%;bottom:36px;height:1px;background:var(--border);pointer-events:none}.character-canvas{display:block;visibility:hidden;touch-action:none;cursor:grab;max-width:100%}.character-canvas:active{cursor:grabbing}.canvas-ready{visibility:visible}.viewer-message{position:absolute;inset:0;display:flex;align-items:center;justify-content:center;flex-direction:column;gap:15px;padding:30px;text-align:center;color:var(--muted);font-size:var(--font-body);line-height:1.9}.viewer-error{max-width:420px;margin:auto}.viewer-error-symbol{font-size:var(--font-title);color:var(--muted)}.viewer-message .secondary-button{margin-top:4px}.viewer-interaction-hint{position:absolute;bottom:14px;left:12px;right:12px;text-align:center;font-size:var(--font-small);color:var(--muted);pointer-events:none}.viewer-motion-buttons{display:flex;gap:8px;flex-wrap:wrap;align-items:center}.viewer-pose-select select{min-height:33px;padding:6px 10px;border:1px solid var(--border);border-radius:var(--radius-control);background:var(--panel);color:var(--ink);font:inherit;font-size:var(--font-small)}.viewer-pose-select select:disabled{color:var(--muted);opacity:.65}.viewer-controls{display:flex;align-items:center;justify-content:space-between;flex-wrap:wrap;gap:14px;padding-top:13px}.view-buttons{display:flex;gap:7px;flex-wrap:wrap}.view-buttons .secondary-button{font-size:var(--font-small);min-height:33px;padding:7px 11px}.view-buttons .zoom-button{font-size:var(--font-body);width:33px;padding:4px}.rotation-button{font-size:var(--font-small);min-height:33px;padding:7px 11px}.rotation-button[aria-pressed=true]{border-color:var(--accent);background:var(--accent-soft);color:var(--accent)}.rotation-button:disabled{color:var(--muted);cursor:default}.viewer-note{font-size:var(--font-small);line-height:1.8;margin-top:12px;color:var(--muted)}
+.character-viewer{margin-top:24px}.character-viewer.compact{margin-top:0}.character-viewer.compact .viewer-stage{height:320px}.appearance-heading{display:flex;align-items:center;justify-content:space-between;margin-bottom:12px}.appearance-heading h3{font-size:var(--font-body);font-weight:600}.appearance-heading>span{font-size:var(--font-small);color:var(--muted)}.viewer-stage{height:420px;position:relative;overflow:hidden;border:1px solid var(--border);border-radius:var(--radius-card);background:radial-gradient(ellipse at 50% 85%,var(--accent-soft),transparent 62%),var(--subtle)}.viewer-stage::after{content:"";position:absolute;left:22%;right:22%;bottom:36px;height:1px;background:var(--border);pointer-events:none}.character-canvas{display:block;visibility:hidden;touch-action:none;cursor:grab;max-width:100%}.character-canvas:active{cursor:grabbing}.canvas-ready{visibility:visible}.viewer-message{position:absolute;inset:0;display:flex;align-items:center;justify-content:center;flex-direction:column;gap:15px;padding:30px;text-align:center;color:var(--muted);font-size:var(--font-body);line-height:1.9}.viewer-error{max-width:420px;margin:auto}.viewer-error-symbol{font-size:var(--font-title);color:var(--muted)}.viewer-message .secondary-button{margin-top:4px}.viewer-interaction-hint{position:absolute;bottom:14px;left:12px;right:12px;text-align:center;font-size:var(--font-small);color:var(--muted);pointer-events:none}.viewer-motion-buttons{display:flex;gap:8px;flex-wrap:wrap;align-items:center}.viewer-pose-select select{min-height:33px;padding:6px 10px;border:1px solid var(--border);border-radius:var(--radius-control);background:var(--panel);color:var(--ink);font:inherit;font-size:var(--font-small)}.viewer-pose-select select:disabled{color:var(--muted);opacity:.65}.viewer-controls{display:flex;align-items:center;justify-content:space-between;flex-wrap:wrap;gap:14px;padding-top:13px}.view-buttons{display:flex;gap:7px;flex-wrap:wrap}.view-buttons .secondary-button{font-size:var(--font-small);min-height:33px;padding:7px 11px}.view-buttons .zoom-button{font-size:var(--font-body);width:33px;padding:4px}.rotation-button{font-size:var(--font-small);min-height:33px;padding:7px 11px}.rotation-button[aria-pressed=true]{border-color:var(--accent);background:var(--accent-soft);color:var(--accent)}.rotation-button:disabled{color:var(--muted);cursor:default}.viewer-note{font-size:var(--font-small);line-height:1.8;margin-top:12px;color:var(--muted)}
 @media(max-width:1100px){.viewer-stage{height:370px}}
 @media(max-width:560px){.viewer-stage{height:340px}.viewer-controls{gap:7px}.view-buttons{gap:5px}.view-buttons .secondary-button{padding:6px 9px}.view-buttons .zoom-button{width:30px}.viewer-interaction-hint{font-size:var(--font-small)}.viewer-note{font-size:var(--font-small)}.viewer-message{padding:22px;font-size:var(--font-small)}}
 </style>
