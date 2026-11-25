@@ -2,6 +2,7 @@ package httpapi
 
 import (
 	"context"
+	"crypto/ed25519"
 	"crypto/rand"
 	"crypto/sha256"
 	"crypto/subtle"
@@ -11,10 +12,12 @@ import (
 	"errors"
 	"io"
 	"io/fs"
+	"net"
 	"net/http"
 	"net/netip"
 	"net/url"
 	"path"
+	"slices"
 	"strconv"
 	"strings"
 	"sync"
@@ -34,6 +37,7 @@ type Config struct {
 	PublicURL, TextureDir, Version                  string
 	TextureAccountLimitBytes, TextureSiteLimitBytes int64
 	PluginDir                                       string
+	OfficialPluginPublicKeys                        []ed25519.PublicKey
 	Assets                                          fs.FS
 	MailSender                                      MailSender
 	Challenge                                       ChallengeVerifier
@@ -49,6 +53,10 @@ type Server struct {
 	communityRuntime   communityRuntime
 	dynamic            *runtimeplugin.Manager
 	dynamicMu          sync.Mutex
+	hostAPI            *http.Server
+	hostAPIListener    net.Listener
+	hostAPIURL         string
+	hostAuth           *pluginHostAuth
 	ops                operationsRuntime
 	s                  *store.Store
 	cfg                Config
@@ -235,8 +243,24 @@ func (a *Server) serveAssetOrSPA(w http.ResponseWriter, r *http.Request) {
 	pagePath := strings.TrimSuffix(r.URL.Path, "/")
 	known := isSPAPath(r.URL.Path)
 	pluginPage := strings.HasPrefix(pagePath, "/admin/plugins/")
+	userToolPage := strings.HasPrefix(pagePath, "/user/tools/")
 	if known && pluginPage && a.plugins != nil {
 		_, known = a.plugins.State(strings.TrimPrefix(pagePath, "/admin/plugins/"))
+	}
+	if known && userToolPage {
+		rest := strings.TrimPrefix(pagePath, "/user/tools/")
+		pid, fid, ok := strings.Cut(rest, "/")
+		known = false
+		if ok && a.dynamic != nil {
+			if item, exists := a.dynamic.Get(pid); exists && slices.Contains(item.Grants, "user.frontend") {
+				for _, uf := range item.Package.UserFrontends {
+					if uf.ID == fid {
+						known = true
+						break
+					}
+				}
+			}
+		}
 	}
 	if known {
 		clone := r.Clone(r.Context())
@@ -251,7 +275,7 @@ func (a *Server) serveAssetOrSPA(w http.ResponseWriter, r *http.Request) {
 		http.FileServerFS(a.cfg.Assets).ServeHTTP(w, r)
 		return
 	}
-	if strings.HasPrefix(r.URL.Path, "/assets/") || (path.Ext(r.URL.Path) != "" && !pluginPage) {
+	if strings.HasPrefix(r.URL.Path, "/assets/") || (path.Ext(r.URL.Path) != "" && !pluginPage && !userToolPage) {
 		http.FileServerFS(a.cfg.Assets).ServeHTTP(w, r)
 		return
 	}

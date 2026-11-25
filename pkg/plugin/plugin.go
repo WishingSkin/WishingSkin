@@ -145,6 +145,32 @@ type SettingField struct {
 	Label string `json:"label"`
 	Type  string `json:"type"`
 }
+type UserFrontend struct {
+	ID          string   `json:"id"`
+	Label       string   `json:"label"`
+	Description string   `json:"description,omitempty"`
+	Slot        string   `json:"slot"`
+	Path        string   `json:"path"`
+	Kinds       []string `json:"kinds,omitempty"`
+}
+type HookRequest struct {
+	Name      string            `json:"name"`
+	Scope     string            `json:"scope"`
+	UserID    int64             `json:"userId"`
+	Fields    map[string]string `json:"fields,omitempty"`
+	Kind      string            `json:"kind,omitempty"`
+	Model     string            `json:"model,omitempty"`
+	Tags      []string          `json:"tags,omitempty"`
+	Width     int               `json:"width,omitempty"`
+	Height    int               `json:"height,omitempty"`
+	SizeBytes int64             `json:"sizeBytes,omitempty"`
+	SHA256    string            `json:"sha256,omitempty"`
+	PNGBase64 string            `json:"pngBase64,omitempty"`
+}
+type HookDecision struct {
+	Decision string `json:"decision"`
+	Reason   string `json:"reason,omitempty"`
+}
 type Principal struct {
 	ID    int64
 	Admin bool

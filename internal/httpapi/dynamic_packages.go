@@ -69,7 +69,15 @@ func (a *Server) initDynamicPlugins() error {
 	if root == "" {
 		root = filepath.Join(a.cfg.TextureDir, ".plugins")
 	}
-	m, err := runtimeplugin.Open(root)
+	a.hostAuth = newPluginHostAuth()
+	if err := a.startPluginHostAPI(); err != nil {
+		return err
+	}
+	m, err := runtimeplugin.OpenWithOptions(root, runtimeplugin.Options{
+		OfficialPublicKeys: a.officialPluginPublicKeys(),
+		HostAPIURL:         a.hostAPIURL,
+		HostTokenFunc:      a.hostAuth.tokenFor,
+	})
 	if err != nil {
 		return err
 	}
@@ -92,6 +100,7 @@ func (a *Server) initDynamicPlugins() error {
 	a.mux.HandleFunc("POST /api/admin/plugin-packages/{id}/reload", a.reloadDynamicPackage)
 	a.mux.HandleFunc("DELETE /api/admin/plugin-packages/{id}", a.removeDynamicPackage)
 	a.mux.HandleFunc("GET /api/admin/plugin-packages/{id}/frontend", a.dynamicFrontend)
+	a.mux.HandleFunc("GET /api/user/plugin-packages/{id}/frontend/{fid}", a.userDynamicFrontend)
 	a.registerPluginMarket()
 	a.registerWebhooks()
 	return nil
@@ -137,12 +146,12 @@ func (a *Server) inspectDynamicPackage(w http.ResponseWriter, r *http.Request) {
 	if !ok {
 		return
 	}
-	pkg, err := runtimeplugin.Inspect(data)
+	pkg, signed, err := runtimeplugin.InspectWithKeys(data, a.officialPluginPublicKeys())
 	if err != nil || pkg.ValidateRoutePaths() != nil {
 		failure(w, 400, "插件包格式无效或不支持当前平台")
 		return
 	}
-	respond(w, 200, map[string]any{"package": pkg, "digest": runtimeplugin.Digest(data)})
+	respond(w, 200, map[string]any{"package": pkg, "digest": runtimeplugin.Digest(data), "signedOfficial": signed})
 }
 func (a *Server) installDynamicPackage(w http.ResponseWriter, r *http.Request) {
 	u, ok := a.adminRequest(w, r)
@@ -167,14 +176,14 @@ func (a *Server) installDynamicPackage(w http.ResponseWriter, r *http.Request) {
 		pluginActivationError(w, err)
 		return
 	}
-	pkg, _ := runtimeplugin.Inspect(data)
+	pkg, _, _ := runtimeplugin.InspectWithKeys(data, a.officialPluginPublicKeys())
 	_ = a.recordDynamicEvent(r.Context(), u.ID, "plugin.install", pkg.Manifest.ID)
 	respond(w, 200, map[string]bool{"installed": true})
 }
 func (a *Server) activatePackage(ctx context.Context, data []byte, grants []string) error {
 	a.dynamicMu.Lock()
 	defer a.dynamicMu.Unlock()
-	pkg, err := runtimeplugin.Inspect(data)
+	pkg, _, err := runtimeplugin.InspectWithKeys(data, a.officialPluginPublicKeys())
 	if err != nil {
 		return err
 	}
@@ -262,6 +271,7 @@ func (a *Server) activatePackage(ctx context.Context, data []byte, grants []stri
 		}
 	}
 	a.cancelCommunityTasks(id)
+	a.hostAuth.rotate(id)
 	_ = a.dynamic.Reload(id)
 	if err = a.applyPluginMigrations(ctx, id, steps); err != nil {
 		return errors.Join(errPluginUpgradePending, err)
@@ -375,6 +385,7 @@ func (a *Server) reloadDynamicPackage(w http.ResponseWriter, r *http.Request) {
 	lock.Lock()
 	defer lock.Unlock()
 	a.cancelCommunityTasks(id)
+	a.hostAuth.rotate(id)
 	if err := a.dynamic.Reload(id); err != nil {
 		http.NotFound(w, r)
 		return
@@ -448,6 +459,7 @@ func (a *Server) removeDynamicPackage(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	a.cancelCommunityTasks(id)
+	a.hostAuth.rotate(id)
 	if err := a.dynamic.Uninstall(id); err != nil {
 		failure(w, 503, "操作失败")
 		return

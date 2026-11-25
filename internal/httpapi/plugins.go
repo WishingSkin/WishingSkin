@@ -5,6 +5,7 @@ import (
 	"database/sql"
 	localstorage "github.com/WishingSkin/WishingSkin/internal/storage"
 	"net/http"
+	"slices"
 )
 
 func (a *Server) registerPlugins() {
@@ -12,6 +13,7 @@ func (a *Server) registerPlugins() {
 	a.mux.HandleFunc("GET /api/admin/plugin-runtime/{id}/pages/{page}", a.adminPluginPage)
 	a.mux.HandleFunc("POST /api/admin/plugin-runtime/{id}/tasks/{task}", a.adminStartPluginTask)
 	a.mux.HandleFunc("GET /api/admin/plugins", a.adminPlugins)
+	a.mux.HandleFunc("GET /api/user/plugins", a.userPlugins)
 	a.mux.HandleFunc("GET /api/admin/object-storage", a.adminObjectStorage)
 	a.mux.HandleFunc("PATCH /api/admin/object-storage", a.updateObjectStorage)
 	a.mux.HandleFunc("GET /api/admin/plugin-settings/{id}", a.communitySettings)
@@ -58,25 +60,30 @@ func (a *Server) adminPlugins(w http.ResponseWriter, r *http.Request) {
 			return
 		}
 		item := map[string]any{
-			"name": state.Manifest.Name, "description": state.Manifest.Description, "settings": state.Manifest.Settings, "origin": pluginOrigin(state.Manifest.ID), "id": state.Manifest.ID, "version": state.Manifest.Version, "dependencies": state.Manifest.Dependencies,
+			"name": state.Manifest.Name, "description": state.Manifest.Description, "settings": state.Manifest.Settings, "origin": pluginOrigin(state.Manifest.ID), "external": a.isExternalPlugin(state.Manifest.ID), "id": state.Manifest.ID, "version": state.Manifest.Version, "dependencies": state.Manifest.Dependencies,
 			"settingsNamespace": state.Manifest.SettingsNamespace, "migrationVersion": state.Manifest.MigrationVersion,
 			"routes": state.Manifest.Routes, "capabilities": state.Manifest.Capabilities, "events": state.Manifest.Events,
 			"pages": state.Manifest.Pages, "tasks": state.Manifest.Tasks, "permissions": state.Manifest.Permissions,
 			"enabled": enabled && state.Enabled, "error": state.Error,
 		}
-		if installed, exists := a.dynamic.Get(state.Manifest.ID); exists {
-			checkpoint, err := a.dynamicCheckpoint(r.Context(), a.s.DB, state.Manifest.ID)
-			if err != nil {
-				failure(w, 503, "暂时无法读取插件状态")
-				return
-			}
-			if checkpoint.Pending {
-				item["enabled"] = false
-				item["recoveryRequired"] = true
-			}
-			if !checkpoint.Pending && checkpoint.Digest != "" && checkpoint.Digest != installed.Digest {
-				item["enabled"] = false
-				item["staleRuntime"] = true
+		if a.dynamic != nil {
+			if installed, exists := a.dynamic.Get(state.Manifest.ID); exists {
+				item["signedOfficial"] = installed.SignedOfficial
+				item["hooks"] = slices.Clone(installed.Package.Hooks)
+				item["userFrontends"] = slices.Clone(installed.Package.UserFrontends)
+				checkpoint, err := a.dynamicCheckpoint(r.Context(), a.s.DB, state.Manifest.ID)
+				if err != nil {
+					failure(w, 503, "暂时无法读取插件状态")
+					return
+				}
+				if checkpoint.Pending {
+					item["enabled"] = false
+					item["recoveryRequired"] = true
+				}
+				if !checkpoint.Pending && checkpoint.Digest != "" && checkpoint.Digest != installed.Digest {
+					item["enabled"] = false
+					item["staleRuntime"] = true
+				}
 			}
 		}
 		items = append(items, item)
@@ -216,6 +223,7 @@ func (a *Server) updatePlugin(w http.ResponseWriter, r *http.Request) {
 		failure(w, 503, "插件状态保存失败")
 		return
 	}
+	a.hostAuth.rotate(state.Manifest.ID)
 	if !*body.Enabled {
 		a.cancelCommunityTasks(state.Manifest.ID)
 		if a.dynamic != nil {
@@ -223,4 +231,32 @@ func (a *Server) updatePlugin(w http.ResponseWriter, r *http.Request) {
 		}
 	}
 	respond(w, 200, map[string]any{"name": state.Manifest.Name, "description": state.Manifest.Description, "settings": state.Manifest.Settings, "origin": pluginOrigin(state.Manifest.ID), "id": state.Manifest.ID, "enabled": *body.Enabled})
+}
+
+func (a *Server) userPlugins(w http.ResponseWriter, r *http.Request) {
+	if _, _, err := a.current(r); err != nil {
+		sessionError(w, err)
+		return
+	}
+	items := []map[string]any{}
+	if a.dynamic != nil {
+		for _, item := range a.dynamic.Items() {
+			id := item.Package.Manifest.ID
+			if len(item.Package.UserFrontends) == 0 || !slices.Contains(item.Grants, "user.frontend") {
+				continue
+			}
+			if !a.availableCommunity(r.Context(), id) {
+				continue
+			}
+			items = append(items, map[string]any{
+				"id":             id,
+				"name":           item.Package.Manifest.Name,
+				"description":    item.Package.Manifest.Description,
+				"version":        item.Package.Manifest.Version,
+				"signedOfficial": item.SignedOfficial,
+				"frontends":      slices.Clone(item.Package.UserFrontends),
+			})
+		}
+	}
+	respond(w, 200, map[string]any{"plugins": items})
 }

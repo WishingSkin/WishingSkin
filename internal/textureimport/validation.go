@@ -173,6 +173,10 @@ func ReadContentPolicy(ctx context.Context, reader RowReader) (ContentPolicy, er
 	return policy.Normalized(), err
 }
 
+func DecodeJSONString(raw string, out any) error {
+	return json.Unmarshal([]byte(raw), out)
+}
+
 func readSetting(ctx context.Context, reader RowReader, query string, out any) error {
 	var raw string
 	err := reader.QueryRowContext(ctx, query).Scan(&raw)

@@ -497,6 +497,9 @@ func (a *Server) confirmMinecraft(w http.ResponseWriter, r *http.Request) {
 		}
 	}
 	a.oidcCookie(w, minecraftConfirmCookie, "", -1)
+	if body.Action == "confirm" {
+		a.publishPluginEvent(r.Context(), "minecraft.link", user.ID, flow.UUID)
+	}
 	respond(w, 200, map[string]string{"next": next})
 }
 
@@ -516,11 +519,13 @@ func (a *Server) unlinkMinecraft(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	defer tx.Rollback()
+	var linkedUUID string
 	err = a.lockWebAccount(ctx, tx, user.ID, session)
 	if err == nil {
 		err = a.lockAuthenticatedUser(ctx, tx, user)
 	}
 	if err == nil {
+		_ = tx.QueryRowContext(ctx, a.s.Bind("SELECT mc_uuid FROM minecraft_verifications WHERE user_id=?"), user.ID).Scan(&linkedUUID)
 		_, err = tx.ExecContext(ctx, a.s.Bind("DELETE FROM minecraft_verifications WHERE user_id=?"), user.ID)
 	}
 	if err == nil {
@@ -533,6 +538,11 @@ func (a *Server) unlinkMinecraft(w http.ResponseWriter, r *http.Request) {
 		minecraftWriteError(w, err)
 		return
 	}
+	resourceID := linkedUUID
+	if resourceID == "" {
+		resourceID = strconv.FormatInt(user.ID, 10)
+	}
+	a.publishPluginEvent(r.Context(), "minecraft.unlink", user.ID, resourceID)
 	w.WriteHeader(204)
 }
 

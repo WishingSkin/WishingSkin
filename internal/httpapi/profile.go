@@ -59,6 +59,10 @@ func (a *Server) updateAccountProfile(w http.ResponseWriter, r *http.Request) {
 		failure(w, 400, "头像模式无效")
 		return
 	}
+	if decision := a.runTextHook(r.Context(), "profile.nickname", u.ID, map[string]string{"nickname": body.Nickname}); decision.Decision == "reject" {
+		failure(w, 400, decision.Reason)
+		return
+	}
 	tx, err := a.s.DB.BeginTx(r.Context(), nil)
 	if err != nil {
 		failure(w, 503, "暂时无法保存个人资料")

@@ -4,6 +4,7 @@ import (
 	"archive/zip"
 	"bytes"
 	"context"
+	"crypto/ed25519"
 	"encoding/hex"
 	"encoding/json"
 	"errors"
@@ -16,24 +17,45 @@ import (
 	"sync"
 )
 
+type Options struct {
+	OfficialPublicKeys []ed25519.PublicKey
+	HostAPIURL         string
+	HostTokenFunc      func(pluginID string) string
+}
+
 type Installed struct {
-	Package Package  `json:"package"`
-	Digest  string   `json:"digest"`
-	Grants  []string `json:"grants"`
+	Package        Package  `json:"package"`
+	Digest         string   `json:"digest"`
+	Grants         []string `json:"grants"`
+	SignedOfficial bool     `json:"signedOfficial,omitempty"`
 }
 type Manager struct {
-	mu        sync.RWMutex
-	root      string
-	items     map[string]Installed
-	processes map[string]*process
-	closed    bool
+	mu            sync.RWMutex
+	root          string
+	items         map[string]Installed
+	processes     map[string]*process
+	closed        bool
+	officialKeys  []ed25519.PublicKey
+	hostAPIURL    string
+	hostTokenFunc func(string) string
 }
 
 func Open(root string) (*Manager, error) {
+	return OpenWithOptions(root, Options{OfficialPublicKeys: BuiltInOfficialPublicKeys()})
+}
+
+func OpenWithOptions(root string, opts Options) (*Manager, error) {
 	if err := os.MkdirAll(root, 0700); err != nil {
 		return nil, err
 	}
-	m := &Manager{root: root, items: map[string]Installed{}, processes: map[string]*process{}}
+	m := &Manager{
+		root:          root,
+		items:         map[string]Installed{},
+		processes:     map[string]*process{},
+		officialKeys:  slices.Clone(opts.OfficialPublicKeys),
+		hostAPIURL:    opts.HostAPIURL,
+		hostTokenFunc: opts.HostTokenFunc,
+	}
 	data, err := os.ReadFile(filepath.Join(root, "installed.json"))
 	if errors.Is(err, os.ErrNotExist) {
 		return m, nil
@@ -52,14 +74,16 @@ func Open(root string) (*Manager, error) {
 		if err != nil || Digest(archive) != item.Digest {
 			return nil, errors.New("installed package checksum mismatch")
 		}
-		pkg, err := Inspect(archive)
+		pkg, signed, err := InspectWithKeys(archive, m.officialKeys)
 		if err != nil || !reflect.DeepEqual(pkg, item.Package) {
 			return nil, errors.New("installed package manifest mismatch")
 		}
-		if item.Package.Manifest.ID != id || item.Package.Validate() != nil || len(item.Digest) != 64 {
+		if item.Package.Manifest.ID != id || item.Package.validateStructure() != nil || len(item.Digest) != 64 {
 			return nil, errors.New("invalid installed plugin index")
 		}
-		if err := verifyExtracted(m.Root(item), item.Package); err != nil {
+		item.SignedOfficial = signed
+		m.items[id] = item
+		if err := verifyExtractedWithKeys(m.Root(item), item.Package, m.officialKeys); err != nil {
 			return nil, err
 		}
 		for _, grant := range item.Package.Manifest.Permissions {
@@ -70,6 +94,14 @@ func Open(root string) (*Manager, error) {
 	}
 	return m, nil
 }
+
+func (m *Manager) SetHostAPI(hostAPIURL string, tokenFunc func(string) string) {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	m.hostAPIURL = hostAPIURL
+	m.hostTokenFunc = tokenFunc
+}
+
 func (m *Manager) Root(item Installed) string {
 	return filepath.Join(m.root, item.Package.Manifest.ID, item.Digest)
 }
@@ -101,9 +133,9 @@ func (m *Manager) save() error {
 	return os.Rename(name, filepath.Join(m.root, "installed.json"))
 }
 
-// Install validates before activation. Previous versions remain available on disk.
+// Stage validates and unpacks an archive before activation. Previous versions remain available on disk.
 func (m *Manager) Stage(data []byte, grants []string) (Installed, error) {
-	pkg, err := Inspect(data)
+	pkg, signed, err := InspectWithKeys(data, m.officialKeys)
 	if err != nil {
 		return Installed{}, err
 	}
@@ -115,7 +147,7 @@ func (m *Manager) Stage(data []byte, grants []string) (Installed, error) {
 	if len(grants) != len(pkg.Manifest.Permissions) {
 		return Installed{}, errors.New("unexpected permissions")
 	}
-	item := Installed{Package: pkg, Digest: Digest(data), Grants: slices.Clone(grants)}
+	item := Installed{Package: pkg, Digest: Digest(data), Grants: slices.Clone(grants), SignedOfficial: signed}
 	m.mu.Lock()
 	defer m.mu.Unlock()
 	if m.closed {
@@ -123,7 +155,7 @@ func (m *Manager) Stage(data []byte, grants []string) (Installed, error) {
 	}
 	root := m.Root(item)
 	if archive, e := os.ReadFile(root + ".zip"); e == nil && Digest(archive) == item.Digest {
-		return item, verifyExtracted(root, pkg)
+		return item, verifyExtractedWithKeys(root, pkg, m.officialKeys)
 	}
 	if err = os.MkdirAll(root, 0700); err != nil {
 		return Installed{}, err
@@ -167,14 +199,22 @@ func (m *Manager) Stage(data []byte, grants []string) (Installed, error) {
 func (m *Manager) Probe(ctx context.Context, item Installed) error {
 	p := &process{}
 	defer p.close()
-	data, err := p.call(ctx, m.Root(item), item.Package, map[string]string{"kind": "health"})
+	m.mu.RLock()
+	officialKeys := m.officialKeys
+	hostAPIURL := m.hostAPIURL
+	hostToken := ""
+	if m.hostTokenFunc != nil {
+		hostToken = m.hostTokenFunc(item.Package.Manifest.ID)
+	}
+	m.mu.RUnlock()
+	data, err := p.call(ctx, m.Root(item), item.Package, map[string]string{"kind": "health"}, officialKeys, hostAPIURL, hostToken)
 	if err != nil {
 		return err
 	}
 	var health struct {
 		Protocol int `json:"protocol"`
 	}
-	if json.Unmarshal(data, &health) != nil || health.Protocol != 1 {
+	if json.Unmarshal(data, &health) != nil || health.Protocol != item.Package.Protocol {
 		return errors.New("unsupported runtime protocol")
 	}
 	return nil
@@ -252,8 +292,14 @@ func (m *Manager) Call(ctx context.Context, id string, request any) (json.RawMes
 		m.processes[id] = p
 	}
 	root := m.Root(item)
+	officialKeys := m.officialKeys
+	hostAPIURL := m.hostAPIURL
+	hostToken := ""
+	if m.hostTokenFunc != nil {
+		hostToken = m.hostTokenFunc(id)
+	}
 	m.mu.Unlock()
-	return p.call(ctx, root, item.Package, request)
+	return p.call(ctx, root, item.Package, request, officialKeys, hostAPIURL, hostToken)
 }
 func (m *Manager) Close() {
 	m.mu.Lock()
@@ -267,6 +313,10 @@ func (m *Manager) Close() {
 
 // verifyExtracted checks executable and frontend bytes before launching a process.
 func verifyExtracted(root string, pkg Package) error {
+	return verifyExtractedWithKeys(root, pkg, BuiltInOfficialPublicKeys())
+}
+
+func verifyExtractedWithKeys(root string, pkg Package, officialKeys []ed25519.PublicKey) error {
 	data, err := os.ReadFile(root + ".zip")
 	if err != nil {
 		return err
@@ -274,7 +324,7 @@ func verifyExtracted(root string, pkg Package) error {
 	if Digest(data) != filepath.Base(root) {
 		return errors.New("package checksum mismatch")
 	}
-	expected, err := Inspect(data)
+	expected, _, err := InspectWithKeys(data, officialKeys)
 	if err != nil || !reflect.DeepEqual(expected, pkg) {
 		return errors.New("package manifest mismatch")
 	}

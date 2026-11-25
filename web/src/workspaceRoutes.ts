@@ -25,6 +25,7 @@ export function canonicalWorkspaceURL(path: string, search = '') {
 const pagePaths = new Set(pageRoutes.paths)
 const libraryPagePattern = new RegExp(pageRoutes.libraryPath)
 const pluginPagePattern = new RegExp(pageRoutes.pluginPath)
+const userToolPagePattern = new RegExp(pageRoutes.userToolPath)
 
 export function libraryItemId(path: string) {
   const normalized = normalizePath(path)
@@ -35,10 +36,22 @@ export function libraryItemPath(id: string) {
   return id ? `/library/${encodeURIComponent(id)}` : '/library'
 }
 
+export function userToolPath(pluginId = '', frontendId = '') {
+  return pluginId && frontendId ? `/user/tools/${encodeURIComponent(pluginId)}/${encodeURIComponent(frontendId)}` : '/user/tools'
+}
+
+export function userToolRoute(path: string) {
+  const normalized = canonicalWorkspaceURL(path)
+  if (!userToolPagePattern.test(normalized)) return null
+  const [pluginId = '', frontendId = ''] = normalized.slice('/user/tools/'.length).split('/')
+  if (!pluginId || !frontendId || pluginId.length > 64 || frontendId.length > 64) return null
+  return { pluginId, frontendId }
+}
+
 export function isPagePath(path: string) {
   const normalized = normalizePath(path)
   const canonical = (pageRoutes.aliases as Record<string, string>)[normalized] || normalized
-  return pagePaths.has(canonical) || libraryPagePattern.test(canonical) || (pluginPagePattern.test(canonical) && canonical.slice('/admin/plugins/'.length).length <= 64)
+  return pagePaths.has(canonical) || libraryPagePattern.test(canonical) || (pluginPagePattern.test(canonical) && canonical.slice('/admin/plugins/'.length).length <= 64) || !!userToolRoute(canonical)
 }
 
 export function isProtectedPath(path: string) {
@@ -71,6 +84,7 @@ export function navigationRegion(from: string, to: string) {
   const within = (prefix: string) => [from, to].every(path => path === prefix || path.startsWith(prefix + '/'))
   if (within('/user/account')) return '[data-panel-region="account"]'
   if (within('/user/resources')) return '[data-panel-region="resources"]'
+  if (within('/user/tools')) return '[data-panel-region="tools"]'
   if (within('/admin/settings')) return '[data-panel-region="settings"]'
   if (within('/admin/plugins')) return '[data-panel-region="plugins"]'
   if (within('/admin')) return '[data-panel-region="admin"]'

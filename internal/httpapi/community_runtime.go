@@ -96,7 +96,7 @@ func (h *communityHost) Task(task sdk.Task) error {
 }
 func (a *Server) availableCommunity(ctx context.Context, id string) bool {
 	state, ok := a.plugins.State(id)
-	if !ok || pluginOrigin(id) != "community" || state.Error != "" {
+	if !ok || !a.isExternalPlugin(id) || state.Error != "" {
 		return false
 	}
 	on, err := a.communityEnabled(ctx, id)
@@ -351,7 +351,7 @@ func (a *Server) stopCommunityTasks() {
 }
 func (a *Server) runCommunityTasks(ctx context.Context, now time.Time) {
 	for _, state := range a.plugins.States() {
-		if pluginOrigin(state.Manifest.ID) != "community" {
+		if !a.isExternalPlugin(state.Manifest.ID) {
 			continue
 		}
 		id := state.Manifest.ID

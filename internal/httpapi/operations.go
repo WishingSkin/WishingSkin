@@ -651,6 +651,14 @@ func (a *Server) WaitBackground() {
 	if a.dynamic != nil {
 		a.dynamic.Close()
 	}
+	if a.hostAPI != nil {
+		shutCtx, cancel := context.WithTimeout(context.Background(), 2*time.Second)
+		_ = a.hostAPI.Shutdown(shutCtx)
+		cancel()
+	}
+	if a.hostAPIListener != nil {
+		_ = a.hostAPIListener.Close()
+	}
 }
 
 func validBackupTime(schedule backupSchedule) bool {

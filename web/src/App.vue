@@ -27,7 +27,10 @@ import TexturePicker from './components/TexturePicker.vue'
 import ApplyTextureDialog from './components/ApplyTextureDialog.vue'
 import TextureBrowser from './components/TextureBrowser.vue'
 import ResourceFilters from './components/ResourceFilters.vue'
-import { adminRoute, canonicalWorkspaceURL, isPagePath, isProtectedPath, libraryItemId, libraryItemPath, navigationRegion, normalizePath, resourcePath } from './workspaceRoutes'
+import UserToolsWorkspace from './components/UserToolsWorkspace.vue'
+import PluginFrontend from './components/PluginFrontend.vue'
+import { normalizeUserPlugins, type UserPluginEntry, type UserPluginFrontend } from './pluginModel'
+import { adminRoute, canonicalWorkspaceURL, isPagePath, isProtectedPath, libraryItemId, libraryItemPath, navigationRegion, normalizePath, resourcePath, userToolRoute } from './workspaceRoutes'
 import AccountAccess from './components/AccountAccess.vue'
 import RegistrationSettings from './components/RegistrationSettings.vue'
 import Administration from './components/Administration.vue'
@@ -75,8 +78,12 @@ const passwordBusy = ref(false)
 const passwordError = feedbackRef('error')
 const logoutBusy = ref(false)
 const logoutError = feedbackRef('error')
-type Page = 'characters' | 'resources' | 'wardrobe' | 'library' | 'account' | 'administration'
+type Page = 'characters' | 'resources' | 'wardrobe' | 'library' | 'account' | 'administration' | 'tools'
 const page = ref<Page>('characters')
+const userPlugins = ref<UserPluginEntry[]>([])
+const userPluginsLoading = ref(false)
+const userPluginsError = ref('')
+const activeTextureAction = ref<{ plugin: UserPluginEntry; frontend: UserPluginFrontend; texture: TextureRecord } | null>(null)
 type AccountTab = 'dashboard' | 'profile' | 'points' | 'integration' | 'reports'
 const accountTab = ref<AccountTab>('dashboard')
 const publicHome = ref(true)
@@ -246,6 +253,17 @@ function openMaterialTab(tab: 'browse' | 'upload') {
 }
 function openUpload() { navigate(user.value ? '/user/resources/upload' : '/login?next=/user/resources/upload') }
 const adminView = computed(() => adminRoute(routePath.value))
+const userToolView = computed(() => userToolRoute(routePath.value))
+const hasUserTools = computed(() => userPlugins.value.some(p => p.frontends.some(f => f.slot === 'user.tools')))
+const selectedTextureActions = computed(() => {
+  const tex = selectedTexture.value
+  if (!tex || (tex.reviewState && tex.reviewState !== 'approved')) return []
+  return userPlugins.value.flatMap(plugin =>
+    plugin.frontends
+      .filter(frontend => frontend.slot === 'texture.action' && (!frontend.kinds?.length || frontend.kinds.includes(tex.kind)))
+      .map(frontend => ({ plugin, frontend })),
+  )
+})
 const siteSettingsDirty = computed(() => !!user.value?.isAdmin && adminView.value?.tab === 'settings' && adminView.value.settingsTab === 'site' && (
   adminCharacterLimit.value !== (site.value.characterLimit ?? 1) ||
   adminNonEmailLogin.value !== !!site.value.yggNonEmailLogin
@@ -286,7 +304,8 @@ function setRouteView(path: string, search = '') {
     page.value = 'account'
     const tab = normalized.split('/').pop() as AccountTab
     accountTab.value = ['profile', 'points', 'integration', 'reports'].includes(tab) ? tab : 'dashboard'
-  } else if (normalized === '/admin' || normalized.startsWith('/admin/')) page.value = 'administration'
+  } else if (normalized === '/user/tools' || !!userToolRoute(normalized)) page.value = 'tools'
+  else if (normalized === '/admin' || normalized.startsWith('/admin/')) page.value = 'administration'
   else if (normalized === '/user') page.value = 'characters'
   if (normalized === '/user/resources' || normalized === '/user/resources/upload') {
     materialTab.value = normalized.endsWith('/upload') ? 'upload' : 'browse'
@@ -566,6 +585,10 @@ function clearSession() {
   selectedId.value = null
   textures.value = []
   wardrobe.value = []
+  userPlugins.value = []
+  userPluginsLoading.value = false
+  userPluginsError.value = ''
+  activeTextureAction.value = null
   wardrobeBusy.value = false
   wardrobeError.value = ''
   texturesBusy.value = false
@@ -700,6 +723,39 @@ async function loadWardrobe() {
 }
 
 function expireSession() { clearSession(); loginError.value = '登录已过期，请重新登录。' }
+
+async function loadUserPlugins() {
+  if (!user.value) return
+  const version = sessionVersion
+  userPluginsLoading.value = true
+  userPluginsError.value = ''
+  try {
+    const response = await api('/api/user/plugins')
+    if (version !== sessionVersion) return
+    if (response.status === 401) { expireSession(); return }
+    if (!response.ok) throw new Error('user-plugins')
+    const data = await response.json().catch(() => ({})) as { plugins?: unknown }
+    if (version === sessionVersion) userPlugins.value = normalizeUserPlugins(data.plugins)
+  } catch {
+    if (version === sessionVersion) userPluginsError.value = '用户插件列表暂时无法加载'
+  } finally {
+    if (version === sessionVersion) userPluginsLoading.value = false
+  }
+}
+
+function siteUpdated() {
+  void loadSite()
+  void loadUserPlugins()
+}
+
+function onUserToolMutated(kind: 'textures' | 'characters') {
+  if (kind === 'textures') {
+    void loadTextures()
+    void loadQuota()
+  } else {
+    void loadCharacters()
+  }
+}
 
 async function wearCollected(_texture: LibraryRecord) { await loadCharacters() }
 async function pickTexture(texture: TextureRecord, model?: string) { await bindTexture(texture.kind, texture.id, model); if (!actionError.value) texturePicker.value = undefined }
@@ -897,7 +953,7 @@ async function restoreSession() {
     const response = await api('/api/auth/me')
     if (response.ok) {
       acceptSession(await response.json() as Session)
-      await Promise.all([loadCharacters(), loadTextures(), loadWardrobe()])
+      await Promise.all([loadCharacters(), loadTextures(), loadWardrobe(), loadUserPlugins()])
     } else if (response.status !== 401) {
       throw new Error('session')
     }
@@ -950,7 +1006,7 @@ async function login() {
     captchaRequired.value = false
     emailVerificationRequired.value = false
     password.value = ''
-    await Promise.all([loadCharacters(), loadTextures(), loadWardrobe()])
+    await Promise.all([loadCharacters(), loadTextures(), loadWardrobe(), loadUserPlugins()])
   } catch {
     loginError.value = '无法连接到服务，请检查连接后重试。'
   } finally {
@@ -1056,6 +1112,21 @@ onBeforeUnmount(() => {
   <FeedbackHost />
   <TexturePicker v-if="texturePicker && user && selected" :kind="texturePicker" :busy="actionBusy" @close="texturePicker = undefined" @select="pickTexture" @expired="expireSession" />
   <ApplyTextureDialog v-if="applyingTexture && user" :texture="applyingTexture" :csrf-token="csrfToken" @close="applyingTexture = undefined" @applied="loadCharacters" @expired="expireSession" />
+  <AppModal v-if="activeTextureAction && user" :title="t(activeTextureAction.frontend.label)" wide @close="activeTextureAction = null">
+    <PluginFrontend
+      :key="`${activeTextureAction.plugin.id}:${activeTextureAction.frontend.id}:${activeTextureAction.texture.id}`"
+      :plugin-id="activeTextureAction.plugin.id"
+      :frontend-id="activeTextureAction.frontend.id"
+      scope="user"
+      tall
+      enabled
+      :version="activeTextureAction.plugin.version"
+      :csrf-token="csrfToken"
+      :initial-context="{ texture: activeTextureAction.texture }"
+      @expired="activeTextureAction = null; expireSession()"
+      @mutated="onUserToolMutated"
+    />
+  </AppModal>
   <div class="app-shell">
     <header class="topbar">
       <a class="brand" href="/" :aria-label="t('{name} 首页', { name: site.name })" :title="site.name"><img v-if="site.appearance.logoImage" class="brand-logo" :src="site.appearance.logoImage" alt="" width="36" height="36" /><BrandMark v-else :size="36" /><span class="brand-name"><template v-if="site.name === 'WishingSkin'">Wishing<span class="brand-light">Skin</span></template><template v-else>{{ site.name }}</template></span></a>
@@ -1110,13 +1181,15 @@ onBeforeUnmount(() => {
           <button type="button" class="nav-button" :class="{ active: page === 'characters' }" :aria-current="page === 'characters' ? 'page' : undefined" @click="navigate('/user')"><InterfaceIcon name="characters" />{{ t("角色管理") }}<span class="nav-count">{{ characters.length }}</span></button>
           <button type="button" class="nav-button" :class="{ active: page === 'resources' }" :aria-current="page === 'resources' ? 'page' : undefined" @click="navigate('/user/resources')"><InterfaceIcon name="materials" />{{ t("我的材质") }}</button>
           <button type="button" class="nav-button" :class="{ active: page === 'wardrobe' }" :aria-current="page === 'wardrobe' ? 'page' : undefined" @click="navigate('/user/wardrobe')"><InterfaceIcon name="wardrobe" />{{ t("我的衣柜") }}<span class="nav-count">{{ wardrobeTotal }}</span></button>
+          <button v-if="hasUserTools || page === 'tools'" type="button" class="nav-button" :class="{ active: page === 'tools' }" :aria-current="page === 'tools' ? 'page' : undefined" @click="navigate('/user/tools')"><InterfaceIcon name="tools" />{{ t("工具箱") }}</button>
           <button type="button" class="nav-button" :class="{ active: page === 'account' }" :aria-current="page === 'account' ? 'page' : undefined" @click="navigate('/user/account')"><InterfaceIcon name="account" />{{ t("账号") }}</button>
           <button v-if="user.isAdmin" type="button" class="nav-button" :class="{ active: page === 'administration' }" :aria-current="page === 'administration' ? 'page' : undefined" @click="navigate('/admin')"><InterfaceIcon name="administration" />{{ t('管理后台') }}</button>
         </nav>
       </aside>
 
       <main class="workspace-content">
-        <Administration v-if="page === 'administration' && user.isAdmin && adminView" :csrf-token="csrfToken" :user-id="String(user.id)" :active-tab="adminView.tab" :plugin-id="adminView.pluginId" @navigate="navigate" @expired="expireSession" @updated="loadSite" @user-updated="loadCharacters"><template #settings>
+        <UserToolsWorkspace v-if="page === 'tools'" :csrf-token="csrfToken" :plugins="userPlugins" :loading="userPluginsLoading" :error="userPluginsError" :selected-plugin-id="userToolView?.pluginId || ''" :selected-frontend-id="userToolView?.frontendId || ''" @navigate="navigate" @refresh="loadUserPlugins" @expired="expireSession" @mutated="onUserToolMutated" />
+        <Administration v-if="page === 'administration' && user.isAdmin && adminView" :csrf-token="csrfToken" :user-id="String(user.id)" :active-tab="adminView.tab" :plugin-id="adminView.pluginId" @navigate="navigate" @expired="expireSession" @updated="siteUpdated" @user-updated="loadCharacters"><template #settings>
           <SettingsWorkspace :active-tab="adminView.settingsTab" @navigate="navigate" :site="site" :csrf-token="csrfToken" @updated="loadSite" @expired="expireSession">
           <section class="character-setting" :aria-label="t('角色数量设置')"><form class="inline-form" @submit.prevent="saveCharacterLimit"><label for="character-limit">{{ t("站点每账号角色上限") }}</label><div class="inline-controls"><input id="character-limit" v-model.number="adminCharacterLimit" type="number" min="1" step="1" required :disabled="actionBusy" /><button class="secondary-button" type="submit" :disabled="actionBusy">{{ t("保存设置") }}</button></div><small>{{ t("降低上限不影响已有角色，超出上限的账号暂不可继续新增。") }}</small></form></section>
           <section class="site-setting site-setting--divided" :aria-label="t('外置登录方式')">
@@ -1193,7 +1266,14 @@ onBeforeUnmount(() => {
               <button v-if="(!selectedTexture.reviewState || selectedTexture.reviewState==='approved') && (selectedTexture.owned || selectedTexture.public)" class="secondary-button material-wear" type="button" :disabled="actionBusy || wardrobeBusy || !!wardrobeError || wardrobe.some(item => item.id === selectedTexture?.id)" @click="collectOwnTexture">{{ wardrobe.some(item => item.id === selectedTexture?.id) ? t('已在衣柜') : t('收藏到衣柜') }}</button>
               <p v-if="selectedTexture.reviewState && selectedTexture.reviewState !== 'approved'" class="password-rule">{{ t('材质通过审核后可预览和下载。') }}</p><details v-else :key="selectedTexture.id" class="texture-sources" :open="materialFallback === selectedTexture.id"><summary>{{ t("PNG 材质与下载") }}</summary><div class="texture-preview checkerboard"><img v-if="!failedImages.includes(selectedTexture.fileHash)" :src="textureUrl(selectedTexture.fileHash)" :alt="t('“{name}”的 PNG 材质平面图', { name: selectedTexture.name })" @error="imageFailed(selectedTexture.fileHash)" /><p v-else class="texture-placeholder">{{ t("材质预览加载失败，可尝试下载或刷新列表。") }}</p></div><a class="download-link material-download" :href="textureUrl(selectedTexture.fileHash)" :download="`${selectedTexture.name}.png`">{{ t("下载 PNG") }}</a></details>
               <button class="secondary-button material-wear" type="button" @click="navigate('/user')">{{ t("前往角色管理穿戴") }}</button>
-            <button type="button" class="primary-button material-wear" :disabled="actionBusy || (selectedTexture.reviewState && selectedTexture.reviewState !== 'approved')" @click="applyingTexture = selectedTexture">{{ t('应用到角色') }}</button></div></AppModal>
+              <button type="button" class="primary-button material-wear" :disabled="actionBusy || (selectedTexture.reviewState && selectedTexture.reviewState !== 'approved')" @click="applyingTexture = selectedTexture">{{ t('应用到角色') }}</button>
+              <div v-if="selectedTextureActions.length" class="texture-plugin-actions">
+                <span class="texture-plugin-actions-label">{{ t('更多工具') }}</span>
+                <div class="settings-actions">
+                  <button v-for="item in selectedTextureActions" :key="`${item.plugin.id}:${item.frontend.id}`" type="button" class="secondary-button" @click="activeTextureAction = { plugin: item.plugin, frontend: item.frontend, texture: selectedTexture! }">{{ t(item.frontend.label) }}</button>
+                </div>
+              </div>
+            </div></AppModal>
           </div>
           <div v-show="materialTab === 'upload'" class="upload-workspace">
             <section class="material-panel panel" aria-labelledby="upload-title">

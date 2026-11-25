@@ -3,19 +3,57 @@ package httpapi
 import (
 	"context"
 	"database/sql"
+	"encoding/base64"
 	"encoding/json"
 	"errors"
 	"io"
 	"net/http"
 	"os"
 	"path/filepath"
+	"regexp"
 	"slices"
+	"strconv"
 	"strings"
 	"sync"
 	"time"
 	"github.com/WishingSkin/WishingSkin/internal/runtimeplugin"
 	sdk "github.com/WishingSkin/WishingSkin/pkg/plugin"
 )
+
+var (
+	pluginCacheControlPattern = regexp.MustCompile(`^public,\s*max-age=(\d+)$`)
+)
+
+func allowedPluginBinaryType(contentType string) bool {
+	switch contentType {
+	case "image/png", "image/webp", "image/svg+xml", "text/plain; charset=utf-8", "application/octet-stream":
+		return true
+	default:
+		return false
+	}
+}
+
+func validPluginCacheControl(value string) bool {
+	matches := pluginCacheControlPattern.FindStringSubmatch(value)
+	if len(matches) != 2 {
+		return false
+	}
+	seconds, err := strconv.Atoi(matches[1])
+	return err == nil && seconds >= 0 && seconds <= 86400
+}
+
+func validPluginETag(value string) bool {
+	if value == "" || len(value) > 128 {
+		return false
+	}
+	for i := 0; i < len(value); i++ {
+		c := value[i]
+		if c < 0x21 || c > 0x7e || c == '\\' {
+			return false
+		}
+	}
+	return true
+}
 
 func (a *Server) dynamicLock(id string) *sync.Mutex {
 	lock, _ := a.dynamicCalls.LoadOrStore(id, &sync.Mutex{})
@@ -134,7 +172,21 @@ func (a *Server) callDynamicLocked(ctx context.Context, item runtimeplugin.Insta
 	if err = json.Unmarshal(data, &response); err != nil {
 		return nil, errors.New("invalid runtime response")
 	}
-	if response.Status < 200 || response.Status >= 600 || response.Status >= 300 && response.Status < 400 || !json.Valid(response.Body) {
+	if response.Status < 200 || response.Status >= 600 || response.Status >= 300 && response.Status < 400 {
+		return nil, errors.New("invalid runtime response")
+	}
+	if response.BodyBase64 != "" {
+		if request.Kind != "route" || !allowedPluginBinaryType(response.ContentType) {
+			return nil, errors.New("invalid runtime binary response")
+		}
+		decoded, decErr := base64.StdEncoding.DecodeString(response.BodyBase64)
+		if decErr != nil || len(decoded) > maxTextureBytes {
+			return nil, errors.New("invalid runtime binary payload")
+		}
+		if len(response.Body) == 0 {
+			response.Body = json.RawMessage("null")
+		}
+	} else if !json.Valid(response.Body) {
 		return nil, errors.New("invalid runtime response")
 	}
 	if request.Kind != "route" && response.Status >= 400 {
@@ -237,7 +289,11 @@ func (a *Server) dynamicRoute(w http.ResponseWriter, r *http.Request) {
 	} else if r.Method != "GET" && !a.publicWrite(w, r) {
 		return
 	}
-	body, err := io.ReadAll(http.MaxBytesReader(w, r.Body, 65536))
+	bodyLimit := int64(65536)
+	if slices.Contains(item.Grants, "user.frontend") || slices.Contains(item.Grants, "host.textures.write") {
+		bodyLimit = 12 << 20
+	}
+	body, err := io.ReadAll(http.MaxBytesReader(w, r.Body, bodyLimit))
 	if err != nil || (len(body) > 0 && !json.Valid(body)) {
 		failure(w, 400, "请求内容无效")
 		return
@@ -260,11 +316,42 @@ func (a *Server) dynamicRoute(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	var result sdk.RuntimeResponse
-	if json.Unmarshal(data, &result) != nil || result.Status < 200 || result.Status > 599 || result.Status >= 300 && result.Status < 400 || len(result.Body) > 1<<20 || !json.Valid(result.Body) {
+	if json.Unmarshal(data, &result) != nil || result.Status < 200 || result.Status > 599 || result.Status >= 300 && result.Status < 400 {
 		failure(w, 503, "插件响应无效")
 		return
 	}
 	w.Header().Set("Cache-Control", "no-store")
+	if route.Access == "public" && r.Method == http.MethodGet {
+		if validPluginCacheControl(result.CacheControl) {
+			w.Header().Set("Cache-Control", result.CacheControl)
+		}
+		if validPluginETag(result.ETag) {
+			w.Header().Set("ETag", result.ETag)
+		}
+	}
+	if result.BodyBase64 != "" {
+		if !allowedPluginBinaryType(result.ContentType) {
+			failure(w, 503, "插件响应无效")
+			return
+		}
+		rawBytes, decErr := base64.StdEncoding.DecodeString(result.BodyBase64)
+		if decErr != nil || len(rawBytes) > maxTextureBytes {
+			failure(w, 503, "插件响应无效")
+			return
+		}
+		w.Header().Set("Content-Type", result.ContentType)
+		w.Header().Set("X-Content-Type-Options", "nosniff")
+		if result.ContentType == "image/svg+xml" {
+			w.Header().Set("Content-Security-Policy", "default-src 'none'; sandbox")
+		}
+		w.WriteHeader(result.Status)
+		_, _ = w.Write(rawBytes)
+		return
+	}
+	if len(result.Body) > 1<<20 || !json.Valid(result.Body) {
+		failure(w, 503, "插件响应无效")
+		return
+	}
 	w.Header().Set("Content-Type", "application/json; charset=utf-8")
 	w.WriteHeader(result.Status)
 	_, _ = w.Write(result.Body)
@@ -296,4 +383,52 @@ func (a *Server) dynamicFrontend(w http.ResponseWriter, r *http.Request) {
 		}
 	}
 	respond(w, 200, map[string]any{"html": html, "routes": routes, "digest": item.Digest})
+}
+
+func (a *Server) userDynamicFrontend(w http.ResponseWriter, r *http.Request) {
+	if _, _, err := a.current(r); err != nil {
+		sessionError(w, err)
+		return
+	}
+	id := r.PathValue("id")
+	fid := r.PathValue("fid")
+	mu := a.dynamicLock(id)
+	mu.Lock()
+	defer mu.Unlock()
+	item, ok := a.dynamic.Get(id)
+	if !ok || !a.availableCommunity(r.Context(), id) || !slices.Contains(item.Grants, "user.frontend") {
+		http.NotFound(w, r)
+		return
+	}
+	var frontend *sdk.UserFrontend
+	for _, uf := range item.Package.UserFrontends {
+		if uf.ID == fid {
+			copyUF := uf
+			frontend = &copyUF
+			break
+		}
+	}
+	if frontend == nil {
+		http.NotFound(w, r)
+		return
+	}
+	data, err := os.ReadFile(filepath.Join(a.dynamic.Root(item), filepath.FromSlash(frontend.Path)))
+	if err != nil || len(data) > 2<<20 {
+		failure(w, 503, "暂时无法读取插件界面")
+		return
+	}
+	html := "<meta http-equiv=\"Content-Security-Policy\" content=\"default-src 'none'; script-src 'unsafe-inline'; style-src 'unsafe-inline'; img-src data: blob:; connect-src 'none'; form-action 'none'; base-uri 'none'\">" + string(data)
+	routes := []runtimeplugin.Route{}
+	for _, route := range item.Package.Routes {
+		if route.Access != "admin" && runtimeplugin.ValidRoutePath(route.Path) {
+			routes = append(routes, route)
+		}
+	}
+	respond(w, 200, map[string]any{
+		"html":        html,
+		"routes":      routes,
+		"digest":      item.Digest,
+		"permissions": slices.Clone(item.Grants),
+		"frontend":    frontend,
+	})
 }

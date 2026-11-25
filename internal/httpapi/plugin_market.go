@@ -12,6 +12,8 @@ import (
 	"github.com/WishingSkin/WishingSkin/internal/runtimeplugin"
 )
 
+const officialPluginMarketURL = "https://wishingskin.github.io/plugins/catalog.json"
+
 type marketEntry struct {
 	ID      string `json:"id"`
 	Name    string `json:"name"`
@@ -87,10 +89,10 @@ func (a *Server) pluginMarket(w http.ResponseWriter, r *http.Request) {
 	}
 	source, catalog, err := a.marketCatalog(r.Context())
 	if err != nil {
-		respond(w, 200, map[string]any{"source": source, "packages": []marketEntry{}, "unavailable": true})
+		respond(w, 200, map[string]any{"source": source, "officialSource": officialPluginMarketURL, "packages": []marketEntry{}, "unavailable": true})
 		return
 	}
-	respond(w, 200, map[string]any{"source": source, "packages": catalog.Packages})
+	respond(w, 200, map[string]any{"source": source, "officialSource": officialPluginMarketURL, "packages": catalog.Packages})
 }
 func (a *Server) savePluginMarket(w http.ResponseWriter, r *http.Request) {
 	u, ok := a.adminRequest(w, r)
@@ -146,7 +148,7 @@ func (a *Server) marketPackage(r *http.Request) ([]byte, error) {
 			if runtimeplugin.Digest(data) != strings.ToLower(entry.SHA256) {
 				return nil, errors.New("checksum mismatch")
 			}
-			pkg, err := runtimeplugin.Inspect(data)
+			pkg, _, err := runtimeplugin.InspectWithKeys(data, a.officialPluginPublicKeys())
 			if err != nil || pkg.ValidateRoutePaths() != nil || pkg.Manifest.ID != entry.ID || pkg.Manifest.Version != entry.Version {
 				return nil, errors.New("catalog manifest mismatch")
 			}
@@ -170,8 +172,8 @@ func (a *Server) inspectMarketEntry(w http.ResponseWriter, r *http.Request) {
 		failure(w, 400, "无法下载或校验插件包")
 		return
 	}
-	pkg, _ := runtimeplugin.Inspect(data)
-	respond(w, 200, map[string]any{"package": pkg, "digest": runtimeplugin.Digest(data)})
+	pkg, signed, _ := runtimeplugin.InspectWithKeys(data, a.officialPluginPublicKeys())
+	respond(w, 200, map[string]any{"package": pkg, "digest": runtimeplugin.Digest(data), "signedOfficial": signed})
 }
 func (a *Server) installMarketEntry(w http.ResponseWriter, r *http.Request) {
 	u, ok := a.adminRequest(w, r)
@@ -198,7 +200,7 @@ func (a *Server) installMarketEntry(w http.ResponseWriter, r *http.Request) {
 		pluginActivationError(w, err)
 		return
 	}
-	pkg, _ := runtimeplugin.Inspect(data)
+	pkg, _, _ := runtimeplugin.InspectWithKeys(data, a.officialPluginPublicKeys())
 	_ = a.recordDynamicEvent(r.Context(), u.ID, "plugin.install", pkg.Manifest.ID)
 	respond(w, 200, map[string]bool{"installed": true})
 }

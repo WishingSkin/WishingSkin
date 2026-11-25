@@ -1,7 +1,7 @@
 {
   "paths": [
     "/", "/login", "/library",
-    "/user", "/user/wardrobe", "/user/resources", "/user/resources/upload",
+    "/user", "/user/wardrobe", "/user/resources", "/user/resources/upload", "/user/tools",
     "/user/account", "/user/account/profile", "/user/account/points", "/user/account/integration", "/user/account/reports",
     "/admin/users", "/admin/characters", "/admin/wardrobe", "/admin/resources", "/admin/reports", "/admin/events", "/admin/plugins",
     "/admin/settings/site", "/admin/settings/appearance", "/admin/settings/services", "/admin/settings/operations"
@@ -13,5 +13,6 @@
     "/admin/settings": "/admin/settings/site"
   },
   "libraryPath": "^/library/[a-f0-9]{32}$",
-  "pluginPath": "^/admin/plugins/[a-z0-9]+(?:[._-][a-z0-9]+)*$"
+  "pluginPath": "^/admin/plugins/[a-z0-9]+(?:[._-][a-z0-9]+)*$",
+  "userToolPath": "^/user/tools/[a-z0-9]+(?:[._-][a-z0-9]+)*/[a-z0-9]+(?:[._-][a-z0-9]+)*$"
 }

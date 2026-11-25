@@ -8,6 +8,8 @@ import (
 	"slices"
 	"strings"
 	"unicode/utf8"
+
+	sdk "github.com/WishingSkin/WishingSkin/pkg/plugin"
 )
 
 func (a *Server) manageTextureRecord(w http.ResponseWriter, r *http.Request) {
@@ -31,6 +33,7 @@ func (a *Server) manageTextureRecord(w http.ResponseWriter, r *http.Request) {
 		Description string    `json:"description"`
 		Public      *bool     `json:"isPublic"`
 	}
+	var hookDecision sdk.HookDecision
 	if r.Method == http.MethodPatch {
 		if !decode(w, r, &body) {
 			return
@@ -47,6 +50,26 @@ func (a *Server) manageTextureRecord(w http.ResponseWriter, r *http.Request) {
 		}
 		if body.Public == nil {
 			failure(w, 400, "请选择公开或未公开")
+			return
+		}
+		fields := map[string]string{
+			"name":        body.Name,
+			"description": body.Description,
+		}
+		if body.Category != nil {
+			fields["category"] = strings.TrimSpace(*body.Category)
+		}
+		if body.Tags != nil {
+			normTags, tagErr := normalizeTextureTags(*body.Tags)
+			if tagErr != nil {
+				failure(w, 400, "标签格式无效")
+				return
+			}
+			fields["tags"] = strings.Join(normTags, ",")
+		}
+		hookDecision = a.runTextHook(r.Context(), "texture.update", u.ID, fields)
+		if hookDecision.Decision == "reject" {
+			failure(w, 400, hookDecision.Reason)
 			return
 		}
 	}
@@ -107,9 +130,12 @@ func (a *Server) manageTextureRecord(w http.ResponseWriter, r *http.Request) {
 				return
 			}
 		}
-		if policy.ReviewUploads {
+		if policy.ReviewUploads || hookDecision.Decision == "review" {
 			state = "pending"
 			reason = ""
+			if hookDecision.Decision == "review" {
+				reason = hookDecision.Reason
+			}
 		}
 		if err == nil {
 			err = a.putTextureMetadata(r.Context(), tx, id, category, tags, state, reason)

@@ -54,3 +54,20 @@ func TestTrustedProxyConfiguration(t *testing.T) {
 		t.Fatal("proxies trusted by default", err)
 	}
 }
+
+func TestOfficialPluginPublicKeysConfiguration(t *testing.T) {
+	t.Setenv("WS_DATABASE_DSN", "synthetic")
+	for _, name := range []string{"WS_TURNSTILE_SITE_KEY", "WS_TURNSTILE_SECRET", "WS_SMTP_ADDRESS", "WS_SMTP_FROM", "WS_SMTP_USERNAME", "WS_SMTP_PASSWORD", "WS_TRUSTED_PROXIES"} {
+		t.Setenv(name, "")
+	}
+	t.Setenv("WS_OFFICIAL_PLUGIN_PUBKEYS", "invalid-key")
+	if _, err := Load(); err == nil {
+		t.Fatal("accepted invalid WS_OFFICIAL_PLUGIN_PUBKEYS")
+	}
+	validHex := strings.Repeat("ab", 32)
+	t.Setenv("WS_OFFICIAL_PLUGIN_PUBKEYS", validHex)
+	c, err := Load()
+	if err != nil || len(c.OfficialPluginPublicKeys) != 1 || len(c.OfficialPluginPublicKeys[0]) != 32 {
+		t.Fatalf("expected 1 parsed public key, got %v %v", c.OfficialPluginPublicKeys, err)
+	}
+}

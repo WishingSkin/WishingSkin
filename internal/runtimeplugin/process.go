@@ -3,8 +3,10 @@ package runtimeplugin
 import (
 	"bufio"
 	"context"
+	"crypto/ed25519"
 	"encoding/json"
 	"errors"
+	"fmt"
 	"io"
 	"os"
 	"os/exec"
@@ -33,7 +35,7 @@ func (p *process) closeLocked() {
 	}
 }
 func (p *process) close() { p.mu.Lock(); defer p.mu.Unlock(); p.retired = true; p.closeLocked() }
-func (p *process) call(ctx context.Context, root string, pkg Package, request any) (json.RawMessage, error) {
+func (p *process) call(ctx context.Context, root string, pkg Package, request any, officialKeys []ed25519.PublicKey, hostAPIURL, hostToken string) (json.RawMessage, error) {
 	p.mu.Lock()
 	defer p.mu.Unlock()
 	if p.retired {
@@ -43,7 +45,7 @@ func (p *process) call(ctx context.Context, root string, pkg Package, request an
 		return nil, ctx.Err()
 	}
 	if p.cmd == nil {
-		if err := verifyExtracted(root, pkg); err != nil {
+		if err := verifyExtractedWithKeys(root, pkg, officialKeys); err != nil {
 			return nil, err
 		}
 		cmd := exec.Command(filepath.Join(root, filepath.FromSlash(pkg.Executables[runtime.GOOS+"/"+runtime.GOARCH])))
@@ -53,7 +55,10 @@ func (p *process) call(ctx context.Context, root string, pkg Package, request an
 				cmd.Env = append(cmd.Env, key+"="+value)
 			}
 		}
-		cmd.Env = append(cmd.Env, "WS_PLUGIN_PROTOCOL=1")
+		cmd.Env = append(cmd.Env, fmt.Sprintf("WS_PLUGIN_PROTOCOL=%d", pkg.Protocol))
+		if hostAPIURL != "" && hostToken != "" {
+			cmd.Env = append(cmd.Env, "WS_HOST_API_URL="+hostAPIURL, "WS_HOST_API_TOKEN="+hostToken)
+		}
 		input, err := cmd.StdinPipe()
 		if err != nil {
 			return nil, err
@@ -73,7 +78,7 @@ func (p *process) call(ctx context.Context, root string, pkg Package, request an
 		p.cmd = cmd
 		p.input = input
 		p.output = bufio.NewScanner(out)
-		p.output.Buffer(make([]byte, 4096), 4<<20)
+		p.output.Buffer(make([]byte, 4096), 16<<20)
 		p.done = make(chan error, 1)
 		go func() { p.done <- cmd.Wait() }()
 	}

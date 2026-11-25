@@ -11,10 +11,11 @@ import (
 var pageRoutesJSON []byte
 
 type pageRouteTable struct {
-	Paths       []string          `json:"paths"`
-	Aliases     map[string]string `json:"aliases"`
-	LibraryPath string            `json:"libraryPath"`
-	PluginPath  string            `json:"pluginPath"`
+	Paths        []string          `json:"paths"`
+	Aliases      map[string]string `json:"aliases"`
+	LibraryPath  string            `json:"libraryPath"`
+	PluginPath   string            `json:"pluginPath"`
+	UserToolPath string            `json:"userToolPath"`
 }
 
 // The same page contract is used by the browser and the HTTP fallback.
@@ -27,8 +28,9 @@ var pageRoutes = func() pageRouteTable {
 }()
 
 var (
-	libraryPagePattern = regexp.MustCompile(pageRoutes.LibraryPath)
-	pluginPagePattern  = regexp.MustCompile(pageRoutes.PluginPath)
+	libraryPagePattern  = regexp.MustCompile(pageRoutes.LibraryPath)
+	pluginPagePattern   = regexp.MustCompile(pageRoutes.PluginPath)
+	userToolPagePattern = regexp.MustCompile(pageRoutes.UserToolPath)
 )
 
 func isSPAPath(path string) bool {
@@ -46,5 +48,13 @@ func isSPAPath(path string) bool {
 	if libraryPagePattern.MatchString(path) {
 		return true
 	}
-	return pluginPagePattern.MatchString(path) && len(strings.TrimPrefix(path, "/admin/plugins/")) <= 64
+	if pluginPagePattern.MatchString(path) && len(strings.TrimPrefix(path, "/admin/plugins/")) <= 64 {
+		return true
+	}
+	if userToolPagePattern.MatchString(path) {
+		rest := strings.TrimPrefix(path, "/user/tools/")
+		pid, fid, ok := strings.Cut(rest, "/")
+		return ok && len(pid) <= 64 && len(fid) <= 64
+	}
+	return false
 }

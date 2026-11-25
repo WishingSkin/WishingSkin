@@ -6,11 +6,18 @@ import AppModal from './AppModal.vue'
 const props = defineProps<{ csrfToken: string }>()
 const emit = defineEmits<{ updated: []; expired: [] }>()
 interface Manifest { id: string; name?: string; version: string; description?: string; permissions: string[]; dependencies: string[] }
-interface Inspection { package: { manifest: Manifest }; digest: string }
+interface Inspection { package: { manifest: Manifest }; digest: string; signedOfficial?: boolean }
 interface Entry { id: string; name: string; version: string }
-const packages = ref<Inspection[]>([]), catalog = ref<Entry[]>([]), source = ref(''), unavailable = ref(false), busy = ref(false)
+const packages = ref<Inspection[]>([]), catalog = ref<Entry[]>([]), source = ref(''), officialSource = ref(''), unavailable = ref(false), busy = ref(false)
 const inspection = ref<Inspection>(), approved = ref(false), upload = ref<File>(), marketId = ref('')
-const permissionNames: Record<string, string> = { 'routes.public': '公开接口', 'routes.user': '用户接口', 'routes.admin': '管理接口', events: '订阅事件', pages: '管理页面', tasks: '后台任务', frontend: '自定义界面', database: '插件数据与数据库迁移', webhooks: 'Webhook' }
+const permissionNames: Record<string, string> = {
+  'routes.public': '公开接口', 'routes.user': '用户接口', 'routes.admin': '管理接口',
+  events: '订阅事件', pages: '管理页面', tasks: '后台任务', frontend: '自定义界面', database: '插件数据与数据库迁移', webhooks: 'Webhook',
+  hooks: '同步内容审核钩子', 'hooks.image': '审核时读取上传 PNG 图像', 'user.frontend': '用户工作台与材质操作界面',
+  'host.public.read': '读取站点与公开角色资料', 'host.textures.read': '读取用户材质文件与列表', 'host.textures.write': '以插件流程为用户保存新材质',
+  'host.characters.read': '读取用户角色列表', 'host.characters.write': '为用户角色穿戴皮肤或披风',
+  'host.users.read': '读取用户基础摘要', 'host.points.read': '查询用户积分信息', 'host.points.spend': '在用户授权操作时扣减积分',
+}
 async function request(path: string, method = 'GET', body?: BodyInit, extra: Record<string, string> = {}) {
  const r = await fetch(path, { method, credentials: 'same-origin', headers: { 'X-CSRF-Token': props.csrfToken, ...extra }, body })
  if (r.status === 401) { emit('expired'); throw new Error(t('请重新登录')) }
@@ -22,7 +29,7 @@ async function request(path: string, method = 'GET', body?: BodyInit, extra: Rec
  return data
 }
 async function load() {
- try { const installed = await request('/api/admin/plugin-packages'); packages.value = installed.packages; const market = await request('/api/admin/plugin-market'); source.value = market.source; catalog.value = market.packages; unavailable.value = !!market.unavailable } catch (e) { toast((e as Error).message, 'error') }
+ try { const installed = await request('/api/admin/plugin-packages'); packages.value = installed.packages; const market = await request('/api/admin/plugin-market'); source.value = market.source; officialSource.value = typeof market.officialSource === 'string' ? market.officialSource : ''; catalog.value = market.packages; unavailable.value = !!market.unavailable } catch (e) { toast((e as Error).message, 'error') }
 }
 async function saveSource() {
  busy.value = true; try { await request('/api/admin/plugin-market', 'PUT', JSON.stringify({ source: source.value }), { 'Content-Type': 'application/json' }); toast('市场源已保存。'); await load() } catch (e) { toast((e as Error).message, 'error') } finally { busy.value = false }
@@ -47,12 +54,12 @@ onMounted(load)
 <template>
  <section class="settings-section package-manager">
   <div class="settings-actions"><label class="secondary-button package-upload">{{ t('安装插件包') }}<input type="file" accept=".zip,application/zip" :disabled="busy" @change="choose" /></label><button type="button" class="text-button" :disabled="busy" @click="load">{{ t('刷新') }}</button></div>
-  <details><summary>{{ t('插件市场') }}</summary><form class="settings-form" @submit.prevent="saveSource"><label class="binding-field"><span>{{ t('市场源地址') }}</span><input v-model="source" type="url" placeholder="https://plugins.example.com/catalog.json" /></label><button class="secondary-button" :disabled="busy">{{ t('保存市场源') }}</button></form>
+  <details><summary>{{ t('插件市场') }}</summary><form class="settings-form" @submit.prevent="saveSource"><label class="binding-field"><span>{{ t('市场源地址') }}</span><input v-model="source" type="url" placeholder="https://plugins.example.com/catalog.json" /></label><div class="settings-actions"><button class="secondary-button" :disabled="busy">{{ t('保存市场源') }}</button><button v-if="officialSource && source !== officialSource" type="button" class="text-button" :disabled="busy" @click="source = officialSource">{{ t('填入官方市场源') }}</button></div></form>
    <p v-if="unavailable" role="status">{{ t('市场暂时不可用') }}</p><p v-else-if="!catalog.length">{{ t(source ? '暂无插件' : '配置市场源后浏览插件') }}</p>
    <div class="extension-list"><article v-for="entry in catalog" :key="entry.id" class="extension-row"><div><strong>{{ entry.name || entry.id }}</strong><span>v{{ entry.version }}</span></div><button class="secondary-button" :disabled="busy" @click="inspect(undefined, entry)">{{ t('检查安装') }}</button></article></div>
   </details>
-  <details v-if="packages.length"><summary>{{ t('已安装的插件包') }}</summary><div class="extension-list"><article v-for="item in packages" :key="item.package.manifest.id" class="extension-row"><div><strong>{{ item.package.manifest.name || item.package.manifest.id }}</strong><span>v{{ item.package.manifest.version }}</span></div><div class="settings-actions"><button class="secondary-button" :disabled="busy" @click="manage(item)">{{ t('重新加载') }}</button><button class="danger-button" :disabled="busy" @click="manage(item, true)">{{ t('卸载') }}</button></div></article></div></details>
-  <AppModal v-if="inspection" :title="t('安装插件')" :busy="busy" @close="inspection = undefined; upload = undefined"><h3>{{ inspection.package.manifest.name || inspection.package.manifest.id }}</h3><p>{{ inspection.package.manifest.id }} / v{{ inspection.package.manifest.version }}</p><p v-if="inspection.package.manifest.description">{{ inspection.package.manifest.description }}</p><p>{{ t('插件以本机程序运行，请确认来源后安装。') }}</p><h4>{{ t('所需权限') }}</h4><ul><li v-for="permission in inspection.package.manifest.permissions" :key="permission">{{ t(permissionNames[permission] || permission) }}</li></ul><p v-if="inspection.package.manifest.dependencies?.length">{{ t('依赖') }}: {{ inspection.package.manifest.dependencies.join(', ') }}</p><label class="checkbox-label"><input v-model="approved" type="checkbox" />{{ t('允许上述权限') }}</label><div class="settings-actions"><button class="primary-button" :disabled="busy || !approved" @click="install">{{ t('确认安装') }}</button><button class="secondary-button" :disabled="busy" @click="inspection = undefined; upload = undefined">{{ t('取消') }}</button></div></AppModal>
+  <details v-if="packages.length"><summary>{{ t('已安装的插件包') }}</summary><div class="extension-list"><article v-for="item in packages" :key="item.package.manifest.id" class="extension-row"><div><strong>{{ item.package.manifest.name || item.package.manifest.id }}</strong><span class="package-meta">v{{ item.package.manifest.version }} <span v-if="item.signedOfficial" class="notice-current-badge">{{ t('官方签名') }}</span></span></div><div class="settings-actions"><button class="secondary-button" :disabled="busy" @click="manage(item)">{{ t('重新加载') }}</button><button class="danger-button" :disabled="busy" @click="manage(item, true)">{{ t('卸载') }}</button></div></article></div></details>
+  <AppModal v-if="inspection" :title="t('安装插件')" :busy="busy" @close="inspection = undefined; upload = undefined"><h3>{{ inspection.package.manifest.name || inspection.package.manifest.id }}</h3><p>{{ inspection.package.manifest.id }} / v{{ inspection.package.manifest.version }}</p><p v-if="inspection.signedOfficial" class="password-rule">{{ t('已通过官方 Ed25519 签名验证') }}</p><p v-if="inspection.package.manifest.description">{{ inspection.package.manifest.description }}</p><p>{{ t('插件以本机程序运行，请确认来源后安装。') }}</p><h4>{{ t('所需权限') }}</h4><ul><li v-for="permission in inspection.package.manifest.permissions" :key="permission">{{ t(permissionNames[permission] || permission) }}</li></ul><p v-if="inspection.package.manifest.dependencies?.length">{{ t('依赖') }}: {{ inspection.package.manifest.dependencies.join(', ') }}</p><label class="checkbox-label"><input v-model="approved" type="checkbox" />{{ t('允许上述权限') }}</label><div class="settings-actions"><button class="primary-button" :disabled="busy || !approved" @click="install">{{ t('确认安装') }}</button><button class="secondary-button" :disabled="busy" @click="inspection = undefined; upload = undefined">{{ t('取消') }}</button></div></AppModal>
  </section>
 </template>
 <style scoped>
@@ -62,4 +69,5 @@ onMounted(load)
 .extension-list { display: grid; gap: .75rem; margin-top: 1rem; }
 .extension-row { display: flex; flex-wrap: wrap; gap: 1rem; align-items: center; padding-block: .75rem; border-bottom: 1px solid var(--border); }
 .extension-row > div:first-of-type { display: grid; gap: .25rem; flex: 1; min-width: 0; overflow-wrap: anywhere; }
+.package-meta { display: inline-flex; flex-wrap: wrap; align-items: center; gap: 8px; }
 </style>

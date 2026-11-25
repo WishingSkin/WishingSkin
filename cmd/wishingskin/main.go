@@ -139,7 +139,7 @@ func run() error {
 	if err != nil {
 		return err
 	}
-	apiConfig := httpapi.Config{PluginDir: cfg.PluginDir, CommunityPlugins: communityPlugins(), PublicURL: cfg.PublicURL, TextureDir: cfg.TextureDir, Version: buildVersion, Assets: assets, TurnstileSiteKey: cfg.TurnstileSiteKey, TrustedProxies: cfg.TrustedProxies}
+	apiConfig := httpapi.Config{PluginDir: cfg.PluginDir, OfficialPluginPublicKeys: cfg.OfficialPluginPublicKeys, CommunityPlugins: communityPlugins(), PublicURL: cfg.PublicURL, TextureDir: cfg.TextureDir, Version: buildVersion, Assets: assets, TurnstileSiteKey: cfg.TurnstileSiteKey, TrustedProxies: cfg.TrustedProxies}
 	apiConfig.TextureAccountLimitBytes = cfg.TextureAccountLimitBytes
 	apiConfig.TextureSiteLimitBytes = cfg.TextureSiteLimitBytes
 	keyPath := os.Getenv("WS_SETTINGS_KEY_FILE")
@@ -148,7 +148,7 @@ func run() error {
 	}
 	// A restored encrypted configuration must never silently generate a replacement key.
 	var encryptedCount int
-	if err := db.DB.QueryRowContext(ctx, "SELECT (SELECT COUNT(*) FROM settings WHERE setting_key IN ('service_config','oidc_config','oidc_providers','object_storage_config','external_connectors','oauth_signing_key','minecraft_verify_config')) + (SELECT COUNT(*) FROM webhook_subscriptions) + (SELECT COUNT(*) FROM plugins WHERE settings_json<>'{}' AND plugin_id NOT LIKE 'wishingskin.%')").Scan(&encryptedCount); err != nil {
+	if err := db.DB.QueryRowContext(ctx, "SELECT (SELECT COUNT(*) FROM settings WHERE setting_key IN ('service_config','oidc_config','oidc_providers','object_storage_config','external_connectors','oauth_signing_key','minecraft_verify_config')) + (SELECT COUNT(*) FROM webhook_subscriptions) + (SELECT COUNT(*) FROM plugins WHERE settings_json<>'{}')").Scan(&encryptedCount); err != nil {
 		return fmt.Errorf("cannot inspect service settings")
 	}
 	if encryptedCount > 0 {

@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict'
 import { test } from 'node:test'
-import { adminRoute, canonicalWorkspaceURL, isPagePath, isProtectedPath, libraryItemId, libraryItemPath, navigationRegion, resourcePath } from '../src/workspaceRoutes.ts'
+import { adminRoute, canonicalWorkspaceURL, isPagePath, isProtectedPath, libraryItemId, libraryItemPath, navigationRegion, resourcePath, userToolPath, userToolRoute } from '../src/workspaceRoutes.ts'
 
 test('legacy resource and management links keep their destination and filters', () => {
   assert.equal(canonicalWorkspaceURL('/user/materials', '?tab=upload'), '/user/resources/upload')
@@ -51,4 +51,21 @@ test('subpage navigation transitions only the changed content', () => {
   ]) assert.equal(navigationRegion(from, to), `[data-panel-region="${panel}"]`)
   assert.equal(navigationRegion('/admin/events', '/admin/events'), '')
   assert.match(navigationRegion('/user/resources', '/user/account'), /workspace-content/)
+})
+
+test('user tool routes match declared segments and protect the workspace', () => {
+  assert.equal(userToolPath(), '/user/tools')
+  assert.equal(userToolPath('wishingskin.skin-editor', 'editor'), '/user/tools/wishingskin.skin-editor/editor')
+  assert.deepEqual(userToolRoute('/user/tools/wishingskin.skin-editor/editor/'), { pluginId: 'wishingskin.skin-editor', frontendId: 'editor' })
+  assert.equal(isPagePath('/user/tools'), true)
+  assert.equal(isPagePath('/user/tools/wishingskin.skin-editor/editor'), true)
+  assert.equal(isProtectedPath('/user/tools'), true)
+  assert.equal(isProtectedPath('/user/tools/wishingskin.skin-editor/editor'), true)
+  assert.equal(navigationRegion('/user/tools', '/user/tools/wishingskin.skin-editor/editor'), '[data-panel-region="tools"]')
+
+  const longSegment = 'a'.repeat(65)
+  for (const bad of ['/user/tools/only-one', '/user/tools/a/b/c', `/user/tools/${longSegment}/ok`, `/user/tools/ok/${longSegment}`, '/user/tools/%bad/id']) {
+    assert.equal(userToolRoute(bad), null, bad)
+    assert.equal(isPagePath(bad), false, bad)
+  }
 })

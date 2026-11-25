@@ -1,17 +1,20 @@
 package config
 
 import (
+	"crypto/ed25519"
 	"errors"
 	"net/netip"
 	"os"
 	"strconv"
 	"strings"
 	"github.com/WishingSkin/WishingSkin/internal/mailer"
+	"github.com/WishingSkin/WishingSkin/internal/runtimeplugin"
 )
 
 type Config struct {
 	Listen, Driver, DSN, PublicURL, TextureDir      string
 	PluginDir                                       string
+	OfficialPluginPublicKeys                        []ed25519.PublicKey
 	SMTP                                            *mailer.SMTP
 	TurnstileSiteKey, TurnstileSecret               string
 	TrustedProxies                                  []netip.Prefix
@@ -56,6 +59,13 @@ func Load() (Config, error) {
 		}
 	} else if os.Getenv("WS_SMTP_FROM") != "" || os.Getenv("WS_SMTP_USERNAME") != "" || os.Getenv("WS_SMTP_PASSWORD") != "" {
 		return c, errors.New("SMTP address is required when configuring mail")
+	}
+	if raw := strings.TrimSpace(os.Getenv("WS_OFFICIAL_PLUGIN_PUBKEYS")); raw != "" {
+		keys, err := runtimeplugin.ParsePublicKeys(raw)
+		if err != nil {
+			return c, errors.New("WS_OFFICIAL_PLUGIN_PUBKEYS must contain comma-separated Ed25519 public keys")
+		}
+		c.OfficialPluginPublicKeys = keys
 	}
 	return c, nil
 }

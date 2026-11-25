@@ -168,12 +168,21 @@ func (a *Server) readCommunitySettingsFrom(ctx context.Context, reader settingRe
 	err = json.Unmarshal([]byte(plain), &data)
 	return data, err
 }
+func (a *Server) isExternalPlugin(id string) bool {
+	if a.dynamic != nil {
+		if _, ok := a.dynamic.Get(id); ok {
+			return true
+		}
+	}
+	return pluginOrigin(id) == "community"
+}
+
 func (a *Server) communitySettings(w http.ResponseWriter, r *http.Request) {
 	if _, ok := a.adminRead(w, r); !ok {
 		return
 	}
 	state, ok := a.plugins.State(r.PathValue("id"))
-	if !ok || pluginOrigin(state.Manifest.ID) != "community" {
+	if !ok || !a.isExternalPlugin(state.Manifest.ID) {
 		http.NotFound(w, r)
 		return
 	}
@@ -198,7 +207,7 @@ func (a *Server) updateCommunitySettings(w http.ResponseWriter, r *http.Request)
 		return
 	}
 	state, ok := a.plugins.State(r.PathValue("id"))
-	if !ok || pluginOrigin(state.Manifest.ID) != "community" {
+	if !ok || !a.isExternalPlugin(state.Manifest.ID) {
 		http.NotFound(w, r)
 		return
 	}

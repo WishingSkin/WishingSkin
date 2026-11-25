@@ -18,7 +18,7 @@ import (
 	sdk "github.com/WishingSkin/WishingSkin/pkg/plugin"
 )
 
-var extensionEvents = []string{"character.create", "texture.upload"}
+var extensionEvents = []string{"character.create", "character.rename", "character.delete", "texture.upload", "minecraft.link", "minecraft.unlink"}
 
 type webhookSubscription struct {
 	ID       string   `json:"id"`

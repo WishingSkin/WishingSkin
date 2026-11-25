@@ -455,4 +455,14 @@ button[data-dirty]::after{content:"";position:absolute;top:50%;right:9px;width:6
 .danger-text{color:var(--error)}
 .point-redeem{margin-top:16px;padding-top:16px;border-top:1px solid var(--border)}
 .point-redeem .binding-field{margin:0}
+.tool-workspace-header{align-items:flex-start}
+.tool-workspace-header>div>button{margin-bottom:8px;padding-inline:0}
+.tool-card-grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(min(100%,290px),1fr));gap:18px}
+.tool-card{padding:22px;display:grid;gap:14px;align-content:start}
+.tool-card-heading{display:flex;align-items:center;gap:12px}
+.tool-card-heading>div{min-width:0;flex:1}
+.tool-card-heading h2{font-size:var(--font-body);margin-bottom:4px}
+.tool-card>p{font-size:var(--font-small);color:var(--muted);line-height:1.8;margin:0}
+.texture-plugin-actions{margin-top:18px;padding-top:16px;border-top:1px solid var(--border);display:grid;gap:8px}
+.texture-plugin-actions-label{font-size:var(--font-small);color:var(--muted);font-weight:600}
 @media(prefers-reduced-motion:reduce){.upload-form,.oauth-client-row{transition:none}}
