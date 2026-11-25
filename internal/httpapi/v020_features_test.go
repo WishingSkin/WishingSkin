@@ -1,6 +1,7 @@
 package httpapi
 
 import (
+	"context"
 	"crypto/rand"
 	"crypto/rsa"
 	"crypto/x509"
@@ -104,6 +105,90 @@ func TestYggdrasilNonEmailLoginBothDatabases(t *testing.T) {
 	}
 }
 
+func TestYggdrasilAuthenticationConcurrentProfileChangeBothDatabases(t *testing.T) {
+	password := "fixture-profile-change"
+	hash, err := credential.Hash(password)
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, dialect := range []string{"mysql", "postgres"} {
+		t.Run(dialect, func(t *testing.T) {
+			f := newManagementApp(t, dialect)
+			f.exec("INSERT INTO settings(setting_key,value) VALUES('ygg_non_email_login','true')")
+			f.exec("UPDATE users SET password_hash=? WHERE id=1", hash)
+			original := webCharacter(t, f.call(1, "POST", "/api/characters", map[string]string{"name": "BeforeRename"}))
+			ygg := &yggTestApp{t: t, db: f.db, app: f.app}
+			for _, change := range []struct{ name, username, statement string }{
+				{"rename", original.Name, "UPDATE characters SET name='AfterRename',name_key='afterrename' WHERE id=?"},
+				{"delete", "AfterRename", "DELETE FROM characters WHERE id=?"},
+			} {
+				t.Run(change.name, func(t *testing.T) {
+					ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
+					defer cancel()
+					tx, err := f.db.DB.BeginTx(ctx, nil)
+					if err != nil {
+						t.Fatal(err)
+					}
+					defer tx.Rollback()
+					pidQuery := "SELECT pg_backend_pid()"
+					waitQuery := "SELECT EXISTS (SELECT 1 FROM pg_stat_activity WHERE ? = ANY(pg_blocking_pids(pid)))"
+					if dialect == "mysql" {
+						pidQuery = "SELECT CONNECTION_ID()"
+						waitQuery = "SELECT EXISTS (SELECT 1 FROM performance_schema.data_lock_waits w JOIN performance_schema.threads t ON w.BLOCKING_THREAD_ID=t.THREAD_ID WHERE t.PROCESSLIST_ID=?)"
+					}
+					var connectionID, userID int64
+					if err := tx.QueryRowContext(ctx, pidQuery).Scan(&connectionID); err != nil {
+						t.Fatal(err)
+					}
+					if err := tx.QueryRowContext(ctx, "SELECT id FROM users WHERE id=1 FOR UPDATE").Scan(&userID); err != nil {
+						t.Fatal(err)
+					}
+					response := make(chan *httptest.ResponseRecorder, 1)
+					go func() {
+						response <- ygg.call("POST", "/authserver/authenticate", map[string]any{"username": change.username, "password": password, "clientToken": "fixture-launcher", "requestUser": true})
+					}()
+					for {
+						var waiting bool
+						if err := f.db.DB.QueryRowContext(ctx, f.db.Bind(waitQuery), connectionID).Scan(&waiting); err != nil {
+							t.Fatal(err)
+						}
+						if waiting {
+							break
+						}
+						select {
+						case w := <-response:
+							t.Fatalf("authentication finished before profile change: %d %s", w.Code, w.Body)
+						case <-ctx.Done():
+							t.Fatal(ctx.Err())
+						case <-time.After(10 * time.Millisecond):
+						}
+					}
+					if _, err := tx.ExecContext(ctx, f.db.Bind(change.statement), original.ID); err != nil {
+						t.Fatal(err)
+					}
+					if err := tx.Commit(); err != nil {
+						t.Fatal(err)
+					}
+					select {
+					case w := <-response:
+						if change.name == "delete" {
+							yggStatus(t, w, 403)
+							return
+						}
+						login := readYggToken(t, w)
+						want := gameProfile{ID: original.UUID, Name: "AfterRename"}
+						if login.SelectedProfile == nil || *login.SelectedProfile != want || len(login.AvailableProfiles) != 1 || login.AvailableProfiles[0] != want || login.ClientToken != "fixture-launcher" || login.User == nil {
+							t.Fatalf("expected current profiles and launcher fields, got selected=%v available=%v", login.SelectedProfile, login.AvailableProfiles)
+						}
+					case <-ctx.Done():
+						t.Fatal(ctx.Err())
+					}
+				})
+			}
+		})
+	}
+}
+
 func TestLibraryDetailAndNewestSortBothDatabases(t *testing.T) {
 	for _, dialect := range []string{"mysql", "postgres"} {
 		t.Run(dialect, func(t *testing.T) {
@@ -135,7 +220,7 @@ func TestLibraryDetailAndNewestSortBothDatabases(t *testing.T) {
 			}
 			webStatus(t, f.call(0, "GET", "/api/library/"+hidden.ID, nil), 404)
 
-			if !isSPAPath("/library/" + newer.ID) || isSPAPath("/library/not-a-valid-hex-id") {
+			if !isSPAPath("/library/"+newer.ID) || isSPAPath("/library/not-a-valid-hex-id") {
 				t.Fatal("SPA route matcher did not match shareable library URL contract")
 			}
 		})
@@ -187,6 +272,17 @@ func TestAdminUserControlsBothDatabases(t *testing.T) {
 
 			// Per-user character limit override allows exceeding global limit of 1, then clearing restores default.
 			webStatus(t, f.call(3, "PATCH", "/api/admin/users/1", map[string]any{"characterLimit": 3}), 204)
+			webStatus(t, f.call(3, "PATCH", "/api/admin/users/3", map[string]any{"characterLimit": 5}), 204)
+			for _, user := range []int{0, 1, 3} {
+				siteResp := f.call(user, "GET", "/api/site", nil)
+				webStatus(t, siteResp, 200)
+				var sitePayload struct {
+					CharacterLimit int64 `json:"characterLimit"`
+				}
+				if err := json.Unmarshal(siteResp.Body.Bytes(), &sitePayload); err != nil || sitePayload.CharacterLimit != 1 {
+					t.Fatalf("expected site default character limit 1 for user %d: %s", user, siteResp.Body)
+				}
+			}
 			charsResp := f.call(1, "GET", "/api/characters", nil)
 			webStatus(t, charsResp, 200)
 			var charsPayload struct {

@@ -12,6 +12,7 @@ import (
 	"os"
 	"path/filepath"
 	"regexp"
+	"slices"
 	"strconv"
 	"strings"
 	"time"
@@ -133,7 +134,8 @@ func ExportWithStorageLease(ctx context.Context, db *store.Store, textureDir, de
 	}
 	// The exported inventory and source digests share the database snapshot.
 	seenHashes := map[string]bool{}
-	if err := walkTable(ctx, root, tables[1], m.Tables[1], func(row []*string) error {
+	textureIndex := slices.IndexFunc(tables, func(spec table) bool { return spec.name == "textures" })
+	if err := walkTable(ctx, root, tables[textureIndex], m.Tables[textureIndex], func(row []*string) error {
 		hash := *row[0]
 		if !hashName.MatchString(hash) || seenHashes[strings.ToLower(hash)] {
 			return fmt.Errorf("invalid stored texture hash")

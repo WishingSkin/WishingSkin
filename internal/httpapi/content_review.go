@@ -6,11 +6,11 @@ import (
 	"encoding/json"
 	"errors"
 	"net/http"
-	"regexp"
-	"slices"
 	"strings"
 	"time"
 	"unicode/utf8"
+
+	"github.com/WishingSkin/WishingSkin/internal/textureimport"
 )
 
 // Missing metadata denotes an existing, approved record.
@@ -18,22 +18,10 @@ const approvedRecordSQL = "NOT EXISTS (SELECT 1 FROM texture_metadata review_met
 const availableTextureSQL = "(EXISTS (SELECT 1 FROM texture_records r WHERE r.file_hash=f.hash AND r.deleted=FALSE AND " + approvedRecordSQL + ") OR (EXISTS (SELECT 1 FROM characters c WHERE c.skin_hash=f.hash OR c.cape_hash=f.hash) AND NOT EXISTS (SELECT 1 FROM texture_records r JOIN texture_metadata m ON m.record_id=r.record_id WHERE r.file_hash=f.hash AND m.review_state<>'approved')))"
 const downloadableTextureSQL = "f.deleted=FALSE AND " + availableTextureSQL
 
-type contentPolicy struct {
-	ReviewUploads bool     `json:"reviewUploads"`
-	Categories    []string `json:"categories"`
-}
+type contentPolicy = textureimport.ContentPolicy
 
 func readContentPolicy(ctx context.Context, reader settingReader) (contentPolicy, error) {
-	v := contentPolicy{Categories: []string{}}
-	var raw string
-	err := reader.QueryRowContext(ctx, "SELECT value FROM settings WHERE setting_key='content_policy'").Scan(&raw)
-	if errors.Is(err, sql.ErrNoRows) {
-		return v, nil
-	}
-	if err == nil {
-		err = json.Unmarshal([]byte(raw), &v)
-	}
-	return v, err
+	return textureimport.ReadContentPolicy(ctx, reader)
 }
 func (a *Server) registerContentReview() {
 	a.mux.HandleFunc("GET /api/content-policy", func(w http.ResponseWriter, r *http.Request) {
@@ -72,15 +60,31 @@ func (a *Server) updateContentPolicy(w http.ResponseWriter, r *http.Request) {
 		v.Categories[i] = c
 		seen[c] = true
 	}
-	if v.Categories == nil {
-		v.Categories = []string{}
-	}
 	tx, ok := a.beginAdminWrite(w, r, u)
 	if !ok {
 		return
 	}
 	defer tx.Rollback()
-	err := a.putSetting(r.Context(), tx, "content_policy", v)
+	previous, err := readContentPolicy(r.Context(), tx)
+	if err != nil {
+		failure(w, 503, "暂时无法读取内容设置")
+		return
+	}
+	if v.MaxSkinWidth == 0 {
+		v.MaxSkinWidth = previous.MaxSkinWidth
+	}
+	if v.MaxCapeWidth == 0 {
+		v.MaxCapeWidth = previous.MaxCapeWidth
+	}
+	if v.MaxFileBytes == 0 {
+		v.MaxFileBytes = previous.MaxFileBytes
+	}
+	v = v.Normalized()
+	if !v.ValidLimits() {
+		failure(w, 400, "材质尺寸或大小上限设置无效")
+		return
+	}
+	err = a.putSetting(r.Context(), tx, "content_policy", v)
 	if err == nil {
 		err = a.s.RecordAdminEvent(r.Context(), tx, u.ID, "settings.content", "site", "content")
 	}
@@ -94,26 +98,8 @@ func (a *Server) updateContentPolicy(w http.ResponseWriter, r *http.Request) {
 	respond(w, 200, v)
 }
 
-var tagPattern = regexp.MustCompile(`^[\pL\pN][\pL\pN _-]{0,23}$`)
-
 func normalizeTextureTags(raw []string) ([]string, error) {
-	if len(raw) > 10 {
-		return nil, errors.New("too many tags")
-	}
-	tags := []string{}
-	for _, tag := range raw {
-		tag = strings.ToLower(strings.TrimSpace(tag))
-		if tag == "" {
-			continue
-		}
-		if !tagPattern.MatchString(tag) {
-			return nil, errors.New("invalid tag")
-		}
-		if !slices.Contains(tags, tag) {
-			tags = append(tags, tag)
-		}
-	}
-	return tags, nil
+	return textureimport.NormalizeTags(raw)
 }
 func (a *Server) putTextureMetadata(ctx context.Context, tx *sql.Tx, id, category string, tags []string, state, reason string) error {
 	raw, _ := json.Marshal(tags)
@@ -189,8 +175,10 @@ func (a *Server) reviewTexture(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	defer tx.Rollback()
-	var hash, category, tags, previousState, previousReason string
-	err := tx.QueryRowContext(r.Context(), a.s.Bind("SELECT file_hash FROM texture_records WHERE record_id=? AND deleted=FALSE FOR UPDATE"), id).Scan(&hash)
+	var name, category, tags, previousState, previousReason string
+	var owner sql.NullInt64
+	var notifications []notificationDelivery
+	err := tx.QueryRowContext(r.Context(), a.s.Bind("SELECT owner_id,name FROM texture_records WHERE record_id=? AND deleted=FALSE FOR UPDATE"), id).Scan(&owner, &name)
 	if errors.Is(err, sql.ErrNoRows) {
 		failure(w, 404, "材质不存在")
 		return
@@ -210,6 +198,17 @@ func (a *Server) reviewTexture(w http.ResponseWriter, r *http.Request) {
 	if err == nil {
 		err = a.s.RecordAdminEvent(r.Context(), tx, u.ID, "texture.review."+body.State, "texture", id)
 	}
+	if err == nil && owner.Valid {
+		title := "材质审核通过"
+		if body.State == "rejected" {
+			title = "材质审核未通过"
+		}
+		message := "材质「" + name + "」的审核已完成。"
+		if reason := strings.TrimSpace(body.Reason); body.State == "rejected" && reason != "" {
+			message += "\n理由：" + reason
+		}
+		err = a.addNotification(r.Context(), tx, &notifications, owner.Int64, "texture.review."+body.State, title, message, "/user/resources")
+	}
 	if err == nil {
 		err = tx.Commit()
 	}
@@ -217,6 +216,7 @@ func (a *Server) reviewTexture(w http.ResponseWriter, r *http.Request) {
 		failure(w, 503, "暂时无法保存审核结果")
 		return
 	}
+	a.deliverNotifications(notifications)
 	w.WriteHeader(204)
 }
 func (a *Server) reviewImage(w http.ResponseWriter, r *http.Request) {

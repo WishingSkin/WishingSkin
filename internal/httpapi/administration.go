@@ -7,13 +7,13 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"github.com/WishingSkin/WishingSkin/internal/credential"
+	"github.com/WishingSkin/WishingSkin/internal/store"
 	"net/http"
 	"strconv"
 	"strings"
 	"unicode"
 	"unicode/utf8"
-	"github.com/WishingSkin/WishingSkin/internal/credential"
-	"github.com/WishingSkin/WishingSkin/internal/store"
 )
 
 func (a *Server) registerAdministration() {
@@ -61,9 +61,16 @@ func (a *Server) beginAdminWrite(w http.ResponseWriter, r *http.Request, u User)
 		failure(w, 403, "管理员权限已变更，请重新登录")
 		return nil, false
 	}
+	if err == nil {
+		err = a.lockWebSession(r.Context(), tx, u.ID, u.sessionToken)
+	}
 	if err != nil {
 		_ = tx.Rollback()
-		failure(w, 503, "管理操作暂不可用")
+		if errors.Is(err, errCredentials) {
+			sessionError(w, errCredentials)
+		} else {
+			failure(w, 503, "管理操作暂不可用")
+		}
 		return nil, false
 	}
 	*r = *r.WithContext(store.WithAdminChanges(r.Context()))
@@ -71,12 +78,16 @@ func (a *Server) beginAdminWrite(w http.ResponseWriter, r *http.Request, u User)
 }
 
 func adminPagination(w http.ResponseWriter, r *http.Request) (int, int, bool) {
+	return pagination(w, r, 60)
+}
+
+func pagination(w http.ResponseWriter, r *http.Request, maxSize int) (int, int, bool) {
 	page, size := 1, 20
 	for _, f := range []struct {
 		key   string
 		value *int
 		max   int
-	}{{"page", &page, 1000000}, {"pageSize", &size, 60}} {
+	}{{"page", &page, 1000000}, {"pageSize", &size, maxSize}} {
 		if raw := r.URL.Query().Get(f.key); raw != "" {
 			value, err := strconv.Atoi(raw)
 			if err != nil || value < 1 || value > f.max {
@@ -371,6 +382,7 @@ func (a *Server) updateAdminUser(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	var charLimitParam any
+	var notifications []notificationDelivery
 	if nextCharLimit.Valid {
 		charLimitParam = nextCharLimit.Int64
 	}
@@ -395,6 +407,9 @@ func (a *Server) updateAdminUser(w http.ResponseWriter, r *http.Request) {
 		}
 		if err == nil {
 			err = a.s.RecordAdminEvent(r.Context(), tx, u.ID, "user.verify_email", "user", strconv.FormatInt(id, 10), store.AdminChange{Field: "emailVerified", Before: "false", After: "true"})
+		}
+		if err == nil {
+			err = a.addNotification(r.Context(), tx, &notifications, id, "user.verify_email", "邮箱已验证", "管理员已手动验证你的邮箱。", "/user/account/profile")
 		}
 	}
 	if err == nil && nextBanned != banned {
@@ -424,6 +439,13 @@ func (a *Server) updateAdminUser(w http.ResponseWriter, r *http.Request) {
 			}
 			err = a.s.RecordAdminEvent(r.Context(), tx, u.ID, "user.adjust_points", "user", strconv.FormatInt(id, 10), changes...)
 		}
+		if err == nil {
+			message := fmt.Sprintf("管理员调整了你的积分（%+d），当前余额为 %d。", *body.Score-currentScore, *body.Score)
+			if body.ScoreReason != "" {
+				message += "\n理由：" + body.ScoreReason
+			}
+			err = a.addNotification(r.Context(), tx, &notifications, id, "user.adjust_points", "积分已调整", message, "/user/account/points")
+		}
 	}
 	if err == nil && !limitSame {
 		beforeStr, afterStr := "", ""
@@ -434,6 +456,13 @@ func (a *Server) updateAdminUser(w http.ResponseWriter, r *http.Request) {
 			afterStr = strconv.FormatInt(nextCharLimit.Int64, 10)
 		}
 		err = a.s.RecordAdminEvent(r.Context(), tx, u.ID, "user.character_limit", "user", strconv.FormatInt(id, 10), store.AdminChange{Field: "character_limit", Before: beforeStr, After: afterStr})
+		if err == nil {
+			message := "你的角色数量上限已恢复为站点默认值。"
+			if nextCharLimit.Valid {
+				message = "你的角色数量上限已调整为 " + afterStr + "。"
+			}
+			err = a.addNotification(r.Context(), tx, &notifications, id, "user.character_limit", "角色数量上限已更新", message, "/user")
+		}
 	}
 	if err == nil && body.NewPassword != nil {
 		err = a.s.RecordAdminEvent(r.Context(), tx, u.ID, "user.reset_password", "user", strconv.FormatInt(id, 10), store.AdminChange{Field: "password", Before: "", After: "已由管理员重置"})
@@ -445,6 +474,7 @@ func (a *Server) updateAdminUser(w http.ResponseWriter, r *http.Request) {
 		failure(w, 503, "管理操作未完成，请重试")
 		return
 	}
+	a.deliverNotifications(notifications)
 	w.WriteHeader(204)
 }
 

@@ -24,7 +24,7 @@ export function feedbackRef(tone: Tone) {
     },
   }))
 }
-interface Confirmation { title: string; message: string; danger?: boolean; confirmLabel?: string }
+interface Confirmation { title: string; message: string; danger?: boolean; confirmLabel?: string; cancelLabel?: string }
 export const confirmation = ref<Confirmation | null>(null)
 let resolveConfirmation: ((value: boolean) => void) | undefined
 export function decideConfirmation(value: boolean) {

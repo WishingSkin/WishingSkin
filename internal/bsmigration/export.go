@@ -7,6 +7,7 @@ import (
 	"encoding/hex"
 	"fmt"
 	"regexp"
+	"slices"
 	"sort"
 	"strings"
 )
@@ -107,18 +108,33 @@ func ExportMySQL(ctx context.Context, db *sql.DB, opts ExportOptions) (*Snapshot
 		return nil, err
 	}
 	rows.Close()
-	rows, err = tx.QueryContext(ctx, "SELECT tid,name,type,hash,public,uploader FROM "+q("textures")+" ORDER BY tid")
+	textureColumns := "tid,name,type,hash,public,uploader"
+	textureSelect := textureColumns
+	hasUploadDate := slices.Contains(s.Schema["textures"], "upload_at")
+	if hasUploadDate {
+		textureColumns += ",upload_at"
+		textureSelect += ",CAST(upload_at AS CHAR)"
+	}
+	rows, err = tx.QueryContext(ctx, "SELECT "+textureSelect+" FROM "+q("textures")+" ORDER BY tid")
 	if err != nil {
 		return nil, err
 	}
 	for rows.Next() {
 		var t Texture
 		var uploader int64
-		if err := rows.Scan(&t.ID, &t.Name, &t.Type, &t.Hash, &t.Public, &uploader); err != nil {
+		var uploadedAt sql.NullString
+		dest := []any{&t.ID, &t.Name, &t.Type, &t.Hash, &t.Public, &uploader}
+		if hasUploadDate {
+			dest = append(dest, &uploadedAt)
+		}
+		if err := rows.Scan(dest...); err != nil {
 			rows.Close()
 			return nil, err
 		}
 		t.Uploader = &uploader
+		if uploadedAt.Valid {
+			t.UploadedAt = &uploadedAt.String
+		}
 		s.Textures = append(s.Textures, t)
 	}
 	if err := rows.Err(); err != nil {
@@ -261,7 +277,7 @@ func ExportMySQL(ctx context.Context, db *sql.DB, opts ExportOptions) (*Snapshot
 	selected := map[string]string{
 		"users":                "uid,email,nickname,password,score,permission,verified",
 		"players":              "pid,uid,name,tid_skin,tid_cape",
-		"textures":             "tid,name,type,hash,public,uploader",
+		"textures":             textureColumns,
 		"user_closet":          "user_uid,texture_tid,item_name",
 		"textures_description": "tid,description",
 		"uuid":                 "id,name,uuid",

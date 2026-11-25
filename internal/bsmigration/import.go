@@ -118,7 +118,7 @@ func ImportWithSettingsKey(ctx context.Context, db *store.Store, snapshot *Snaps
 		if t.Uploader != nil && *t.Uploader > 0 {
 			owner = *t.Uploader
 		}
-		_, err = tx.ExecContext(ctx, db.Bind("INSERT INTO texture_records(record_id,file_hash,owner_id,name,description,kind,model,is_public,deleted) VALUES(LOWER(MD5(?)),?,?,?,?,?,?,?,?)"), fmt.Sprintf("bs-texture-record:%d", t.ID), t.Hash, owner, t.Name, t.Description, kind, model, t.Public, false)
+		_, err = tx.ExecContext(ctx, db.Bind("INSERT INTO texture_records(record_id,file_hash,owner_id,name,description,kind,model,is_public,deleted,created_at) VALUES(LOWER(MD5(?)),?,?,?,?,?,?,?,?,?)"), fmt.Sprintf("bs-texture-record:%d", t.ID), t.Hash, owner, t.Name, t.Description, kind, model, t.Public, false, textureUploadTime(t.UploadedAt))
 		if err != nil {
 			return r, fmt.Errorf("insert migrated texture record: %w", err)
 		}

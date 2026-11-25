@@ -1,7 +1,6 @@
 package httpapi
 
 import (
-	"bytes"
 	"context"
 	"crypto/md5"
 	"crypto/rand"
@@ -13,24 +12,22 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
-	"image/png"
-	"io"
 	"net/http"
 	"os"
 	"path/filepath"
 	"regexp"
-	"slices"
 	"strconv"
 	"strings"
 	"time"
 	"unicode/utf8"
 
+	"github.com/WishingSkin/WishingSkin/internal/textureimport"
 	mysqlDriver "github.com/go-sql-driver/mysql"
 	"github.com/jackc/pgx/v5/pgconn"
 )
 
 const (
-	maxTextureBytes = 8 << 20
+	maxTextureBytes = textureimport.MaxBytes
 	maxUploadBody   = maxTextureBytes + (64 << 10)
 	maxDescription  = 200
 )
@@ -459,26 +456,10 @@ func (a *Server) uploadTexture(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	defer file.Close()
-	data, err := io.ReadAll(io.LimitReader(file, maxTextureBytes+1))
-	if err != nil || len(data) > maxTextureBytes {
-		failure(w, 400, "PNG 文件不能超过 8 MiB")
-		return
-	}
-	config, err := png.DecodeConfig(bytes.NewReader(data))
-	if err != nil {
-		failure(w, 400, "PNG 图像数据无效")
-		return
-	}
-	if !validTextureDimensions(kind, config.Width, config.Height) {
-		if kind == "skin" {
-			failure(w, 400, "皮肤尺寸仅支持 64×64、64×32、128×128 或 128×64 像素")
-			return
-		}
-		failure(w, 400, "PNG 尺寸不符合 Minecraft 皮肤或披风比例，最长边为 1024 像素")
-		return
-	}
-	if _, err := png.Decode(bytes.NewReader(data)); err != nil {
-		failure(w, 400, "PNG 图像数据无效")
+	data, config, err := textureimport.DecodePNG(file)
+	decodeErr := err
+	if err != nil && !errors.Is(err, textureimport.ErrDimensions) {
+		failure(w, 400, err.Error())
 		return
 	}
 	sum := sha256.Sum256(data)
@@ -499,7 +480,7 @@ func (a *Server) uploadTexture(w http.ResponseWriter, r *http.Request) {
 		failure(w, 500, "无法创建材质记录")
 		return
 	}
-	tx, err := conn.BeginTx(r.Context(), nil)
+	tx, err := conn.BeginTx(r.Context(), &sql.TxOptions{Isolation: sql.LevelReadCommitted})
 	if err != nil {
 		failure(w, 503, "暂时无法保存材质记录")
 		return
@@ -515,7 +496,15 @@ func (a *Server) uploadTexture(w http.ResponseWriter, r *http.Request) {
 		failure(w, 503, "暂时无法读取内容设置")
 		return
 	}
-	if category != "" && !slices.Contains(policy.Categories, category) {
+	_, err = textureimport.ValidatePNGForPolicy(kind, "", config.Width, config.Height, len(data), policy)
+	if err == nil {
+		err = decodeErr
+	}
+	if err != nil {
+		failure(w, 400, err.Error())
+		return
+	}
+	if !policy.ValidCategory(category) {
 		failure(w, 400, "请选择有效分类")
 		return
 	}
@@ -792,63 +781,4 @@ func uniqueViolation(err error) bool {
 	}
 	var pgErr *pgconn.PgError
 	return errors.As(err, &pgErr) && pgErr.Code == "23505"
-}
-
-func validTextureDimensions(kind string, width, height int) bool {
-	if width < 64 || width > 1024 || width%64 != 0 {
-		return false
-	}
-	if kind == "cape" {
-		return height*2 == width
-	}
-	return (width == 64 || width == 128) && (height == width || height*2 == width)
-}
-
-func saveTexture(directory, hash string, data []byte) (bool, error) {
-	if err := os.MkdirAll(directory, 0700); err != nil {
-		return false, err
-	}
-	root, err := os.OpenRoot(directory)
-	if err != nil {
-		return false, err
-	}
-	defer root.Close()
-	id, err := randomUUID()
-	if err != nil {
-		return false, err
-	}
-	stage := ".upload-" + id
-	f, err := root.OpenFile(stage, os.O_CREATE|os.O_EXCL|os.O_WRONLY, 0600)
-	if err != nil {
-		return false, err
-	}
-	defer root.Remove(stage)
-	_, writeErr := f.Write(data)
-	if writeErr == nil {
-		writeErr = f.Sync()
-	}
-	closeErr := f.Close()
-	if writeErr != nil {
-		return false, writeErr
-	}
-	if closeErr != nil {
-		return false, closeErr
-	}
-	// Publish only a complete file, without replacing an existing hash path.
-	if err = root.Link(stage, hash); err == nil {
-		return true, nil
-	}
-	if !errors.Is(err, os.ErrExist) {
-		return false, err
-	}
-	existing, err := root.Open(hash)
-	if err != nil {
-		return false, err
-	}
-	defer existing.Close()
-	previous, err := io.ReadAll(io.LimitReader(existing, maxTextureBytes+1))
-	if err != nil || len(previous) > maxTextureBytes || !bytes.Equal(previous, data) {
-		return false, errors.New("existing texture file does not match its content hash")
-	}
-	return false, nil
 }

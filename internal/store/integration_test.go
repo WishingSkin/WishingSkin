@@ -69,6 +69,16 @@ func TestDatabaseIntegration(t *testing.T) {
 				t.FailNow()
 			}
 
+			t.Run("character_owner_index", func(t *testing.T) {
+				query := "SELECT COUNT(*) FROM pg_indexes WHERE schemaname=current_schema() AND tablename='characters' AND indexname='characters_user_id_idx' AND indexdef LIKE '%(user_id)'"
+				if dialect == "mysql" {
+					query = "SELECT COUNT(*) FROM information_schema.STATISTICS WHERE TABLE_SCHEMA=DATABASE() AND TABLE_NAME='characters' AND COLUMN_NAME='user_id' AND SEQ_IN_INDEX=1"
+				}
+				var count int
+				if err := s.DB.QueryRowContext(ctx, query).Scan(&count); err != nil || count != 1 {
+					t.Fatalf("character owner index count = %d, error = %v", count, err)
+				}
+			})
 			t.Run("concurrent_email_unique", func(t *testing.T) {
 				assertOneUniqueWinner(t, dialect, func(index int) error {
 					return insertTestUser(ctx, s, int64(index+1), "same@example.test")

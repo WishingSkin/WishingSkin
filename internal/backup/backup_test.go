@@ -72,9 +72,13 @@ func seed(t *testing.T, dialect string) (*store.Store, string) {
 	exec("INSERT INTO plugins(plugin_id,version,enabled,settings_json) VALUES('community.fixture','1.0.0',TRUE,'synthetic-encrypted-plugin-settings')")
 	exec("INSERT INTO settings(setting_key,value) VALUES(?,?)", "service_config", "synthetic-opaque-encrypted-setting")
 	exec("INSERT INTO settings(setting_key,value) VALUES(?,?)", "oidc_config", "synthetic-opaque-oidc-setting")
+	exec("INSERT INTO settings(setting_key,value) VALUES(?,?)", "minecraft_verify_config", "synthetic-opaque-minecraft-setting")
+	exec("INSERT INTO user_notifications(notification_id,user_id,kind,title,body,link,read_at,created_at) VALUES(?,?,?,?,?,?,?,?)", strings.Repeat("d", 32), uid, "fixture", "通知", "测试通知", "/user", 0, 1700000000)
+	exec("INSERT INTO minecraft_verifications(user_id,mc_uuid,mc_name,ms_subject,verified_at) VALUES(?,?,?,?,?)", uid, strings.Repeat("e", 32), "Fixture", strings.Repeat("a", 64), 1700000000)
+	exec("INSERT INTO minecraft_flows(flow_hash,value,expires_at) VALUES(?,?,?)", strings.Repeat("f", 64), "synthetic-encrypted-minecraft-flow", 2000000000)
 	exec("INSERT INTO oidc_identities(identity_key,issuer_key,user_id,issuer,subject,created_at) VALUES(?,?,?,?,?,?)", strings.Repeat("e", 64), strings.Repeat("f", 64), uid, "https://issuer.example.test", "synthetic-subject", 1700000000)
 	exec("INSERT INTO oidc_flows(flow_hash,value,expires_at) VALUES(?,?,?)", strings.Repeat("d", 64), "synthetic-encrypted-flow", 2000000000)
-	exec("INSERT INTO oauth_clients(client_id,name,redirect_uris,secret_hash,is_public,enabled) VALUES(?,'Fixture','[\"https://app.example/cb\"]',?,FALSE,TRUE)", strings.Repeat("a", 32), strings.Repeat("b", 64))
+	exec("INSERT INTO oauth_clients(client_id,name,redirect_uris,secret_hash,is_public,enabled,allowed_scopes) VALUES(?,'Fixture','[\"https://app.example/cb\"]',?,FALSE,TRUE,'profile textures:read')", strings.Repeat("a", 32), strings.Repeat("b", 64))
 	exec("INSERT INTO oauth_codes(code_hash,client_id,user_id,redirect_uri,scope,challenge,credential_hash,expires_at) VALUES(?,?,?,'https://app.example/cb','profile',?,'fixture',2000000000)", strings.Repeat("a", 64), strings.Repeat("a", 32), uid, strings.Repeat("a", 43))
 	exec("INSERT INTO oauth_tokens(token_hash,client_id,user_id,scope,credential_hash,expires_at) VALUES(?,?,?,'profile','fixture',2000000000)", strings.Repeat("b", 64), strings.Repeat("a", 32), uid)
 	exec("INSERT INTO oauth_code_metadata(code_hash,nonce,auth_time) VALUES(?,'fixture',1700000000)", strings.Repeat("a", 64))
@@ -101,6 +105,8 @@ func seed(t *testing.T, dialect string) (*store.Store, string) {
 	exec("INSERT INTO ygg_join_sessions(token_hash,server_id,profile_uuid,client_ip,expires_at) VALUES(?,?,?,?,?)", strings.Repeat("2", 64), "old-server", uuid, "127.0.0.1", 2000000000)
 	exec("INSERT INTO account_tokens(user_id,purpose,token_hash,expires_at) VALUES(?,?,?,?)", uid, "verify", strings.Repeat("3", 64), 2000000000)
 	exec("INSERT INTO invitation_codes(code_hash,expires_at,remaining_uses) VALUES(?,?,?)", strings.Repeat("4", 64), 2000000000, 5)
+	exec("INSERT INTO point_codes(code_hash,encrypted_code,points,max_uses,remaining_uses,created_at) VALUES(?,'synthetic-sealed-point-code',20,2,1,1700000000)", strings.Repeat("5", 64))
+	exec("INSERT INTO point_code_redemptions(code_hash,user_id,redeemed_at) VALUES(?,?,1700000000)", strings.Repeat("5", 64), uid)
 	if err := os.WriteFile(filepath.Join(dir, "orphan-upload"), []byte("not referenced"), 0600); err != nil {
 		t.Fatal(err)
 	}
@@ -206,6 +212,16 @@ func TestRoundTripBothDatabases(t *testing.T) {
 					}
 					if !restored.CredentialsRevoked || !reflect.DeepEqual(restored.Rows, r.Rows) {
 						t.Fatal(restored)
+					}
+					var scopes string
+					if err := target.DB.QueryRow("SELECT allowed_scopes FROM oauth_clients").Scan(&scopes); err != nil || scopes != "profile textures:read" {
+						t.Fatalf("OAuth scopes were not restored: %q %v", scopes, err)
+					}
+					for _, name := range []string{"point_codes", "point_code_redemptions"} {
+						if _, exists := r.Rows[name]; exists {
+							t.Fatalf("backup contains %s", name)
+						}
+						assertCount(t, target, name, 0)
 					}
 					for _, name := range credentialTables {
 						assertCount(t, target, name, 0)

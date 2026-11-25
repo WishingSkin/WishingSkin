@@ -65,13 +65,14 @@ type Character struct {
 }
 
 type Texture struct {
-	ID          int64  `json:"id"`
-	Name        string `json:"name"`
-	Type        string `json:"type"` // BS steve, alex, cape
-	Hash        string `json:"hash"`
-	Public      bool   `json:"public"`
-	Uploader    *int64 `json:"uploader,omitempty"`
-	Description string `json:"description,omitempty"`
+	ID          int64   `json:"id"`
+	Name        string  `json:"name"`
+	Type        string  `json:"type"` // BS steve, alex, cape
+	Hash        string  `json:"hash"`
+	Public      bool    `json:"public"`
+	Uploader    *int64  `json:"uploader,omitempty"`
+	Description string  `json:"description,omitempty"`
+	UploadedAt  *string `json:"uploaded_at,omitempty"`
 }
 
 type Collection struct {

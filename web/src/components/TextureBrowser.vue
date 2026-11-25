@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { feedbackRef, confirmAction, toast } from '../feedback'
+import { feedbackRef, confirmAction } from '../feedback'
 import { computed, onBeforeUnmount, ref, watch } from 'vue'
 import CharacterViewer from './CharacterViewer.vue'
 import ModelThumbnail from './ModelThumbnail.vue'
@@ -8,6 +8,7 @@ import ApplyTextureDialog from './ApplyTextureDialog.vue'
 import ReportForm from './ReportForm.vue'
 import ResourceFilters from './ResourceFilters.vue'
 import AppIcon from './AppIcon.vue'
+import CopyButton from './CopyButton.vue'
 import LoadingSkeleton from './LoadingSkeleton.vue'
 import type { LibraryRecord } from '../textureTypes'
 import { locale, t } from '../i18n'
@@ -32,6 +33,7 @@ const selectedId = ref('')
 const detailRecord = ref<LibraryRecord | null>(null)
 const detailBusy = ref(false)
 const detailNotFound = ref(false)
+const detailError = ref(false)
 const alias = ref('')
 const fallback = ref('')
 const failedImages = ref<string[]>([])
@@ -39,7 +41,11 @@ const items = computed(() => records.value)
 const selected = computed(() => items.value.find(item => item.id === selectedId.value) || (detailRecord.value?.id === selectedId.value ? detailRecord.value : undefined))
 const pending = computed(() => loading.value)
 const error = computed(() => loadError.value)
-const collected = computed(() => new Set(records.value.filter(item => item.collected).map(item => item.id)))
+const collected = computed(() => {
+  const ids = new Set(records.value.filter(item => item.collected).map(item => item.id))
+  if (detailRecord.value?.collected) ids.add(detailRecord.value.id)
+  return ids
+})
 const applying = ref<LibraryRecord>()
 let request: AbortController | undefined
 let detailRequest: AbortController | undefined
@@ -55,13 +61,16 @@ watch(selected, item => { alias.value = item?.displayName || item?.name || '' },
 async function loadDetail(id: string) {
   detailRequest?.abort()
   if (!id || props.mode !== 'library') {
+    if (props.mode === 'library') selectedId.value = ''
     detailRecord.value = null
     detailNotFound.value = false
+    detailError.value = false
     detailBusy.value = false
     return
   }
   selectedId.value = id
   detailNotFound.value = false
+  detailError.value = false
   if (items.value.some(item => item.id === id)) {
     detailRecord.value = null
     detailBusy.value = false
@@ -79,16 +88,29 @@ async function loadDetail(id: string) {
       return
     }
     if (!response.ok) throw new Error('detail')
-    detailRecord.value = await response.json() as LibraryRecord
+    const data = await response.json() as LibraryRecord
+    if (!active || controller.signal.aborted || props.detailId !== id) return
+    detailRecord.value = data
+    selectedId.value = id
   } catch {
     if (active && !controller.signal.aborted) {
       detailRecord.value = null
-      detailNotFound.value = true
+      detailError.value = true
     }
   } finally {
     if (detailRequest === controller) detailBusy.value = false
   }
 }
+
+watch(() => props.mode, mode => {
+  selectedId.value = mode === 'library' ? (props.detailId || '') : ''
+  detailRecord.value = null
+  detailNotFound.value = false
+  detailError.value = false
+  message.value = ''
+  actionError.value = ''
+  void load()
+}, { immediate: true })
 
 watch(() => [props.mode, props.detailId] as const, ([, id]) => {
   if (props.mode === 'library') void loadDetail(id || '')
@@ -100,20 +122,17 @@ function selectItem(id: string) {
 }
 
 function closeDetail() {
+  detailRequest?.abort()
+  selectedId.value = ''
   detailRecord.value = null
   detailNotFound.value = false
+  detailError.value = false
+  detailBusy.value = false
   if (props.mode === 'library' && props.detailId) emit('openDetail', '')
-  else selectedId.value = ''
 }
 
-async function copyShareLink(id: string) {
-  const url = `${window.location.origin}/library/${encodeURIComponent(id)}`
-  try {
-    await navigator.clipboard.writeText(url)
-    toast('已复制分享链接。')
-  } catch {
-    toast('无法自动复制，请复制浏览器地址栏链接。', 'error')
-  }
+function shareUrl(id: string) {
+  return `${window.location.origin}/library/${encodeURIComponent(id)}`
 }
 
 function formatDate(unix?: number) {
@@ -144,9 +163,9 @@ async function load() {
   }
 }
 
-function search() { selectedId.value = ''; page.value = 1; void load() }
+function search() { closeDetail(); page.value = 1; void load() }
 function filterOwner(item: LibraryRecord) { owner.value = item.ownerId; ownerName.value = item.ownerName; search() }
-function changePage(value: number) { selectedId.value = ''; page.value = value; void load() }
+function changePage(value: number) { closeDetail(); page.value = value; void load() }
 function label(item: LibraryRecord) { return props.mode === 'wardrobe' ? item.displayName : item.name }
 
 async function change(method: 'PUT' | 'PATCH' | 'DELETE') {
@@ -225,7 +244,6 @@ async function toggleLike() {
   }
 }
 
-watch(() => props.mode, () => { selectedId.value = ''; detailRecord.value = null; detailNotFound.value = false; message.value = ''; actionError.value = ''; void load() }, { immediate: true })
 onBeforeUnmount(() => { active = false; request?.abort(); detailRequest?.abort(); lifetime.abort() })
 </script>
 
@@ -268,36 +286,43 @@ onBeforeUnmount(() => { active = false; request?.abort(); detailRequest?.abort()
         <div v-else class="material-cards"><button v-for="item in items" :key="item.id" type="button" class="material-card" :class="{ selected: item.id === selectedId }" :aria-pressed="item.id === selectedId" @click="selectItem(item.id)"><ModelThumbnail class="material-thumbnail" :name="label(item)" :model="item.kind === 'skin' ? item.model : 'default'" :skin-hash="item.kind === 'skin' ? item.fileHash : ''" :cape-hash="item.kind === 'cape' ? item.fileHash : ''" /><span class="material-card-copy"><strong>{{ label(item) }}</strong><span>{{ item.kind === 'cape' ? t('披风') : item.model === 'slim' ? t('纤细手臂') : t('标准手臂') }}<small class="material-card-stats"><span class="material-like-stat" :class="{ liked: item.liked }"><AppIcon name="heart" />{{ item.likeCount ?? 0 }}</span><span>{{ item.public ? t('{count} 收藏', { count: item.collectionCount }) : t('未公开') }}</span></small></span></span></button></div>
         <nav v-if="total > 24" class="library-pagination" :aria-label="t('公开库分页')"><button class="secondary-button" type="button" :disabled="pending || page === 1" @click="changePage(page - 1)">{{ t("上一页") }}</button><span>{{ t('第 {page} / {total} 页', { page, total: Math.ceil(total / 24) }) }}</span><button class="secondary-button" type="button" :disabled="pending || page * 24 >= total" @click="changePage(page + 1)">{{ t("下一页") }}</button></nav>
       </section>
-      <AppModal v-if="selected" :title="label(selected)" wide :busy="busy" @close="closeDetail"><div class="material-preview">
-        <div class="material-preview-heading"><h2 id="browser-preview-title">{{ t("材质预览") }}</h2><span>{{ selected.public ? t('公开') : t('未公开') }}</span></div>
-        <CharacterViewer :key="selected.id" :name="label(selected)" :model="selected.kind === 'skin' ? selected.model : 'default'" :skin-hash="selected.kind === 'skin' ? selected.fileHash : ''" :cape-hash="selected.kind === 'cape' ? selected.fileHash : ''" @fallback="fallback = selected.id" />
-        <div class="material-description"><h3>{{ label(selected) }}</h3><p v-if="mode === 'wardrobe' && selected.displayName !== selected.name">{{ t("原名：") }}{{ selected.name }}</p><p>{{ selected.description || t('暂无描述。') }}</p><p>{{ t("上传者：") }}{{ selected.ownerName || t('归属未知') }} / {{ t('{count} 人点赞', { count: selected.likeCount ?? 0 }) }} / {{ t('{count} 人收藏', { count: selected.collectionCount }) }}<template v-if="formatDate(selected.createdAt)"> / {{ t('上传于 {date}', { date: formatDate(selected.createdAt) }) }}</template></p><button v-if="mode === 'library' && selected.ownerId" class="text-button uploader-link" type="button" @click="filterOwner(selected)">{{ t("查看此上传者的材质") }}</button></div>
-        <div class="material-editing">
-          <div class="material-social-actions">
-            <button
-              v-if="selected.public || selected.owned"
-              type="button"
-              class="secondary-button like-action-button"
-              :class="{ liked: selected.liked }"
-              :aria-pressed="!!selected.liked"
-              :disabled="busy || likeBusy"
-              @click="toggleLike"
-            >
-              <AppIcon name="heart" />
-              {{ !csrfToken ? t('登录后点赞') : selected.liked ? t('已点赞') : t('点赞') }}
-              <span>{{ selected.likeCount ?? 0 }}</span>
-            </button>
-            <button v-if="mode === 'library' && selected.public" type="button" class="secondary-button" :disabled="busy" @click="copyShareLink(selected.id)">{{ t('复制分享链接') }}</button>
-            <button v-if="mode === 'library'" type="button" class="primary-button" :disabled="busy || (collected.has(selected.id) && !!csrfToken)" @click="change('PUT')">{{ !csrfToken ? t('登录后收藏') : collected.has(selected.id) ? t('已在衣柜') : t('收藏到衣柜') }}</button>
+      <AppModal v-if="selected || (mode === 'library' && detailId && (detailBusy || detailNotFound || detailError))" :title="selected ? label(selected) : detailBusy ? t('正在加载材质…') : detailError ? t('加载失败') : t('未找到公开材质')" :wide="!!selected" :busy="busy" @close="closeDetail">
+        <div v-if="selected" class="material-preview">
+          <div class="material-preview-heading"><h2 id="browser-preview-title">{{ t("材质预览") }}</h2><span>{{ selected.public ? t('公开') : t('未公开') }}</span></div>
+          <CharacterViewer :key="selected.id" :name="label(selected)" :model="selected.kind === 'skin' ? selected.model : 'default'" :skin-hash="selected.kind === 'skin' ? selected.fileHash : ''" :cape-hash="selected.kind === 'cape' ? selected.fileHash : ''" @fallback="fallback = selected.id" />
+          <div class="material-description"><h3>{{ label(selected) }}</h3><p v-if="mode === 'wardrobe' && selected.displayName !== selected.name">{{ t("原名：") }}{{ selected.name }}</p><p>{{ selected.description || t('暂无描述。') }}</p><p>{{ t("上传者：") }}{{ selected.ownerName || t('归属未知') }} / {{ t('{count} 人点赞', { count: selected.likeCount ?? 0 }) }} / {{ t('{count} 人收藏', { count: selected.collectionCount }) }}<template v-if="formatDate(selected.createdAt)"> / {{ t('上传于 {date}', { date: formatDate(selected.createdAt) }) }}</template></p><button v-if="mode === 'library' && selected.ownerId" class="text-button uploader-link" type="button" @click="filterOwner(selected)">{{ t("查看此上传者的材质") }}</button></div>
+          <div class="material-editing">
+            <div class="material-social-actions">
+              <button
+                v-if="selected.public || selected.owned"
+                type="button"
+                class="secondary-button like-action-button"
+                :class="{ liked: selected.liked }"
+                :aria-pressed="!!selected.liked"
+                :disabled="busy || likeBusy"
+                @click="toggleLike"
+              >
+                <AppIcon name="heart" />
+                {{ !csrfToken ? t('登录后点赞') : selected.liked ? t('已点赞') : t('点赞') }}
+                <span>{{ selected.likeCount ?? 0 }}</span>
+              </button>
+              <CopyButton v-if="mode === 'library' && selected.public" :text="shareUrl(selected.id)" :label="t('复制分享链接')" variant="text" :disabled="busy" />
+              <button v-if="mode === 'library'" type="button" class="primary-button" :disabled="busy || (collected.has(selected.id) && !!csrfToken)" @click="change('PUT')">{{ !csrfToken ? t('登录后收藏') : collected.has(selected.id) ? t('已在衣柜') : t('收藏到衣柜') }}</button>
+            </div>
+            <template v-if="mode === 'wardrobe'"><form class="inline-form" @submit.prevent="change('PATCH')"><label for="wardrobe-alias">{{ t("衣柜名称") }}</label><div class="inline-controls"><input id="wardrobe-alias" v-model="alias" maxlength="255" required :disabled="busy" /><button type="submit" class="secondary-button" :disabled="busy || alias.trim() === selected.displayName">{{ t("保存名称") }}</button></div></form><button class="danger-button wardrobe-remove" type="button" :disabled="busy" @click="change('DELETE')">{{ t("移出衣柜") }}</button></template>
           </div>
-          <template v-if="mode === 'wardrobe'"><form class="inline-form" @submit.prevent="change('PATCH')"><label for="wardrobe-alias">{{ t("衣柜名称") }}</label><div class="inline-controls"><input id="wardrobe-alias" v-model="alias" maxlength="255" required :disabled="busy" /><button type="submit" class="secondary-button" :disabled="busy || alias.trim() === selected.displayName">{{ t("保存名称") }}</button></div></form><button class="danger-button wardrobe-remove" type="button" :disabled="busy" @click="change('DELETE')">{{ t("移出衣柜") }}</button></template>
+          <details :key="selected.id" class="texture-sources" :open="fallback === selected.id"><summary>{{ t("PNG 材质与下载") }}</summary><div class="texture-preview checkerboard"><img v-if="!failedImages.includes(selected.fileHash)" :src="`/textures/${selected.fileHash}`" :alt="t('“{name}”的 PNG 材质平面图', { name: label(selected) })" @error="failedImages.push(selected.fileHash)" /><p v-else class="texture-placeholder">{{ t("材质预览加载失败，可尝试下载或刷新列表。") }}</p></div><a class="download-link material-download" :href="`/textures/${selected.fileHash}`" :download="`${label(selected)}.png`">{{ t("下载 PNG") }}</a></details>
+          <button class="primary-button material-wear" type="button" :disabled="busy" @click="csrfToken ? applying = selected : emit('login')">{{ t("应用到角色") }}</button>
+          <ReportForm :record-id="selected.id" :name="label(selected)" :csrf-token="csrfToken" @expired="emit('expired')" @login="emit('login')" />
         </div>
-        <details :key="selected.id" class="texture-sources" :open="fallback === selected.id"><summary>{{ t("PNG 材质与下载") }}</summary><div class="texture-preview checkerboard"><img v-if="!failedImages.includes(selected.fileHash)" :src="`/textures/${selected.fileHash}`" :alt="t('“{name}”的 PNG 材质平面图', { name: label(selected) })" @error="failedImages.push(selected.fileHash)" /><p v-else class="texture-placeholder">{{ t("材质预览加载失败，可尝试下载或刷新列表。") }}</p></div><a class="download-link material-download" :href="`/textures/${selected.fileHash}`" :download="`${label(selected)}.png`">{{ t("下载 PNG") }}</a></details>
-        <button class="primary-button material-wear" type="button" :disabled="busy" @click="csrfToken ? applying = selected : emit('login')">{{ t("应用到角色") }}</button>
-        <ReportForm :record-id="selected.id" :name="label(selected)" :csrf-token="csrfToken" @expired="emit('expired')" @login="emit('login')" />
-      </div></AppModal>
-      <AppModal v-else-if="mode === 'library' && detailId && (detailBusy || detailNotFound)" :title="detailBusy ? t('正在加载材质…') : t('未找到公开材质')" @close="closeDetail">
-        <LoadingSkeleton v-if="detailBusy" layout="rows" label="正在加载材质…" :count="2" />
+        <LoadingSkeleton v-else-if="detailBusy" layout="rows" label="正在加载材质…" :count="2" />
+        <div v-else-if="detailError" class="empty-state" role="alert">
+          <p>{{ t('暂时无法加载该材质详情，请重试。') }}</p>
+          <div class="admin-manage-actions">
+            <button type="button" class="primary-button" @click="loadDetail(detailId!)">{{ t('重新加载') }}</button>
+            <button type="button" class="secondary-button" @click="closeDetail">{{ t('返回公开库') }}</button>
+          </div>
+        </div>
         <div v-else class="empty-state">
           <p>{{ t('该材质可能未公开、已删除或链接无效。') }}</p>
           <button type="button" class="primary-button" @click="closeDetail">{{ t('返回公开库') }}</button>

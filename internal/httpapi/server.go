@@ -20,7 +20,6 @@ import (
 	"sync"
 	"time"
 
-	"github.com/coreos/go-oidc/v3/oidc"
 	"github.com/WishingSkin/WishingSkin/internal/credential"
 	"github.com/WishingSkin/WishingSkin/internal/mailer"
 	pluginregistry "github.com/WishingSkin/WishingSkin/internal/plugins"
@@ -28,6 +27,7 @@ import (
 	"github.com/WishingSkin/WishingSkin/internal/store"
 	sdk "github.com/WishingSkin/WishingSkin/pkg/plugin"
 	blob "github.com/WishingSkin/WishingSkin/pkg/storage"
+	"github.com/coreos/go-oidc/v3/oidc"
 )
 
 type Config struct {
@@ -69,10 +69,13 @@ type Server struct {
 	loginFailures      limiter
 	mailSlots          chan struct{}
 	connectorSlots     chan struct{}
+	minecraftClient    *http.Client
+	minecraftEndpoints minecraftEndpoints
 	dummy              string
 	pointsNow          func() time.Time
 	totpNow            func() time.Time
 	totpLimit          limiter
+	pointRedeemLimit   limiter
 	plugins            *pluginregistry.Registry
 	pluginEvents       *pluginregistry.EventBus
 	dynamicCalls       sync.Map
@@ -91,6 +94,7 @@ type User struct {
 	EmailVerified  bool   `json:"emailVerified"`
 	LegacyAccount  bool   `json:"legacyAccount"`
 	credentialHash string
+	sessionToken   string
 }
 type Character struct {
 	ID       int64  `json:"id"`
@@ -156,8 +160,11 @@ func New(s *store.Store, cfg Config) (*Server, error) {
 	a.registerAccountAccess()
 	a.totpNow = time.Now
 	a.totpLimit = limiter{entries: map[string]bucket{}, now: time.Now, max: 20, window: 5 * time.Minute}
+	a.pointRedeemLimit = limiter{entries: map[string]bucket{}, now: time.Now, max: 10, window: 15 * time.Minute}
 	a.registerTOTP()
 	a.registerOIDC()
+	a.registerMinecraft()
+	a.registerNotifications()
 	a.registerOAuth()
 	a.registerConnectors()
 	a.registerCustomization()
@@ -337,6 +344,10 @@ func (a *Server) ready(w http.ResponseWriter, r *http.Request) {
 	}
 	if _, err := a.oidcSettings(ctx); err != nil {
 		failure(w, 503, "OIDC 设置不可用，请检查本地设置密钥")
+		return
+	}
+	if _, err := a.minecraftSettings(ctx, a.s.DB); err != nil {
+		failure(w, 503, "正版验证设置不可用，请检查本地设置密钥")
 		return
 	}
 	respond(w, 200, map[string]string{"status": "ready"})
@@ -597,8 +608,22 @@ func (a *Server) current(r *http.Request) (User, string, error) {
 	var permission int
 	err = a.s.DB.QueryRowContext(r.Context(), a.s.Bind("SELECT u.id,u.email,u.nickname,u.permission,COALESCE(a.email_verified,FALSE),a.user_id IS NULL FROM web_sessions s JOIN users u ON u.id=s.user_id LEFT JOIN account_states a ON a.user_id=u.id WHERE s.token_hash=? AND s.expires_at>? AND u.banned=? AND (a.user_id IS NULL OR a.email_verified=TRUE OR a.verification_required=FALSE)"), tokenHash(c.Value), time.Now().Unix(), false).Scan(&u.ID, &u.Email, &u.Nickname, &permission, &u.EmailVerified, &u.LegacyAccount)
 	u.IsAdmin = permission >= 2
+	u.sessionToken = c.Value
 	return u, c.Value, err
 }
+
+func (a *Server) lockWebSession(ctx context.Context, tx *sql.Tx, user int64, token string) error {
+	if token == "" {
+		return errCredentials
+	}
+	var active bool
+	err := tx.QueryRowContext(ctx, a.s.Bind("SELECT TRUE FROM web_sessions WHERE token_hash=? AND user_id=? AND expires_at>? AND NOT EXISTS (SELECT 1 FROM account_states WHERE user_id=? AND verification_required=TRUE AND email_verified=FALSE) FOR UPDATE"), tokenHash(token), user, time.Now().Unix(), user).Scan(&active)
+	if errors.Is(err, sql.ErrNoRows) {
+		return errCredentials
+	}
+	return err
+}
+
 func sessionError(w http.ResponseWriter, err error) {
 	if errors.Is(err, errCredentials) || errors.Is(err, sql.ErrNoRows) {
 		failure(w, 401, "请先登录")

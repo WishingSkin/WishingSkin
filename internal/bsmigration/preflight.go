@@ -170,7 +170,11 @@ func Preflight(s *Snapshot, sourceDir string) (Report, error) {
 		r.Unsupported = append(r.Unsupported, Omitted{Scope: "texture_ownership", Count: int64(len(s.Textures)), Reason: "This snapshot does not contain texture uploader IDs or descriptions; records retain unknown owners and empty descriptions. Character bindings do not establish ownership."})
 	}
 	hashNames := map[string]string{}
+	var unknownUploadDates int64
 	for _, t := range s.Textures {
+		if textureUploadTime(t.UploadedAt) == 0 {
+			unknownUploadDates++
+		}
 		scope := fmt.Sprintf("texture:%d", t.ID)
 		if s.FormatVersion == 1 && (t.Uploader != nil || t.Description != "") {
 			block("version", scope, "uploader and description require snapshot format v2")
@@ -227,6 +231,9 @@ func Preflight(s *Snapshot, sourceDir string) (Report, error) {
 		if !seenFile {
 			r.Files++
 		}
+	}
+	if unknownUploadDates > 0 {
+		r.Unsupported = append(r.Unsupported, Omitted{Scope: "texture_upload_dates", Count: unknownUploadDates, Reason: "Missing or invalid source texture upload dates are stored as unknown (0)."})
 	}
 	collections := map[[2]int64]bool{}
 	for _, c := range s.Wardrobe {
@@ -357,6 +364,21 @@ func parseSourceTime(value string, nullable bool) (int64, error) {
 		return 0, err
 	}
 	return parsed.Unix(), nil
+}
+
+func textureUploadTime(value *string) int64 {
+	if value == nil || *value == "" {
+		return 0
+	}
+	seconds, err := parseSourceTime(*value, false)
+	if err != nil {
+		parsed, err := time.Parse(time.RFC3339, *value)
+		if err != nil {
+			return 0
+		}
+		seconds = parsed.Unix()
+	}
+	return max(seconds, 0)
 }
 
 func validatePrivateKey(value string) error {

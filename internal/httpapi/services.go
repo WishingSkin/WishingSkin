@@ -20,16 +20,17 @@ import (
 )
 
 type serviceSettings struct {
-	SMTPEnabled      bool   `json:"smtpEnabled"`
-	Address          string `json:"address"`
-	From             string `json:"from"`
-	Username         string `json:"username"`
-	Password         string `json:"password"`
-	TLSMode          string `json:"tlsMode"`
-	TestRecipient    string `json:"testRecipient"`
-	TurnstileEnabled bool   `json:"turnstileEnabled"`
-	SiteKey          string `json:"siteKey"`
-	Secret           string `json:"secret"`
+	NotificationEmailEnabled bool   `json:"notificationEmailEnabled"`
+	SMTPEnabled              bool   `json:"smtpEnabled"`
+	Address                  string `json:"address"`
+	From                     string `json:"from"`
+	Username                 string `json:"username"`
+	Password                 string `json:"password"`
+	TLSMode                  string `json:"tlsMode"`
+	TestRecipient            string `json:"testRecipient"`
+	TurnstileEnabled         bool   `json:"turnstileEnabled"`
+	SiteKey                  string `json:"siteKey"`
+	Secret                   string `json:"secret"`
 }
 type runtimeServices struct {
 	Mail      MailSender
@@ -106,7 +107,7 @@ func (a *Server) services(ctx context.Context) (runtimeServices, error) {
 	return result, nil
 }
 func serviceView(value serviceSettings, saved bool) map[string]any {
-	return map[string]any{"smtpEnabled": value.SMTPEnabled, "address": value.Address, "from": value.From, "username": value.Username, "tlsMode": value.TLSMode, "testRecipient": value.TestRecipient, "passwordConfigured": value.Password != "", "turnstileEnabled": value.TurnstileEnabled, "siteKey": value.SiteKey, "secretConfigured": value.Secret != "", "source": map[bool]string{true: "database", false: "environment"}[saved]}
+	return map[string]any{"smtpEnabled": value.SMTPEnabled, "notificationEmailEnabled": value.NotificationEmailEnabled, "address": value.Address, "from": value.From, "username": value.Username, "tlsMode": value.TLSMode, "testRecipient": value.TestRecipient, "passwordConfigured": value.Password != "", "turnstileEnabled": value.TurnstileEnabled, "siteKey": value.SiteKey, "secretConfigured": value.Secret != "", "source": map[bool]string{true: "database", false: "environment"}[saved]}
 }
 func (a *Server) adminServices(w http.ResponseWriter, r *http.Request) {
 	u, ok := a.adminRead(w, r)
@@ -137,18 +138,19 @@ func (a *Server) updateServices(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	var body struct {
-		SMTPEnabled      bool    `json:"smtpEnabled"`
-		Address          string  `json:"address"`
-		From             string  `json:"from"`
-		Username         string  `json:"username"`
-		TLSMode          string  `json:"tlsMode"`
-		TestRecipient    string  `json:"testRecipient"`
-		TurnstileEnabled bool    `json:"turnstileEnabled"`
-		SiteKey          string  `json:"siteKey"`
-		Password         *string `json:"password"`
-		Secret           *string `json:"secret"`
-		ClearPassword    bool    `json:"clearPassword"`
-		ClearSecret      bool    `json:"clearSecret"`
+		NotificationEmailEnabled *bool   `json:"notificationEmailEnabled"`
+		SMTPEnabled              bool    `json:"smtpEnabled"`
+		Address                  string  `json:"address"`
+		From                     string  `json:"from"`
+		Username                 string  `json:"username"`
+		TLSMode                  string  `json:"tlsMode"`
+		TestRecipient            string  `json:"testRecipient"`
+		TurnstileEnabled         bool    `json:"turnstileEnabled"`
+		SiteKey                  string  `json:"siteKey"`
+		Password                 *string `json:"password"`
+		Secret                   *string `json:"secret"`
+		ClearPassword            bool    `json:"clearPassword"`
+		ClearSecret              bool    `json:"clearSecret"`
 	}
 	if !decode(w, r, &body) {
 		return
@@ -164,6 +166,9 @@ func (a *Server) updateServices(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	previous := value
+	if body.NotificationEmailEnabled != nil {
+		value.NotificationEmailEnabled = *body.NotificationEmailEnabled
+	}
 	value.SMTPEnabled = body.SMTPEnabled
 	value.Address = strings.TrimSpace(body.Address)
 	value.From = strings.TrimSpace(body.From)
@@ -203,6 +208,7 @@ func (a *Server) updateServices(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	a.auditJSON(r.Context(), "services", map[string]any{"smtpEnabled": previous.SMTPEnabled, "address": previous.Address, "tlsMode": previous.TLSMode, "turnstileEnabled": previous.TurnstileEnabled}, map[string]any{"smtpEnabled": value.SMTPEnabled, "address": value.Address, "tlsMode": value.TLSMode, "turnstileEnabled": value.TurnstileEnabled})
+	a.auditChange(r.Context(), "notificationEmailEnabled", previous.NotificationEmailEnabled, value.NotificationEmailEnabled)
 	if previous.From != value.From {
 		store.CaptureAdminChange(r.Context(), "services.from", "", "发件人已更新")
 	}

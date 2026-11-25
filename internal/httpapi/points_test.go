@@ -12,6 +12,135 @@ import (
 	"time"
 )
 
+func TestPointCodeLifecycleBothDatabases(t *testing.T) {
+	for _, dialect := range []string{"mysql", "postgres"} {
+		t.Run(dialect, func(t *testing.T) {
+			f := newManagementApp(t, dialect)
+			const codesPath = "/api/admin/points/codes"
+			const redeemPath = "/api/points/redeem"
+			body := map[string]any{"count": 1, "points": 13, "note": " =Event reward "}
+			webStatus(t, f.call(1, "GET", codesPath, nil), 403)
+			webStatus(t, f.call(3, "POST", codesPath, body), 409)
+			configurePoints(t, f, true, 0, 0, 0)
+			webStatus(t, f.call(3, "POST", codesPath, map[string]any{"count": 1, "points": 1, "maxUses": 0}), 400)
+			webStatus(t, f.call(3, "POST", codesPath, map[string]any{"count": 1, "points": 1, "note": "bad\n"}), 400)
+			issued := []string{}
+			create := func() string {
+				t.Helper()
+				w := f.call(3, "POST", codesPath, body)
+				webStatus(t, w, 201)
+				var reply struct{ Codes []string }
+				if err := json.Unmarshal(w.Body.Bytes(), &reply); err != nil || len(reply.Codes) != 1 || len(strings.Split(reply.Codes[0], "-")) != 5 {
+					t.Fatal("invalid batch response", err)
+				}
+				issued = append(issued, reply.Codes[0])
+				return reply.Codes[0]
+			}
+			redeem := func(user int, code string) int {
+				return f.call(user, "POST", redeemPath, map[string]string{"code": code}).Code
+			}
+			race := func(code string, users ...int) map[int]int {
+				var wg sync.WaitGroup
+				statuses := make(chan int, len(users))
+				for _, user := range users {
+					wg.Go(func() { statuses <- redeem(user, code) })
+				}
+				wg.Wait()
+				close(statuses)
+				result := map[int]int{}
+				for status := range statuses {
+					result[status]++
+				}
+				return result
+			}
+			single := create()
+			if got := race(single, 1, 2); got[200] != 1 || got[409] != 1 {
+				t.Fatal("single-use race", got)
+			}
+			body["maxUses"] = 3
+			multi := create()
+			if got := race(strings.ToLower(strings.ReplaceAll(multi, "-", " \t")), 1, 1, 2); got[200] != 2 || got[409] != 1 {
+				t.Fatal("multi-use race", got)
+			}
+			w := f.call(1, "POST", redeemPath, map[string]string{"code": multi})
+			webStatus(t, w, 409)
+			if !strings.Contains(w.Body.String(), "你已经兑换过此积分码") {
+				t.Fatal("unexpected duplicate error", w.Body)
+			}
+			if total := pointsBalance(t, f, 1) + pointsBalance(t, f, 2); total != 39 {
+				t.Fatalf("unexpected combined balance: %d", total)
+			}
+			w = f.call(1, "GET", "/api/points", nil)
+			webStatus(t, w, 200)
+			if !strings.Contains(w.Body.String(), `"note":"=Event reward"`) || strings.Contains(w.Body.String(), multi) {
+				t.Fatal("incorrect ledger projection", w.Body)
+			}
+			var notifications int
+			if err := f.db.DB.QueryRow("SELECT COUNT(*) FROM user_notifications WHERE kind='points.redeem' AND link='/user/account/points'").Scan(&notifications); err != nil || notifications != 3 {
+				t.Fatal("incorrect redemption notifications", notifications, err)
+			}
+			w = f.call(3, "GET", codesPath+"?limit=1", nil)
+			webStatus(t, w, 200)
+			var listing struct {
+				Codes []struct{ ID, Code, Status string }
+				Total int
+			}
+			if err := json.Unmarshal(w.Body.Bytes(), &listing); err != nil || listing.Total != 2 || len(listing.Codes) != 1 {
+				t.Fatal("incorrect code listing", err)
+			}
+			w = f.call(3, "GET", codesPath+"/export?format=csv", nil)
+			webStatus(t, w, 200)
+			if !strings.Contains(w.Body.String(), multi) || !strings.Contains(w.Body.String(), "'=Event reward") || strings.Contains(w.Body.String(), single) {
+				t.Fatal("incorrect available CSV export")
+			}
+			multiHash := tokenHash(strings.ReplaceAll(multi, "-", ""))
+			webStatus(t, f.call(3, "POST", codesPath+"/"+multiHash+"/disable", nil), 204)
+			w = f.call(3, "POST", redeemPath, map[string]string{"code": multi})
+			webStatus(t, w, 409)
+			if !strings.Contains(w.Body.String(), "该积分码已停用") {
+				t.Fatal("incorrect disabled error", w.Body)
+			}
+			now := time.Now()
+			f.app.pointsNow = func() time.Time { return now }
+			body["hours"] = 1
+			expiring := create()
+			f.app.pointsNow = func() time.Time { return now.Add(time.Hour) }
+			w = f.call(3, "POST", redeemPath, map[string]string{"code": expiring})
+			webStatus(t, w, 409)
+			if !strings.Contains(w.Body.String(), "该积分码已过期") {
+				t.Fatal("incorrect expired error", w.Body)
+			}
+			w = f.call(3, "GET", codesPath+"/export?format=txt&status=all", nil)
+			webStatus(t, w, 200)
+			for _, code := range issued {
+				if !strings.Contains(w.Body.String(), code) {
+					t.Fatal("full export omitted a code")
+				}
+			}
+			for range 8 {
+				if status := redeem(3, strings.Repeat("2", 20)); status != 404 {
+					t.Fatal("valid-shaped missing code status", status)
+				}
+			}
+			if status := redeem(3, strings.Repeat("2", 20)); status != 429 {
+				t.Fatal("rate limit status", status)
+			}
+			w = f.call(3, "GET", "/api/admin/events?pageSize=60", nil)
+			webStatus(t, w, 200)
+			for _, action := range []string{"points.code.create", "points.code.disable", "points.code.export"} {
+				if !strings.Contains(w.Body.String(), action) {
+					t.Fatal("missing audit action", action)
+				}
+			}
+			for _, code := range issued {
+				if strings.Contains(w.Body.String(), code) || strings.Contains(w.Body.String(), strings.ReplaceAll(code, "-", "")) {
+					t.Fatal("audit record exposed a point code")
+				}
+			}
+		})
+	}
+}
+
 func TestPointsConcurrentChargeAndRevocationBothDatabases(t *testing.T) {
 	for _, dialect := range []string{"mysql", "postgres"} {
 		t.Run(dialect, func(t *testing.T) {

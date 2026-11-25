@@ -1,0 +1,1 @@
+-- InnoDB already indexes characters(user_id) for the foreign key.

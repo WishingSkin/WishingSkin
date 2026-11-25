@@ -5,27 +5,18 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
-	"io"
-	"net/http"
-	"time"
 	"github.com/WishingSkin/WishingSkin/internal/securebox"
 	localstorage "github.com/WishingSkin/WishingSkin/internal/storage"
 	"github.com/WishingSkin/WishingSkin/internal/store"
+	"github.com/WishingSkin/WishingSkin/internal/textureimport"
 	blob "github.com/WishingSkin/WishingSkin/pkg/storage"
+	"io"
+	"net/http"
+	"time"
 )
 
 func (a *Server) objectStorageSettings(ctx context.Context) (localstorage.S3Options, string, error) {
-	var v localstorage.S3Options
-	var sealed string
-	_, err := a.readSetting(ctx, "object_storage_config", &sealed)
-	if err != nil || sealed == "" {
-		return v, sealed, err
-	}
-	plain, err := securebox.Open(a.cfg.SettingsKey, sealed, "wishingskin:object-storage:v1")
-	if err == nil {
-		err = json.Unmarshal([]byte(plain), &v)
-	}
-	return v, sealed, err
+	return textureimport.ReadObjectStorage(ctx, a.s.DB, a.cfg.SettingsKey)
 }
 func (a *Server) adminObjectStorage(w http.ResponseWriter, r *http.Request) {
 	if _, ok := a.adminRead(w, r); !ok {
@@ -121,13 +112,7 @@ func (a *Server) objectStore(ctx context.Context) (blob.BlobStore, error) {
 	return a.remoteStorage, nil
 }
 func (a *Server) saveTextureFile(ctx context.Context, provider blob.BlobStore, hash string, data []byte) (bool, error) {
-	created, err := saveTexture(a.cfg.TextureDir, hash, data)
-	if err != nil || provider == nil {
-		return created, err
-	}
-	ctx, cancel := context.WithTimeout(ctx, 20*time.Second)
-	defer cancel()
-	return created, provider.Put(ctx, hash, "image/png", bytes.NewReader(data))
+	return textureimport.SaveFile(ctx, provider, a.cfg.TextureDir, hash, data)
 }
 func (a *Server) textureFileBytes(ctx context.Context, hash string) ([]byte, error) {
 	f, err := a.openTextureFile(ctx, hash)

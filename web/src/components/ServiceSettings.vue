@@ -1,11 +1,13 @@
 <script setup lang="ts">
 import LoadingSkeleton from './LoadingSkeleton.vue'
 import { feedbackRef } from '../feedback'
-import { onMounted, ref } from 'vue'
+import { computed, onMounted, ref } from 'vue'
 import { t } from '../i18n'
 import TurnstileChallenge from './TurnstileChallenge.vue'
 import EmailTemplateSettings from './EmailTemplateSettings.vue'
-interface Services { smtpEnabled: boolean; address: string; from: string; username: string; tlsMode: string; passwordConfigured: boolean; turnstileEnabled: boolean; siteKey: string; secretConfigured: boolean; source: string; testRecipient: string; turnstileHostname?: string; editable?: boolean }
+import { settingsSnapshot } from '../settingsDraft'
+import { useUnsavedGuard } from '../unsavedGuard'
+interface Services { smtpEnabled: boolean; notificationEmailEnabled?: boolean; address: string; from: string; username: string; tlsMode: string; passwordConfigured: boolean; turnstileEnabled: boolean; siteKey: string; secretConfigured: boolean; source: string; testRecipient: string; turnstileHostname?: string; editable?: boolean }
 const props = defineProps<{ csrfToken: string }>()
 const emit = defineEmits<{ updated: []; expired: [] }>()
 const draft = ref<Services | null>(null)
@@ -22,6 +24,29 @@ const turnstileTestToken = ref('')
 const turnstileChallenge = ref<InstanceType<typeof TurnstileChallenge> | null>(null)
 const error = feedbackRef('error')
 const message = feedbackRef('success')
+function pickComparable(value: Services | null) {
+  if (!value) return null
+  return {
+    smtpEnabled: value.smtpEnabled,
+    notificationEmailEnabled: !!value.notificationEmailEnabled,
+    address: value.address,
+    from: value.from,
+    username: value.username,
+    tlsMode: value.tlsMode,
+    turnstileEnabled: value.turnstileEnabled,
+    siteKey: value.siteKey,
+    testRecipient: value.testRecipient || '',
+  }
+}
+const dirty = computed(() => {
+  if (loading.value || !draft.value || !savedServices.value) return false
+  return settingsSnapshot(pickComparable(draft.value)) !== settingsSnapshot(pickComparable(savedServices.value))
+    || password.value !== ''
+    || secret.value !== ''
+    || clearPassword.value
+    || clearSecret.value
+})
+useUnsavedGuard(dirty, '/admin/settings/services')
 async function load() {
   loading.value = true; error.value = ''
   try {
@@ -29,7 +54,7 @@ async function load() {
     if (response.status === 401) { emit('expired'); return }
     const data = await response.json() as Services & { error?: string }
     if (!response.ok) { error.value = data.error || '暂时无法读取服务设置'; return }
-    draft.value = { ...data, testRecipient: data.testRecipient || '' }
+    draft.value = { ...data, notificationEmailEnabled: !!data.notificationEmailEnabled, testRecipient: data.testRecipient || '' }
     savedServices.value = { ...draft.value }
   } catch { error.value = '暂时无法读取服务设置' }
   finally { loading.value = false }
@@ -84,6 +109,7 @@ onMounted(load)
       <label class="binding-field"><span>{{ t('SMTP 用户名') }}</span><input v-model="draft.username" autocomplete="off" /></label>
       <label class="binding-field"><span>{{ t('SMTP 密码') }} <small>{{ draft.passwordConfigured ? t('已配置') : t('未配置') }}</small></span><input v-model="password" type="password" autocomplete="new-password" :disabled="clearPassword" /></label>
       <label class="settings-check"><input v-model="clearPassword" type="checkbox" />{{ t('清除已保存的 SMTP 密码') }}</label>
+      <label class="settings-check"><input v-model="draft.notificationEmailEnabled" type="checkbox" :disabled="!draft.smtpEnabled" />{{ t('为审核、举报和积分变更发送个人通知邮件') }}</label>
       <h4>Cloudflare Turnstile</h4><label class="settings-check"><input v-model="draft.turnstileEnabled" type="checkbox" />{{ t('启用人机验证') }}</label>
       <label class="binding-field"><span>Site key</span><input v-model="draft.siteKey" :required="draft.turnstileEnabled" maxlength="256" autocomplete="off" /></label>
       <label class="binding-field"><span>Secret key <small>{{ draft.secretConfigured ? t('已配置') : t('未配置') }}</small></span><input v-model="secret" type="password" maxlength="256" autocomplete="new-password" :disabled="clearSecret" /></label>

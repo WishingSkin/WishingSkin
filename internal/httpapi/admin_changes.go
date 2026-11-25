@@ -6,9 +6,9 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"github.com/WishingSkin/WishingSkin/internal/store"
 	"sort"
 	"strings"
-	"github.com/WishingSkin/WishingSkin/internal/store"
 )
 
 func (a *Server) auditChange(ctx context.Context, field string, before, after any) {
@@ -46,7 +46,18 @@ func (a *Server) captureSettingChange(ctx context.Context, tx *sql.Tx, key, next
 		return nil
 	}
 	switch key {
-	case "homepage_blocks", "homepage_background", "site_appearance", "content_policy", "backup_schedule", "cdn_config", "storage_quota", "ygg_non_email_login", "registration_email_domains", "registration_blocked_domains", "manual_email_verification", "random_user_ids", "official_invitation":
+	case "content_policy":
+		var before, after contentPolicy
+		_ = json.Unmarshal([]byte(previous), &before)
+		if err := json.Unmarshal([]byte(next), &after); err != nil {
+			return err
+		}
+		fields := func(policy contentPolicy) map[string]any {
+			policy = policy.Normalized()
+			return map[string]any{"reviewUploads": policy.ReviewUploads, "categories": policy.Categories, "maxSkinWidth": policy.MaxSkinWidth, "maxCapeWidth": policy.MaxCapeWidth, "maxFileBytes": policy.MaxFileBytes}
+		}
+		a.auditJSON(ctx, key, fields(before), fields(after))
+	case "homepage_blocks", "homepage_background", "site_appearance", "backup_schedule", "cdn_config", "storage_quota", "ygg_non_email_login", "registration_email_domains", "registration_blocked_domains", "manual_email_verification", "random_user_ids", "official_invitation":
 		var before, after any
 		_ = json.Unmarshal([]byte(previous), &before)
 		if err := json.Unmarshal([]byte(next), &after); err != nil {

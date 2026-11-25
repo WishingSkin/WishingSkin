@@ -76,20 +76,35 @@ func (s *SMTP) Validate() error {
 }
 
 func (s *SMTP) Send(ctx context.Context, to, purpose, link string) error {
+	content, err := s.template().Render(purpose, link)
+	if err != nil {
+		return err
+	}
+	return s.send(ctx, to, content)
+}
+
+func (s *SMTP) SendNotification(ctx context.Context, to, title, body, link string) error {
+	content, err := s.template().RenderNotification(title, body, link)
+	if err != nil {
+		return err
+	}
+	return s.send(ctx, to, content)
+}
+
+func (s *SMTP) template() Template {
+	if s.Template != nil {
+		return *s.Template
+	}
+	return DefaultTemplate("WishingSkin")
+}
+
+func (s *SMTP) send(ctx context.Context, to string, content Content) error {
 	if err := s.Validate(); err != nil {
 		return err
 	}
 	address, err := mail.ParseAddress(to)
 	if err != nil || address.Address != to || strings.ContainsAny(to, "\r\n") {
 		return errors.New("invalid recipient")
-	}
-	template := DefaultTemplate("WishingSkin")
-	if s.Template != nil {
-		template = *s.Template
-	}
-	content, err := template.Render(purpose, link)
-	if err != nil {
-		return err
 	}
 	message, err := composeMessage(s.From, to, content)
 	if err != nil {

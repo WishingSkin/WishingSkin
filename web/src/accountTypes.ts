@@ -47,7 +47,13 @@ export interface HomepageBlock { id: string; name?: string; image?: string; imag
 export interface HomepageSettings { blocks: HomepageBlock[]; background?: { image?: string; imageUrl?: string; overlay: number } }
 
 export interface SiteAccess {
-  contentPolicy?: { reviewUploads: boolean; categories: string[] }
+  contentPolicy?: {
+    reviewUploads: boolean
+    categories: string[]
+    maxSkinWidth?: number
+    maxCapeWidth?: number
+    maxFileBytes?: number
+  }
   loginImageUrl?: string
   oidcProviders?: { id: string; name: string }[]
   oidc?: { enabled: boolean; name: string }
@@ -69,6 +75,7 @@ export interface SiteAccess {
   manualEmailVerification?: boolean
   mailEnabled: boolean
   turnstileSiteKey: string
+  characterLimit?: number
   yggNonEmailLogin?: boolean
 }
 

@@ -163,11 +163,6 @@ func (a *Server) gameAuthenticate(w http.ResponseWriter, r *http.Request) {
 		}
 		return
 	}
-	chars, err := a.userCharacters(r.Context(), u.ID)
-	if err != nil {
-		yfail(w, 503, "ServiceUnavailableException", "Profiles unavailable")
-		return
-	}
 	token, err := secret()
 	if err != nil {
 		yfail(w, 503, "ServiceUnavailableException", "Authentication unavailable")
@@ -180,41 +175,50 @@ func (a *Server) gameAuthenticate(w http.ResponseWriter, r *http.Request) {
 			return
 		}
 	}
-	profiles := make([]gameProfile, 0, len(chars))
-	selected := ""
-	for _, c := range chars {
-		profiles = append(profiles, gameProfile{ID: c.UUID, Name: c.Name})
-	}
-	response := map[string]any{"accessToken": token, "clientToken": body.ClientToken, "availableProfiles": profiles}
-	if matchedProfile != nil {
-		response["selectedProfile"] = *matchedProfile
-		selected = matchedProfile.ID
-	} else if len(profiles) == 1 {
-		response["selectedProfile"] = profiles[0]
-		selected = chars[0].UUID
-	}
-	if body.RequestUser {
-		response["user"] = gameUser(u.ID)
-	}
 	tx, err := a.s.DB.BeginTx(r.Context(), &sql.TxOptions{Isolation: sql.LevelReadCommitted})
 	if err != nil {
 		yfail(w, 503, "ServiceUnavailableException", "Authentication unavailable")
 		return
 	}
 	defer tx.Rollback()
-	err = a.lockAuthenticatedUser(r.Context(), tx, u)
-	if err == nil && selected != "" {
-		_, err = a.ownedGameProfile(r.Context(), tx, u.ID, selected)
+	if err := a.lockAuthenticatedUser(r.Context(), tx, u); err != nil {
+		a.gameTokenError(w, err, "Authentication unavailable")
+		return
 	}
-	if err == nil {
-		err = a.issueGameToken(r.Context(), tx, token, body.ClientToken, u.ID, selected)
+	profiles, err := a.gameProfiles(r.Context(), tx, u.ID)
+	if err != nil {
+		yfail(w, 503, "ServiceUnavailableException", "Profiles unavailable")
+		return
 	}
+	var selected gameProfile
+	if matchedProfile != nil {
+		for _, profile := range profiles {
+			if profile.ID == matchedProfile.ID {
+				selected = profile
+				break
+			}
+		}
+		if selected.ID == "" {
+			a.gameTokenError(w, errCredentials, "Authentication unavailable")
+			return
+		}
+	} else if len(profiles) == 1 {
+		selected = profiles[0]
+	}
+	err = a.issueGameToken(r.Context(), tx, token, body.ClientToken, u.ID, selected.ID)
 	if err == nil {
 		err = tx.Commit()
 	}
 	if err != nil {
 		a.gameTokenError(w, err, "Authentication unavailable")
 		return
+	}
+	response := map[string]any{"accessToken": token, "clientToken": body.ClientToken, "availableProfiles": profiles}
+	if selected.ID != "" {
+		response["selectedProfile"] = selected
+	}
+	if body.RequestUser {
+		response["user"] = gameUser(u.ID)
 	}
 	respond(w, 200, response)
 }
@@ -317,6 +321,23 @@ func (a *Server) ownedGameProfile(ctx context.Context, q yggQuerier, id int64, u
 	var profile gameProfile
 	err := q.QueryRowContext(ctx, a.s.Bind("SELECT uuid,name FROM characters WHERE user_id=? AND uuid=? FOR UPDATE"), id, uuid).Scan(&profile.ID, &profile.Name)
 	return profile, err
+}
+
+func (a *Server) gameProfiles(ctx context.Context, tx *sql.Tx, id int64) ([]gameProfile, error) {
+	rows, err := tx.QueryContext(ctx, a.s.Bind("SELECT uuid,name FROM characters WHERE user_id=? ORDER BY id FOR UPDATE"), id)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	profiles := []gameProfile{}
+	for rows.Next() {
+		var profile gameProfile
+		if err := rows.Scan(&profile.ID, &profile.Name); err != nil {
+			return nil, err
+		}
+		profiles = append(profiles, profile)
+	}
+	return profiles, rows.Err()
 }
 
 // All game writes lock user, token, profile, then join record in that order.

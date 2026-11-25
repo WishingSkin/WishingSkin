@@ -1,14 +1,18 @@
 <script setup lang="ts">
-import { onMounted, ref } from 'vue'
+import { computed, onMounted, ref } from 'vue'
 import AppModal from './AppModal.vue'
+import CopyButton from './CopyButton.vue'
 import { t } from '../i18n'
 import { confirmAction, toast } from '../feedback'
+import { settingsSnapshot } from '../settingsDraft'
+import { dirtyModalConfirm, oneTimeSecretModalConfirm } from '../unsavedGuard'
 type Subscription = { id: string; pluginId: string; url: string; events: string[]; enabled: boolean }
 type Delivery = { id: string; subscriptionId: string; attempts: number; state: string; status: number; createdAt: number }
 const props = defineProps<{ csrfToken: string }>()
 const emit = defineEmits<{ expired: [] }>()
 const subscriptions = ref<Subscription[]>([]), deliveries = ref<Delivery[]>([]), events = ref<string[]>([])
-const editing = ref<Subscription>(), secret = ref(''), busy = ref(false)
+const editing = ref<Subscription>(), editingInitial = ref(''), secret = ref(''), busy = ref(false)
+const editingDirty = computed(() => !!editing.value && settingsSnapshot(editing.value) !== editingInitial.value)
 const labels: Record<string, string> = { 'character.create': '创建角色', 'texture.upload': '上传材质', pending: '等待投递', failed: '投递失败', delivered: '已送达' }
 async function request(path: string, method = 'GET', body?: unknown) {
  const response = await fetch(path, { method, headers: { 'Content-Type': 'application/json', 'X-CSRF-Token': props.csrfToken }, body: body === undefined ? undefined : JSON.stringify(body) })
@@ -18,7 +22,7 @@ async function request(path: string, method = 'GET', body?: unknown) {
  return data
 }
 async function load() { try { const data = await request('/api/admin/webhooks'); subscriptions.value = data.subscriptions; deliveries.value = data.deliveries; events.value = data.events } catch (error) { toast((error as Error).message, 'error') } }
-function edit(item?: Subscription) { editing.value = item ? { ...item, events: [...item.events] } : { id: '', pluginId: '', url: '', events: [], enabled: true } }
+function edit(item?: Subscription) { editing.value = item ? { ...item, events: [...item.events] } : { id: '', pluginId: '', url: '', events: [], enabled: true }; editingInitial.value = settingsSnapshot(editing.value) }
 async function save(rotateSecret = false) {
  if (!editing.value) return
  if (rotateSecret && !await confirmAction({ title: '轮换签名密钥', message: '轮换后请更新接收端的签名密钥。' })) return
@@ -46,7 +50,7 @@ onMounted(load)
   <article v-for="item in subscriptions" :key="item.id" class="webhook-row"><div><strong>{{ item.url }}</strong><span>{{ item.events.map(event => t(labels[event] || event)).join(', ') }}</span><span>{{ t(item.enabled ? '已启用' : '已停用') }}</span></div><div class="settings-actions"><button class="secondary-button" :disabled="busy" @click="edit(item)">{{ t('编辑') }}</button><button class="danger-button" :disabled="busy" @click="remove(item)">{{ t('删除') }}</button></div></article>
   <template v-if="deliveries.length"><h4>{{ t('最近投递') }}</h4><article v-for="item in deliveries" :key="item.id" class="webhook-row"><div><span>{{ t(labels[item.state] || item.state) }} {{ item.status || '' }}</span><time>{{ new Date(item.createdAt * 1000).toLocaleString() }}</time><span>{{ t('尝试次数') }}: {{ item.attempts }}</span></div><button v-if="item.state === 'failed'" class="secondary-button" :disabled="busy" @click="retry(item)">{{ t('重试') }}</button></article></template>
  </details>
- <AppModal v-if="editing" :title="t('Webhook 设置')" :busy="busy" @close="editing = undefined"><form class="settings-form" @submit.prevent="save()"><label class="binding-field"><span>{{ t('接收地址') }}</span><input v-model="editing.url" type="url" required placeholder="https://example.com/webhook" /></label><label class="binding-field"><span>{{ t('关联插件 ID') }}</span><input v-model="editing.pluginId" :placeholder="t('可选')" /></label><fieldset><legend>{{ t('订阅事件') }}</legend><label v-for="event in events" :key="event" class="checkbox-label"><input v-model="editing.events" type="checkbox" :value="event" />{{ t(labels[event] || event) }}</label></fieldset><label class="checkbox-label"><input v-model="editing.enabled" type="checkbox" />{{ t('启用') }}</label><div class="settings-actions"><button class="primary-button" :disabled="busy || !editing.events.length">{{ t('保存') }}</button><button v-if="editing.id" type="button" class="secondary-button" :disabled="busy" @click="save(true)">{{ t('轮换签名密钥') }}</button></div></form></AppModal>
- <AppModal v-if="secret" :title="t('签名密钥')" @close="secret = ''"><p>{{ t('请保存此密钥，用于接收端验证签名。') }}</p><code class="webhook-secret">{{ secret }}</code><button class="primary-button" @click="secret = ''">{{ t('完成') }}</button></AppModal>
+ <AppModal v-if="editing" :title="t('Webhook 设置')" :busy="busy" :confirm-close="editingDirty ? dirtyModalConfirm : false" @close="editing = undefined"><form class="settings-form" @submit.prevent="save()"><label class="binding-field"><span>{{ t('接收地址') }}</span><input v-model="editing.url" type="url" required placeholder="https://example.com/webhook" /></label><label class="binding-field"><span>{{ t('关联插件 ID') }}</span><input v-model="editing.pluginId" :placeholder="t('可选')" /></label><fieldset><legend>{{ t('订阅事件') }}</legend><label v-for="event in events" :key="event" class="checkbox-label"><input v-model="editing.events" type="checkbox" :value="event" />{{ t(labels[event] || event) }}</label></fieldset><label class="checkbox-label"><input v-model="editing.enabled" type="checkbox" />{{ t('启用') }}</label><div class="settings-actions"><button class="primary-button" :disabled="busy || !editing.events.length">{{ t('保存') }}</button><button v-if="editing.id" type="button" class="secondary-button" :disabled="busy" @click="save(true)">{{ t('轮换签名密钥') }}</button></div></form></AppModal>
+ <AppModal v-if="secret" :title="t('签名密钥')" :confirm-close="oneTimeSecretModalConfirm" @close="secret = ''"><p>{{ t('请保存此密钥，用于接收端验证签名。') }}</p><div class="secret-copy-row"><code class="webhook-secret">{{ secret }}</code><CopyButton :text="secret" :label="t('复制签名密钥')" /></div><button class="primary-button" @click="secret = ''">{{ t('完成') }}</button></AppModal>
 </template>
 <style scoped>.webhook-settings { margin-top: 24px; }.webhook-settings > .settings-actions { margin-top: 16px; }.webhook-row { display: flex; flex-wrap: wrap; align-items: center; gap: 16px; padding-block: 16px; border-bottom: 1px solid var(--border); }.webhook-row > div:first-child { display: grid; gap: 4px; flex: 1; min-width: 0; overflow-wrap: anywhere; }.webhook-secret { display: block; overflow-wrap: anywhere; margin-block: 20px; }fieldset { border: 0; padding: 0; }fieldset label { margin-block: 8px; }</style>

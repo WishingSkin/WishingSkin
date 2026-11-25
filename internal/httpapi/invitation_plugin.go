@@ -13,6 +13,7 @@ import (
 	"time"
 
 	"github.com/WishingSkin/WishingSkin/internal/securebox"
+	"github.com/WishingSkin/WishingSkin/internal/store"
 )
 
 type invitationOptions struct {
@@ -121,16 +122,41 @@ func (a *Server) generateInvitations(w http.ResponseWriter, r *http.Request, bat
 		return
 	}
 	var body struct {
-		Count int `json:"count"`
+		Count     *int  `json:"count"`
+		MaxUses   *int  `json:"maxUses"`
+		Uses      *int  `json:"uses"`
+		Hours     *int  `json:"hours"`
+		Permanent *bool `json:"permanent"`
 	}
 	if !decode(w, r, &body) {
 		return
 	}
-	if !batch {
-		body.Count = 1
+	count := 0
+	if body.Count != nil {
+		count = *body.Count
+	} else if !batch {
+		count = 1
 	}
-	if body.Count < 1 || body.Count > 100 {
+	if count < 1 || count > 100 || !batch && count != 1 {
 		failure(w, 400, "批量数量须为 1–100")
+		return
+	}
+	maxUses, hours := 1, 0
+	if body.Uses != nil {
+		maxUses = *body.Uses
+	}
+	if body.MaxUses != nil {
+		maxUses = *body.MaxUses
+	}
+	if body.Hours != nil {
+		hours = *body.Hours
+	}
+	if maxUses < 1 || maxUses > 1000 || body.Uses != nil && *body.Uses != maxUses {
+		failure(w, 400, "邀请码使用次数无效")
+		return
+	}
+	if hours < 0 || hours > 8760 || hours > 0 && body.Permanent != nil && *body.Permanent {
+		failure(w, 400, "邀请码有效期无效")
 		return
 	}
 	if len(a.cfg.SettingsKey) != 32 {
@@ -157,9 +183,13 @@ func (a *Server) generateInvitations(w http.ResponseWriter, r *http.Request, bat
 		failure(w, 409, "请先启用官方邀请码插件")
 		return
 	}
-	codes := make([]string, 0, body.Count)
+	codes := make([]string, 0, count)
 	generatedAt := time.Now().Unix()
-	for i := 0; i < body.Count; i++ {
+	var expiresAt int64
+	if hours > 0 {
+		expiresAt = generatedAt + int64(hours)*3600
+	}
+	for range count {
 		code, e := secret()
 		if e != nil {
 			err = e
@@ -170,7 +200,7 @@ func (a *Server) generateInvitations(w http.ResponseWriter, r *http.Request, bat
 			err = sealErr
 			break
 		}
-		_, err = tx.ExecContext(r.Context(), a.s.Bind("INSERT INTO invitation_codes(code_hash,expires_at,remaining_uses,encrypted_code,generated_at) VALUES(?,?,?,?,?)"), tokenHash(code), int64(0), 1, sealed, generatedAt)
+		_, err = tx.ExecContext(r.Context(), a.s.Bind("INSERT INTO invitation_codes(code_hash,expires_at,remaining_uses,encrypted_code,generated_at) VALUES(?,?,?,?,?)"), tokenHash(code), expiresAt, maxUses, sealed, generatedAt)
 		if err != nil {
 			break
 		}
@@ -181,7 +211,7 @@ func (a *Server) generateInvitations(w http.ResponseWriter, r *http.Request, bat
 		if !batch {
 			target = tokenHash(codes[0])
 		}
-		err = a.s.RecordAdminEvent(r.Context(), tx, u.ID, "invitation.create", "invitation", target)
+		err = a.s.RecordAdminEvent(r.Context(), tx, u.ID, "invitation.create", "invitation", target, store.AdminChange{Field: "count", After: strconv.Itoa(count)}, store.AdminChange{Field: "maxUses", After: strconv.Itoa(maxUses)}, store.AdminChange{Field: "hours", After: strconv.Itoa(hours)})
 	}
 	if err == nil {
 		err = tx.Commit()
@@ -190,16 +220,20 @@ func (a *Server) generateInvitations(w http.ResponseWriter, r *http.Request, bat
 		failure(w, 503, "暂时无法创建邀请码")
 		return
 	}
-	if !batch {
-		respond(w, 201, map[string]any{"code": codes[0], "expiresAt": int64(0), "remainingUses": 1})
-		return
+	result := map[string]any{"expiresAt": expiresAt, "remainingUses": maxUses, "maxUses": maxUses}
+	if batch {
+		result["codes"] = codes
+	} else {
+		result["code"] = codes[0]
 	}
-	respond(w, 201, map[string]any{"codes": codes, "expiresAt": int64(0), "remainingUses": 1})
+	respond(w, 201, result)
 }
 
 type exportInvitation struct {
 	Code         string
 	Status       string
+	Remaining    int
+	ExpiresAt    int64
 	GeneratedAt  int64
 	UsedAt       sql.NullInt64
 	SourceUserID sql.NullInt64
@@ -211,10 +245,10 @@ func (a *Server) exportInvitationCodes(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	filter := strings.TrimSpace(r.URL.Query().Get("status"))
-	if filter == "" {
-		filter = "unused"
+	if filter == "" || filter == "unused" {
+		filter = "available"
 	}
-	if filter != "unused" && filter != "all" {
+	if filter != "available" && filter != "all" {
 		failure(w, 400, "邀请码筛选条件无效")
 		return
 	}
@@ -228,10 +262,13 @@ func (a *Server) exportInvitationCodes(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	where := " WHERE encrypted_code IS NOT NULL"
-	if filter == "unused" {
-		where += " AND remaining_uses>0"
+	now := time.Now().Unix()
+	var args []any
+	if filter == "available" {
+		where += " AND remaining_uses>0 AND (expires_at=0 OR expires_at>?)"
+		args = append(args, now)
 	}
-	rows, err := a.s.DB.QueryContext(r.Context(), a.s.Bind("SELECT encrypted_code,remaining_uses,generated_at,used_at,source_user_id FROM invitation_codes"+where+" ORDER BY generated_at,code_hash"))
+	rows, err := a.s.DB.QueryContext(r.Context(), a.s.Bind("SELECT encrypted_code,remaining_uses,expires_at,generated_at,used_at,source_user_id FROM invitation_codes"+where+" ORDER BY generated_at,code_hash"), args...)
 	if err != nil {
 		failure(w, 503, "暂时无法读取邀请码")
 		return
@@ -239,9 +276,8 @@ func (a *Server) exportInvitationCodes(w http.ResponseWriter, r *http.Request) {
 	decrypted := make([]exportInvitation, 0)
 	for rows.Next() {
 		var sealed sql.NullString
-		var remaining int
 		var item exportInvitation
-		if err := rows.Scan(&sealed, &remaining, &item.GeneratedAt, &item.UsedAt, &item.SourceUserID); err != nil {
+		if err := rows.Scan(&sealed, &item.Remaining, &item.ExpiresAt, &item.GeneratedAt, &item.UsedAt, &item.SourceUserID); err != nil {
 			rows.Close()
 			failure(w, 503, "暂时无法读取邀请码")
 			return
@@ -257,10 +293,13 @@ func (a *Server) exportInvitationCodes(w http.ResponseWriter, r *http.Request) {
 			failure(w, 503, "邀请码密文无法解密，请检查本地设置密钥")
 			return
 		}
-		if remaining > 0 {
-			item.Status = "unused"
-		} else {
+		switch {
+		case item.Remaining <= 0:
 			item.Status = "used"
+		case item.ExpiresAt > 0 && item.ExpiresAt <= now:
+			item.Status = "expired"
+		default:
+			item.Status = "unused"
 		}
 		decrypted = append(decrypted, item)
 	}
@@ -291,8 +330,12 @@ func (a *Server) exportInvitationCodes(w http.ResponseWriter, r *http.Request) {
 	w.Header().Set("Content-Disposition", `attachment; filename="wishingskin-invitations.csv"`)
 	writer := csv.NewWriter(w)
 	_, _ = w.Write([]byte{0xEF, 0xBB, 0xBF})
-	_ = writer.Write([]string{"code", "status", "generated_at", "used_at", "source_user_id"})
+	_ = writer.Write([]string{"code", "status", "remaining_uses", "expires_at", "generated_at", "used_at", "source_user_id"})
 	for _, item := range decrypted {
+		expiresAt := ""
+		if item.ExpiresAt != 0 {
+			expiresAt = strconv.FormatInt(item.ExpiresAt, 10)
+		}
 		usedAt := ""
 		if item.UsedAt.Valid {
 			usedAt = strconv.FormatInt(item.UsedAt.Int64, 10)
@@ -301,7 +344,7 @@ func (a *Server) exportInvitationCodes(w http.ResponseWriter, r *http.Request) {
 		if item.SourceUserID.Valid {
 			sourceUser = strconv.FormatInt(item.SourceUserID.Int64, 10)
 		}
-		_ = writer.Write([]string{item.Code, item.Status, strconv.FormatInt(item.GeneratedAt, 10), usedAt, sourceUser})
+		_ = writer.Write([]string{item.Code, item.Status, strconv.Itoa(item.Remaining), expiresAt, strconv.FormatInt(item.GeneratedAt, 10), usedAt, sourceUser})
 	}
 	writer.Flush()
 }

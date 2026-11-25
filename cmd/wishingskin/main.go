@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"flag"
 	"fmt"
+	"io"
 	"io/fs"
 	"log/slog"
 	"net/http"
@@ -12,6 +13,7 @@ import (
 	"os"
 	"os/signal"
 	"path/filepath"
+	"strings"
 	"syscall"
 	"time"
 
@@ -20,6 +22,7 @@ import (
 	"github.com/WishingSkin/WishingSkin/internal/config"
 	"github.com/WishingSkin/WishingSkin/internal/httpapi"
 	"github.com/WishingSkin/WishingSkin/internal/store"
+	"github.com/WishingSkin/WishingSkin/internal/textureimport"
 	"github.com/WishingSkin/WishingSkin/internal/turnstile"
 	"github.com/WishingSkin/WishingSkin/web"
 )
@@ -56,8 +59,8 @@ func run() error {
 	if command == "export-bs" {
 		return exportBS()
 	}
-	if command != "serve" && command != "migrate" && command != "import-bs" && command != "create-admin" && command != "backup" && command != "restore" {
-		return fmt.Errorf("unknown command: %s (serve, migrate, export-bs, preflight, import-bs, create-admin, backup, restore)", command)
+	if command != "serve" && command != "migrate" && command != "import-bs" && command != "create-admin" && command != "backup" && command != "restore" && command != "import-textures" {
+		return fmt.Errorf("unknown command: %s (serve, migrate, export-bs, preflight, import-bs, import-textures, create-admin, backup, restore)", command)
 	}
 	cfg, err := config.Load()
 	if err != nil {
@@ -92,6 +95,9 @@ func run() error {
 			err = json.NewEncoder(os.Stdout).Encode(report)
 		}
 		return err
+	}
+	if command == "import-textures" {
+		return importTextures(ctx, db, cfg, os.Args[2:], os.Stdout)
 	}
 	migrateCtx, stop := context.WithTimeout(ctx, 60*time.Second)
 	err = db.Migrate(migrateCtx)
@@ -142,7 +148,7 @@ func run() error {
 	}
 	// A restored encrypted configuration must never silently generate a replacement key.
 	var encryptedCount int
-	if err := db.DB.QueryRowContext(ctx, "SELECT (SELECT COUNT(*) FROM settings WHERE setting_key IN ('service_config','oidc_config','oidc_providers','object_storage_config','external_connectors','oauth_signing_key')) + (SELECT COUNT(*) FROM webhook_subscriptions) + (SELECT COUNT(*) FROM plugins WHERE settings_json<>'{}' AND plugin_id NOT LIKE 'wishingskin.%')").Scan(&encryptedCount); err != nil {
+	if err := db.DB.QueryRowContext(ctx, "SELECT (SELECT COUNT(*) FROM settings WHERE setting_key IN ('service_config','oidc_config','oidc_providers','object_storage_config','external_connectors','oauth_signing_key','minecraft_verify_config')) + (SELECT COUNT(*) FROM webhook_subscriptions) + (SELECT COUNT(*) FROM plugins WHERE settings_json<>'{}' AND plugin_id NOT LIKE 'wishingskin.%')").Scan(&encryptedCount); err != nil {
 		return fmt.Errorf("cannot inspect service settings")
 	}
 	if encryptedCount > 0 {
@@ -189,6 +195,58 @@ func run() error {
 		defer done()
 		return server.Shutdown(shutdownCtx)
 	}
+}
+
+func importTextures(ctx context.Context, db *store.Store, cfg config.Config, args []string, output io.Writer) error {
+	options := textureimport.Options{TextureDir: cfg.TextureDir, AccountLimitBytes: cfg.TextureAccountLimitBytes, SiteLimitBytes: cfg.TextureSiteLimitBytes}
+	flags := flag.NewFlagSet("import-textures", flag.ContinueOnError)
+	flags.StringVar(&options.Dir, "dir", "", "source directory of PNG files")
+	flags.BoolVar(&options.Recursive, "recursive", false, "include subdirectories")
+	flags.StringVar(&options.Owner, "owner", "", "target user ID or email")
+	flags.StringVar(&options.Kind, "kind", "auto", "auto, skin or cape")
+	flags.StringVar(&options.Model, "model", "default", "default or slim")
+	flags.BoolVar(&options.Public, "public", false, "mark imported records public")
+	flags.StringVar(&options.Category, "category", "", "configured category")
+	tags := flags.String("tags", "", "comma-separated tags")
+	flags.BoolVar(&options.DryRun, "dry-run", false, "preview without importing files or records")
+	flags.BoolVar(&options.SkipReview, "skip-review", false, "bypass upload review")
+	flags.BoolVar(&options.SkipDuplicates, "skip-duplicates", true, "skip existing records for the owner, file and kind")
+	if err := flags.Parse(args); err != nil {
+		return err
+	}
+	if flags.NArg() != 0 {
+		return fmt.Errorf("unexpected positional arguments")
+	}
+	options.Tags = strings.Split(*tags, ",")
+	if options.Dir == "" || strings.TrimSpace(options.Owner) == "" {
+		return fmt.Errorf("--dir and --owner are required")
+	}
+	if options.DryRun {
+		var schema int
+		if err := db.DB.QueryRowContext(ctx, "SELECT COALESCE(MAX(version),0) FROM schema_migrations").Scan(&schema); err != nil || schema != store.CurrentSchemaVersion {
+			return fmt.Errorf("dry-run requires schema %d; run migrate first", store.CurrentSchemaVersion)
+		}
+	} else {
+		migrateCtx, cancel := context.WithTimeout(ctx, 60*time.Second)
+		err := db.Migrate(migrateCtx)
+		cancel()
+		if err != nil {
+			return fmt.Errorf("schema migration failed: %w", err)
+		}
+		keyPath := os.Getenv("WS_SETTINGS_KEY_FILE")
+		if keyPath == "" {
+			keyPath = filepath.Join(cfg.TextureDir, ".settings.key")
+		}
+		key, err := os.ReadFile(keyPath)
+		if err == nil && len(key) == 32 {
+			options.SettingsKey = key
+		}
+	}
+	report, err := textureimport.Run(ctx, db, options)
+	if encodeErr := json.NewEncoder(output).Encode(report); encodeErr != nil {
+		return encodeErr
+	}
+	return err
 }
 
 func exportBS() error {

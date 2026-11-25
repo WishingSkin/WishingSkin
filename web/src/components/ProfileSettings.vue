@@ -4,16 +4,21 @@ import { feedbackRef } from '../feedback'
 import { computed, onMounted, ref } from 'vue'
 import { t } from '../i18n'
 import { imageData } from './imageInput'
+import { settingsSnapshot } from '../settingsDraft'
+import { useUnsavedGuard } from '../unsavedGuard'
 interface Profile { nickname: string; avatarMode: 'default' | 'upload' | 'character'; characterUUID: string; avatarImage: string }
 const props = defineProps<{ csrfToken: string; characters: { uuid: string; name: string }[] }>()
 const emit = defineEmits<{ updated: []; expired: [] }>()
 const draft = ref<Profile>({ nickname: '', avatarMode: 'default', characterUUID: '', avatarImage: '' })
+const savedSnapshot = ref('')
 const loading = ref(true)
 const loaded = ref(false)
 const busy = ref(false)
 const imageBusy = ref(false)
 const error = feedbackRef('error')
 const message = feedbackRef('success')
+const dirty = computed(() => loaded.value && savedSnapshot.value !== '' && settingsSnapshot(draft.value) !== savedSnapshot.value)
+useUnsavedGuard(dirty, '/user/account/profile')
 const length = computed(() => Array.from(draft.value.nickname.trim()).length)
 async function load() {
   loading.value = true; error.value = ''
@@ -22,7 +27,7 @@ async function load() {
     if (response.status === 401) { emit('expired'); return }
     const data = await response.json()
     if (!response.ok) { error.value = data.error || '暂时无法读取个人资料'; return }
-    draft.value = data; loaded.value = true
+    draft.value = data; savedSnapshot.value = settingsSnapshot(data); loaded.value = true
   } catch { error.value = '暂时无法读取个人资料' }
   finally { loading.value = false }
 }
@@ -40,7 +45,7 @@ async function save() {
     if (response.status === 401) { emit('expired'); return }
     const data = await response.json()
     if (!response.ok) { error.value = data.error || '暂时无法保存个人资料'; return }
-    draft.value = data; message.value = '个人资料已保存。'; emit('updated')
+    draft.value = data; savedSnapshot.value = settingsSnapshot(data); message.value = '个人资料已保存。'; emit('updated')
   } catch { error.value = '网络异常，请刷新页面确认资料是否已保存。' }
   finally { busy.value = false }
 }

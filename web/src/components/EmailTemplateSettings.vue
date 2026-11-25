@@ -4,6 +4,7 @@ import AppIcon from './AppIcon.vue'
 import { feedbackRef } from '../feedback'
 import { computed, onMounted, ref, watch } from 'vue'
 import { t } from '../i18n'
+import { useUnsavedGuard } from '../unsavedGuard'
 type Purpose = 'verify' | 'reset' | 'test'
 interface MailCopy { subject: string; title: string; body: string; button: string }
 interface MailTemplate { brandName: string; logoUrl: string; accentColor: string; backgroundColor: string; footer: string; verify: MailCopy; reset: MailCopy; test: MailCopy }
@@ -16,7 +17,8 @@ const busy = ref(false)
 const error = feedbackRef('error')
 const message = feedbackRef('success')
 const preview = ref<{ subject: string; text: string; html: string } | null>(null)
-const dirty = computed(() => JSON.stringify(draft.value) !== saved.value)
+const dirty = computed(() => !!draft.value && saved.value !== '' && JSON.stringify(draft.value) !== saved.value)
+useUnsavedGuard(dirty, '/admin/settings/services')
 const titles: Record<Purpose, string> = { verify: '验证邮箱', reset: '找回密码', test: 'SMTP 测试' }
 async function request(path: string, method = 'GET', body?: unknown) {
   const response = await fetch(path, { method, credentials: 'same-origin', headers: { 'Content-Type': 'application/json', 'X-CSRF-Token': props.csrfToken }, body: body === undefined ? undefined : JSON.stringify(body) })

@@ -1,5 +1,6 @@
 <script setup lang="ts">
 import LoadingSkeleton from './LoadingSkeleton.vue'
+import CopyButton from './CopyButton.vue'
 import { feedbackRef, toast } from '../feedback'
 import { computed, onMounted, ref } from 'vue'
 import { authlibInjectorDragUrl } from '../formatBytes'
@@ -52,7 +53,7 @@ onMounted(load)
       </div>
       <div v-for="item in [{ label: '外置登录地址', value: config.authlibInjector }, { label: 'CustomSkinLoader 根地址', value: config.cslRoot }, { label: '传统皮肤地址模板', value: config.skinTemplate }, { label: '传统披风地址模板', value: config.capeTemplate }]" :key="item.label" class="integration-address">
         <label class="binding-field"><span>{{ t(item.label) }}</span><input :value="item.value" readonly spellcheck="false" /></label>
-        <button class="secondary-button" type="button" :aria-label="t('复制{label}', { label: t(item.label) })" @click="copy(item.value)">{{ t('复制') }}</button>
+        <CopyButton :text="item.value" :label="t('复制{label}', { label: t(item.label) })" />
       </div>
       <p>{{ t('使用传统链接模板时，请将 {USERNAME} 替换为游戏角色名。') }}</p>
       <p class="integration-login-mode">{{ props.nonEmailLogin ? t('当前站点已开启非邮箱登录：在启动器外置登录界面既可填账号邮箱，也可直接填游戏角色名。') : t('当前站点需使用账号邮箱与密码在启动器内登录。') }}</p>

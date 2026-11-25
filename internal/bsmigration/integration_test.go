@@ -249,6 +249,8 @@ func TestIntegrationRepeatedHashPreservesRecords(t *testing.T) {
 			copy.Name = "Independent shared image"
 			copy.Type = "steve"
 			copy.Public = true
+			zeroDate := "0000-00-00 00:00:00"
+			copy.UploadedAt = &zeroDate
 			snapshot.Textures = append(snapshot.Textures, copy)
 			r, err := Import(context.Background(), s, snapshot, source, filepath.Join(t.TempDir(), "textures"))
 			if err != nil || !r.Imported || r.Files != 1 || r.Textures != 2 {
@@ -260,6 +262,7 @@ func TestIntegrationRepeatedHashPreservesRecords(t *testing.T) {
 			}{
 				{"SELECT COUNT(*) FROM textures", 1},
 				{"SELECT COUNT(*) FROM texture_records", 2},
+				{"SELECT COUNT(*) FROM texture_records WHERE created_at=0", 2},
 				{"SELECT COUNT(*) FROM texture_records WHERE name='Independent shared image' AND model='default' AND is_public=TRUE AND owner_id IS NULL", 1},
 			} {
 				var count int
@@ -371,6 +374,24 @@ func TestIntegrationReadOnlySourceExport(t *testing.T) {
 	if exported.FormatVersion != FormatVersion || !reflect.DeepEqual(exported.Wardrobe, fixtureSnapshot.Wardrobe) || !reflect.DeepEqual(exported.Users, fixtureSnapshot.Users) || !reflect.DeepEqual(exported.Characters, fixtureSnapshot.Characters) || !reflect.DeepEqual(exported.Textures, fixtureSnapshot.Textures) || exported.SignaturePrivateKey != fixtureSnapshot.SignaturePrivateKey {
 		t.Fatal("export changed identity, credentials, material or key")
 	}
+	if _, err := s.DB.Exec("ALTER TABLE bs_textures ADD COLUMN upload_at DATETIME(6) NULL"); err != nil {
+		t.Fatal(err)
+	}
+	withNullDate, err := ExportMySQL(context.Background(), s.DB, ExportOptions{Source: fixtureSnapshot.Source, TablePrefix: "bs_"})
+	if err != nil || !reflect.DeepEqual(withNullDate.Textures, fixtureSnapshot.Textures) {
+		t.Fatal("NULL upload date changed exported textures", err)
+	}
+	const sourceUpload = "2024-01-02 03:04:05.123456"
+	if _, err := s.DB.Exec("UPDATE bs_textures SET upload_at=?", sourceUpload); err != nil {
+		t.Fatal(err)
+	}
+	exported, err = ExportMySQL(context.Background(), s.DB, ExportOptions{Source: fixtureSnapshot.Source, TablePrefix: "bs_"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if uploadedAt := exported.Textures[0].UploadedAt; uploadedAt == nil || *uploadedAt != sourceUpload {
+		t.Fatal("source texture upload date was not exported")
+	}
 	if len(exported.ScoreRules) != len(scoreDefaults) || exported.ScoreRules["sign_score"] != "5,50" || exported.ScoreRules["score_per_player"] != "250" || exported.ScoreRules["return_score"] != "true" || exported.ScoreRules["smtp_password"] != "" {
 		t.Fatal("score inventory override, default or secret boundary")
 	}
@@ -389,6 +410,9 @@ func TestIntegrationReadOnlySourceExport(t *testing.T) {
 	for _, o := range r.Unsupported {
 		if o.Scope == "table:extra_plugin" && o.Count == 1 {
 			found = true
+		}
+		if o.Scope == "column:textures.upload_at" || o.Scope == "texture_upload_dates" {
+			t.Fatalf("valid upload date incorrectly reported as omitted: %+v", o)
 		}
 	}
 	if !found {
@@ -430,9 +454,9 @@ func TestIntegrationReadOnlySourceExport(t *testing.T) {
 			}
 			var owner int64
 			var description, displayName string
-			var collected int64
-			if err := target.DB.QueryRow("SELECT r.owner_id,r.description,w.display_name,w.collected_at FROM texture_records r JOIN wardrobe w ON w.record_id=r.record_id").Scan(&owner, &description, &displayName, &collected); err != nil || owner != u.ID || description != texture.Description || displayName != alias || collected != 0 {
-				t.Fatal("v2 relationship mismatch", owner, description, displayName, collected, err)
+			var collected, uploaded int64
+			if err := target.DB.QueryRow("SELECT r.owner_id,r.description,w.display_name,w.collected_at,r.created_at FROM texture_records r JOIN wardrobe w ON w.record_id=r.record_id").Scan(&owner, &description, &displayName, &collected, &uploaded); err != nil || owner != u.ID || description != texture.Description || displayName != alias || collected != 0 || uploaded != 1704164645 {
+				t.Fatal("v2 relationship or timestamp mismatch", owner, description, displayName, collected, uploaded, err)
 			}
 		})
 	}

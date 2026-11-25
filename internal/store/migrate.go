@@ -6,6 +6,7 @@ import (
 	"database/sql/driver"
 	"embed"
 	"fmt"
+	"slices"
 	"strings"
 	"time"
 )
@@ -13,12 +14,19 @@ import (
 //go:embed migrations/*.sql
 var migrationFiles embed.FS
 
-const schemaVersion = 26
+const schemaVersion = 29
 
 // CurrentSchemaVersion identifies the schema understood by offline backups.
 const CurrentSchemaVersion = schemaVersion
 
-var schemaMigrations = []string{"001_initial", "002_ygg_sessions", "003_texture_records", "004_wardrobe", "005_account_access", "006_admin_events", "007_reports", "008_points", "009_legacy_reports", "010_user_profiles", "011_site_notices", "012_plugins", "013_invitation_export", "014_homepage_blocks", "015_oidc", "016_totp", "017_account_integrations", "018_content_review", "019_admin_event_changes", "020_extensions", "021_oauth_extensions", "022_account_verification", "023_theme_assets", "024_storage_integrity", "025_texture_likes", "026_user_limits_and_texture_dates"}
+var schemaMigrations = []string{"001_initial", "002_ygg_sessions", "003_texture_records", "004_wardrobe", "005_account_access", "006_admin_events", "007_reports", "008_points", "009_legacy_reports", "010_user_profiles", "011_site_notices", "012_plugins", "013_invitation_export", "014_homepage_blocks", "015_oidc", "016_totp", "017_account_integrations", "018_content_review", "019_admin_event_changes", "020_extensions", "021_oauth_extensions", "022_account_verification", "023_theme_assets", "024_storage_integrity", "025_texture_likes", "026_user_limits_and_texture_dates", "027_characters_user_index", "028_notifications_and_minecraft_verification", "029_p2_scopes_and_point_codes"}
+
+func migrationSQL(source string) string {
+	lines := slices.DeleteFunc(strings.Split(source, "\n"), func(line string) bool {
+		return strings.HasPrefix(strings.TrimSpace(line), "--")
+	})
+	return strings.Join(lines, "\n")
+}
 
 // Migrate serializes initialization across processes using a session lock.
 // Each DDL statement is independently retryable; MySQL DDL is not transactional.
@@ -62,7 +70,7 @@ func (s *Store) Migrate(ctx context.Context) (err error) {
 		if err != nil {
 			return fmt.Errorf("read schema migration %d: %w", next, err)
 		}
-		for _, statement := range strings.Split(string(source), ";") {
+		for _, statement := range strings.Split(migrationSQL(string(source)), ";") {
 			statement = strings.TrimSpace(statement)
 			if statement == "" {
 				continue
@@ -82,6 +90,15 @@ func (s *Store) Migrate(ctx context.Context) (err error) {
 					return fmt.Errorf("inspect schema migration 26: %w", err)
 				}
 				if exists {
+					continue
+				}
+			}
+			if next == 29 && s.Dialect == "mysql" && strings.HasPrefix(statement, "ALTER TABLE oauth_clients ADD COLUMN allowed_scopes ") {
+				var count int
+				if err := conn.QueryRowContext(ctx, "SELECT COUNT(*) FROM information_schema.columns WHERE table_schema=DATABASE() AND table_name='oauth_clients' AND column_name='allowed_scopes'").Scan(&count); err != nil {
+					return fmt.Errorf("inspect schema migration 29: %w", err)
+				}
+				if count != 0 {
 					continue
 				}
 			}

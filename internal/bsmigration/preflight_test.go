@@ -56,6 +56,42 @@ func fixture(t *testing.T) (*Snapshot, string) {
 	return s, dir
 }
 
+func TestTextureUploadDatesPreflight(t *testing.T) {
+	for _, test := range []struct {
+		name, date string
+		missing    bool
+	}{
+		{name: "legacy snapshot without upload date", missing: true},
+		{name: "empty", missing: true},
+		{name: "zero date", date: "0000-00-00 00:00:00", missing: true},
+		{name: "invalid", date: "2024-02-30 03:04:05", missing: true},
+		{name: "nonpositive unix time", date: "1970-01-01 00:00:00", missing: true},
+		{name: "MySQL time", date: "2024-01-02 03:04:05"},
+		{name: "MySQL fractional time", date: "2024-01-02 03:04:05.123456"},
+		{name: "RFC3339 offset", date: "2024-01-02T11:04:05+08:00"},
+	} {
+		t.Run(test.name, func(t *testing.T) {
+			s, dir := fixture(t)
+			if test.name != "legacy snapshot without upload date" {
+				s.Textures[0].UploadedAt = &test.date
+			}
+			r, err := Preflight(s, dir)
+			if err != nil || r.Status != "partial" {
+				t.Fatalf("upload date blocked migration: %v %+v", err, r.Blockers)
+			}
+			var count int64
+			for _, omission := range r.Unsupported {
+				if omission.Scope == "texture_upload_dates" {
+					count += omission.Count
+				}
+			}
+			if test.missing && count != 1 || !test.missing && count != 0 {
+				t.Fatalf("unexpected unavailable upload date count: %d", count)
+			}
+		})
+	}
+}
+
 func TestLegacyHighResolutionCapes(t *testing.T) {
 	for _, size := range []image.Point{{1280, 640}, {4096, 2048}, {4160, 2080}} {
 		s, dir := fixture(t)

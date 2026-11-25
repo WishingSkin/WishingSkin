@@ -1,23 +1,47 @@
 <script setup lang="ts">
 import { feedbackRef } from '../feedback'
-import { ref, watch } from 'vue'
+import { computed, ref, watch } from 'vue'
 import type { SiteAccess } from '../accountTypes'
 import { t } from '../i18n'
+import { settingsSnapshot } from '../settingsDraft'
+import { useUnsavedGuard } from '../unsavedGuard'
 const props = defineProps<{ site: SiteAccess; csrfToken: string }>()
 const emit = defineEmits<{ updated: []; expired: [] }>()
 const mode = ref(props.site.registration === 'closed' ? 'closed' : 'open')
 const manualEmailVerification = ref(props.site.manualEmailVerification === true)
-watch(() => props.site.manualEmailVerification, value => { manualEmailVerification.value = value === true })
 const randomUserIds = ref(props.site.randomUserIds === true)
 const emailDomains = ref(props.site.emailDomains.join('\n'))
 const blockedEmailDomains = ref((props.site.blockedEmailDomains || []).join('\n'))
 const busy = ref(false)
 const error = feedbackRef('error')
 const message = feedbackRef('success')
-watch(() => props.site.registration, value => { mode.value = value === 'closed' ? 'closed' : 'open' })
-watch(() => props.site.emailDomains, value => { emailDomains.value = value.join('\n') })
-watch(() => props.site.blockedEmailDomains, value => { blockedEmailDomains.value = (value || []).join('\n') })
-watch(() => props.site.randomUserIds, value => { randomUserIds.value = value === true })
+const currentState = computed(() => ({
+  mode: mode.value,
+  manualEmailVerification: manualEmailVerification.value,
+  randomUserIds: randomUserIds.value,
+  emailDomains: emailDomains.value,
+  blockedEmailDomains: blockedEmailDomains.value,
+}))
+const savedState = ref(settingsSnapshot({
+  mode: props.site.registration === 'closed' ? 'closed' : 'open',
+  manualEmailVerification: props.site.manualEmailVerification === true,
+  randomUserIds: props.site.randomUserIds === true,
+  emailDomains: props.site.emailDomains.join('\n'),
+  blockedEmailDomains: (props.site.blockedEmailDomains || []).join('\n'),
+}))
+const dirty = computed(() => settingsSnapshot(currentState.value) !== savedState.value)
+useUnsavedGuard(dirty, '/admin/settings/site')
+function syncFromSite() {
+  mode.value = props.site.registration === 'closed' ? 'closed' : 'open'
+  manualEmailVerification.value = props.site.manualEmailVerification === true
+  randomUserIds.value = props.site.randomUserIds === true
+  emailDomains.value = props.site.emailDomains.join('\n')
+  blockedEmailDomains.value = (props.site.blockedEmailDomains || []).join('\n')
+  savedState.value = settingsSnapshot(currentState.value)
+}
+watch(() => [props.site.registration, props.site.manualEmailVerification, props.site.randomUserIds, props.site.emailDomains, props.site.blockedEmailDomains] as const, () => {
+  if (!dirty.value) syncFromSite()
+})
 async function submit() {
   if (busy.value) return
   busy.value = true; error.value = ''; message.value = ''
@@ -27,6 +51,7 @@ async function submit() {
     const response = await fetch('/api/admin/registration', { method: 'PATCH', credentials: 'same-origin', headers: { 'Content-Type': 'application/json', 'X-CSRF-Token': props.csrfToken }, body: JSON.stringify({ mode: mode.value, manualEmailVerification: manualEmailVerification.value, emailDomains: domains, blockedEmailDomains: blocked, randomUserIds: randomUserIds.value }) })
     if (response.status === 401) { emit('expired'); return }
     if (!response.ok) { const data = await response.json().catch(() => ({})); error.value = data.error || '操作未完成，请重试。'; return }
+    savedState.value = settingsSnapshot(currentState.value)
     message.value = '注册模式已保存。'; emit('updated')
   } catch { error.value = '无法确认操作结果，请重新检查设置。' }
   finally { busy.value = false }

@@ -192,6 +192,21 @@ func TestAdministrationRollbackAndActorRecheckBothDatabases(t *testing.T) {
 			if err := f.db.DB.QueryRow("SELECT COUNT(*) FROM admin_events WHERE action='settings.character_limit' AND actor_id=3 AND target_id='character_limit'").Scan(&count); err != nil || count != 1 {
 				t.Fatal("setting audit missing", err)
 			}
+
+			r.AddCookie(&http.Cookie{Name: "ws_session", Value: fmt.Sprintf("%064d", 3)})
+			actor, _, err := f.app.current(r)
+			if err != nil || !actor.IsAdmin {
+				t.Fatal("expected an authenticated administrator", err)
+			}
+			f.exec("DELETE FROM web_sessions WHERE user_id=3")
+			for _, stale := range []User{actor, {ID: actor.ID, IsAdmin: true}} {
+				w := httptest.NewRecorder()
+				if tx, ok := f.app.beginAdminWrite(w, r, stale); ok {
+					tx.Rollback()
+					t.Fatal("administrator write admitted without an active session")
+				}
+				webStatus(t, w, 401)
+			}
 		})
 	}
 }

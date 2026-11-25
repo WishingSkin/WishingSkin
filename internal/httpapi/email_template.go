@@ -23,6 +23,16 @@ func (s siteMailSender) Send(ctx context.Context, to, purpose, link string) erro
 	return configured.Send(ctx, to, purpose, link)
 }
 
+func (s siteMailSender) SendNotification(ctx context.Context, to, title, body, link string) error {
+	value, err := s.app.mailTemplate(ctx)
+	if err != nil {
+		return err
+	}
+	configured := *s.smtp
+	configured.Template = &value
+	return configured.SendNotification(ctx, to, title, body, link)
+}
+
 func (a *Server) emailSender(sender MailSender) MailSender {
 	if smtp, ok := sender.(*mailer.SMTP); ok {
 		return siteMailSender{a, smtp}

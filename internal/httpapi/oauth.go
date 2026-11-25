@@ -16,16 +16,20 @@ import (
 	"strconv"
 	"strings"
 	"time"
+
 	"github.com/WishingSkin/WishingSkin/internal/store"
 )
 
+var oauthCanonicalScopes = []string{"openid", "profile", "email", "offline_access", "characters:read", "textures:read", "points:read", "minecraft:read"}
+
 type oauthClient struct {
-	ID         string   `json:"id"`
-	Name       string   `json:"name"`
-	Redirects  []string `json:"redirectUris"`
-	SecretHash string   `json:"-"`
-	Public     bool     `json:"public"`
-	Enabled    bool     `json:"enabled"`
+	ID            string   `json:"id"`
+	Name          string   `json:"name"`
+	Redirects     []string `json:"redirectUris"`
+	SecretHash    string   `json:"-"`
+	Public        bool     `json:"public"`
+	Enabled       bool     `json:"enabled"`
+	AllowedScopes []string `json:"allowedScopes"`
 }
 
 func (a *Server) registerOAuth() {
@@ -41,15 +45,19 @@ func (a *Server) registerOAuth() {
 	a.mux.HandleFunc("GET /api/account/oauth", a.accountOAuth)
 	a.mux.HandleFunc("DELETE /api/account/oauth/{id}", a.revokeAccountOAuth)
 	a.registerOAuthProvider()
-
+	a.mux.HandleFunc("GET /oauth/api/characters", a.oauthCharacters)
+	a.mux.HandleFunc("GET /oauth/api/textures", a.oauthTextures)
+	a.mux.HandleFunc("GET /oauth/api/points", a.oauthPoints)
+	a.mux.HandleFunc("GET /oauth/api/minecraft", a.oauthMinecraft)
 }
 
 func (a *Server) oauthClient(r *http.Request, reader settingReader, id string) (oauthClient, error) {
 	v := oauthClient{}
-	var redirects string
-	err := reader.QueryRowContext(r.Context(), a.s.Bind("SELECT client_id,name,redirect_uris,secret_hash,is_public,enabled FROM oauth_clients WHERE client_id=?"), id).Scan(&v.ID, &v.Name, &redirects, &v.SecretHash, &v.Public, &v.Enabled)
+	var redirects, scopes string
+	err := reader.QueryRowContext(r.Context(), a.s.Bind("SELECT client_id,name,redirect_uris,secret_hash,is_public,enabled,allowed_scopes FROM oauth_clients WHERE client_id=?"), id).Scan(&v.ID, &v.Name, &redirects, &v.SecretHash, &v.Public, &v.Enabled, &scopes)
 	if err == nil {
 		err = json.Unmarshal([]byte(redirects), &v.Redirects)
+		v.AllowedScopes = oauthAllowedScopes(scopes)
 	}
 	return v, err
 }
@@ -57,7 +65,7 @@ func (a *Server) oauthClients(w http.ResponseWriter, r *http.Request) {
 	if _, ok := a.adminRead(w, r); !ok {
 		return
 	}
-	rows, err := a.s.DB.QueryContext(r.Context(), "SELECT client_id,name,redirect_uris,is_public,enabled FROM oauth_clients ORDER BY client_id")
+	rows, err := a.s.DB.QueryContext(r.Context(), "SELECT client_id,name,redirect_uris,is_public,enabled,allowed_scopes FROM oauth_clients ORDER BY client_id")
 	if err != nil {
 		failure(w, 503, "暂时无法读取应用")
 		return
@@ -66,9 +74,10 @@ func (a *Server) oauthClients(w http.ResponseWriter, r *http.Request) {
 	items := []oauthClient{}
 	for rows.Next() {
 		var v oauthClient
-		var raw string
-		if err = rows.Scan(&v.ID, &v.Name, &raw, &v.Public, &v.Enabled); err == nil {
+		var raw, scopes string
+		if err = rows.Scan(&v.ID, &v.Name, &raw, &v.Public, &v.Enabled, &scopes); err == nil {
 			err = json.Unmarshal([]byte(raw), &v.Redirects)
+			v.AllowedScopes = oauthAllowedScopes(scopes)
 		}
 		if err != nil {
 			break
@@ -79,7 +88,7 @@ func (a *Server) oauthClients(w http.ResponseWriter, r *http.Request) {
 		failure(w, 503, "暂时无法读取应用")
 		return
 	}
-	respond(w, 200, map[string]any{"clients": items})
+	respond(w, 200, map[string]any{"clients": items, "availableScopes": oauthCanonicalScopes})
 }
 func validOAuthRedirect(raw string) bool {
 	u, err := url.Parse(raw)
@@ -104,6 +113,15 @@ func (a *Server) saveOAuthClient(w http.ResponseWriter, r *http.Request) {
 			failure(w, 400, "回调须为 HTTPS 完整地址，本地测试可使用 HTTP")
 			return
 		}
+	}
+	if v.AllowedScopes != nil {
+		raw := strings.Join(v.AllowedScopes, " ")
+		normalized, valid := oauthScope(raw)
+		if !valid || len(strings.Fields(raw)) == 0 {
+			failure(w, 400, "请选择至少一项有效的授权权限")
+			return
+		}
+		v.AllowedScopes = strings.Fields(normalized)
 	}
 	tx, ok := a.beginAdminWrite(w, r, u)
 	if !ok {
@@ -131,17 +149,24 @@ func (a *Server) saveOAuthClient(w http.ResponseWriter, r *http.Request) {
 		v.Public = old.Public
 		v.SecretHash = old.SecretHash
 	}
+	if v.AllowedScopes == nil {
+		v.AllowedScopes = previous.AllowedScopes
+		if fresh {
+			v.AllowedScopes = oauthAllowedScopes("")
+		}
+	}
 	v.ID = id
 	a.auditJSON(r.Context(), "oauth", map[string]any{"name": previous.Name, "enabled": previous.Enabled, "public": previous.Public}, map[string]any{"name": v.Name, "enabled": v.Enabled, "public": v.Public})
+	a.auditJSON(r.Context(), "oauth.allowedScopes", strings.Join(previous.AllowedScopes, " "), strings.Join(v.AllowedScopes, " "))
 	if fmt.Sprint(previous.Redirects) != fmt.Sprint(v.Redirects) {
 		store.CaptureAdminChange(r.Context(), "oauth.redirects", "", "回调地址已更新")
 	}
 	raw, _ := json.Marshal(v.Redirects)
 	if err == nil {
 		if fresh {
-			_, err = tx.ExecContext(r.Context(), a.s.Bind("INSERT INTO oauth_clients(client_id,name,redirect_uris,secret_hash,is_public,enabled) VALUES(?,?,?,?,?,?)"), id, v.Name, string(raw), v.SecretHash, v.Public, v.Enabled)
+			_, err = tx.ExecContext(r.Context(), a.s.Bind("INSERT INTO oauth_clients(client_id,name,redirect_uris,secret_hash,is_public,enabled,allowed_scopes) VALUES(?,?,?,?,?,?,?)"), id, v.Name, string(raw), v.SecretHash, v.Public, v.Enabled, strings.Join(v.AllowedScopes, " "))
 		} else {
-			_, err = tx.ExecContext(r.Context(), a.s.Bind("UPDATE oauth_clients SET name=?,redirect_uris=?,enabled=? WHERE client_id=?"), v.Name, string(raw), v.Enabled, id)
+			_, err = tx.ExecContext(r.Context(), a.s.Bind("UPDATE oauth_clients SET name=?,redirect_uris=?,enabled=?,allowed_scopes=? WHERE client_id=?"), v.Name, string(raw), v.Enabled, strings.Join(v.AllowedScopes, " "), id)
 		}
 	}
 	if err == nil {
@@ -177,14 +202,87 @@ func oauthScope(raw string) (string, bool) {
 		fields = []string{"profile"}
 	}
 	for _, scope := range fields {
-		if scope != "openid" && scope != "profile" && scope != "email" && scope != "offline_access" {
+		if !slices.Contains(oauthCanonicalScopes, scope) {
 			return "", false
 		}
 	}
 	return strings.Join(fields, " "), true
 }
 
-var consentPage = template.Must(template.New("consent").Parse(`<!doctype html><html lang="{{if .English}}en{{else}}zh-CN{{end}}"><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>{{if .English}}Application authorization{{else}}应用授权{{end}}</title><style>body{font:16px/1.6 system-ui,sans-serif;background:#f5f5f5;color:#202020;margin:0;padding:48px 20px}main{max-width:480px;margin:auto;padding:32px;background:#fff;border:1px solid #ddd;border-radius:16px}h1{font-size:24px}p{overflow-wrap:anywhere}button{font:inherit;padding:10px 20px;border-radius:8px;border:1px solid #ccc;cursor:pointer}button[value=allow]{background:#333;color:white}small{color:#666} @media(prefers-color-scheme:dark){body{background:#111;color:#eee}main{background:#191919;border-color:#444}small{color:#bbb}}</style><main><h1>{{if .English}}Authorize {{.Name}}{{else}}授权给 {{.Name}}{{end}}</h1><p>{{.Email}}</p><p>{{if .English}}This application will read your user ID{{if .Profile}} and nickname{{end}}{{if .EmailScope}} and {{end}}{{if .EmailScope}}your email and verification status{{end}}.{{else}}此应用将读取你的用户 ID{{if .Profile}} 和昵称{{end}}{{if .EmailScope}}，以及{{end}}{{if .EmailScope}}你的邮箱和验证状态{{end}}。{{end}}</p><small>{{if .English}}Redirect URL: {{else}}回调地址：{{end}}{{.Redirect}}</small>{{if .Offline}}<p>{{if .English}}Allow this application to renew access for up to 30 days.{{else}}允许此应用在 30 天内续期授权。{{end}}</p>{{end}}<form method="post" action="{{.Action}}"><input type="hidden" name="csrf" value="{{.CSRF}}"><button name="decision" value="allow">{{if .English}}Authorize{{else}}同意授权{{end}}</button> <button name="decision" value="deny">{{if .English}}Cancel{{else}}取消{{end}}</button></form></main></html>`))
+func oauthAllowedScopes(raw string) []string {
+	if raw == "" {
+		return slices.Clone(oauthCanonicalScopes[:4])
+	}
+	return strings.Fields(raw)
+}
+
+func hasOAuthScope(scope, name string) bool {
+	return slices.Contains(strings.Fields(scope), name)
+}
+
+func oauthScopesAllowed(scope string, allowed []string) bool {
+	for _, name := range strings.Fields(scope) {
+		if !slices.Contains(allowed, name) {
+			return false
+		}
+	}
+	return true
+}
+
+type oauthScopeItem struct{ Title, Detail string }
+
+func oauthConsentPermissions(scope string, english bool) ([]oauthScopeItem, []oauthScopeItem) {
+	item := func(title, detail, englishTitle, englishDetail string) oauthScopeItem {
+		if english {
+			return oauthScopeItem{englishTitle, englishDetail}
+		}
+		return oauthScopeItem{title, detail}
+	}
+	permissions := []oauthScopeItem{item("读取你的用户 ID", "用于识别你的本站账号。", "Read your user ID", "Identifies your account on this site.")}
+	var readOnly []oauthScopeItem
+	for _, name := range oauthCanonicalScopes {
+		if !hasOAuthScope(scope, name) {
+			continue
+		}
+		switch name {
+		case "profile":
+			permissions = append(permissions, item("读取昵称", "查看你的公开昵称。", "Read your nickname", "View your public nickname."))
+		case "email":
+			permissions = append(permissions, item("读取邮箱", "查看邮箱地址和验证状态。", "Read your email", "View your email address and verification status."))
+		case "offline_access":
+			permissions = append(permissions, item("续期授权", "允许应用在 30 天内续期授权。", "Renew access", "Allow this application to renew access for up to 30 days."))
+		case "characters:read":
+			readOnly = append(readOnly, item("角色", "查看你的角色和绑定的材质。", "Characters", "View your characters and their textures."))
+		case "textures:read":
+			readOnly = append(readOnly, item("材质", "查看你上传的材质记录。", "Textures", "View your uploaded texture records."))
+		case "points:read":
+			readOnly = append(readOnly, item("积分", "查看你的积分余额和明细。", "Points", "View your points balance and history."))
+		case "minecraft:read":
+			readOnly = append(readOnly, item("Minecraft 验证", "查看你验证的 Minecraft 账号。", "Minecraft verification", "View your verified Minecraft account."))
+		}
+	}
+	return permissions, readOnly
+}
+
+var consentPage = template.Must(template.New("consent").Parse(`<!doctype html>
+<html lang="{{if .English}}en{{else}}zh-CN{{end}}"><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><meta name="color-scheme" content="light dark">
+<title>{{if .English}}Application authorization{{else}}应用授权{{end}}</title>
+<style>
+body{font:16px/1.5 system-ui,sans-serif;background:Canvas;color:CanvasText;margin:0;padding:40px 16px}
+main{max-width:480px;margin:auto;padding:24px;border:1px solid GrayText;border-radius:8px;overflow-wrap:anywhere}
+h1{font-size:24px;margin-top:0} h2{font-size:16px} ul{padding-left:24px} li+li{margin-top:8px}
+small{display:block;font-size:14px;color:GrayText;overflow-wrap:anywhere}
+form{display:flex;justify-content:flex-end;gap:12px;margin-top:24px}
+button{font:inherit;padding:8px 16px;border-radius:6px;border:1px solid GrayText;background:transparent;color:CanvasText;cursor:pointer}
+button[value=allow]{background:Highlight;color:HighlightText;border-color:Highlight}
+</style>
+<main><h1>{{if .English}}Authorize {{.Name}}{{else}}授权给 {{.Name}}{{end}}</h1><p>{{.Email}}</p>
+<ul>{{range .Permissions}}<li><strong>{{.Title}}</strong><small>{{.Detail}}</small></li>{{end}}</ul>
+{{if .ReadOnlyPermissions}}<h2>{{if .English}}Read-only data{{else}}只读数据{{end}}</h2><ul>{{range .ReadOnlyPermissions}}<li><strong>{{.Title}}</strong><small>{{.Detail}}</small></li>{{end}}</ul>{{end}}
+<p>{{if .English}}Returns to{{else}}返回至{{end}} <strong>{{.Host}}</strong><small>{{.Redirect}}</small></p>
+<form method="post" action="{{.Action}}"><input type="hidden" name="csrf" value="{{.CSRF}}">
+<button name="decision" value="deny">{{if .English}}Cancel{{else}}取消{{end}}</button>
+<button name="decision" value="allow">{{if .English}}Authorize{{else}}同意授权{{end}}</button></form></main></html>`))
 
 func oauthEnglish(r *http.Request) bool {
 	if cookie, err := r.Cookie("ws_locale"); err == nil {
@@ -216,7 +314,7 @@ func (a *Server) oauthAuthorize(w http.ResponseWriter, r *http.Request) {
 	client, err := a.oauthClient(r, a.s.DB, q.Get("client_id"))
 	redirect := q.Get("redirect_uri")
 	scope, valid := oauthScope(q.Get("scope"))
-	if err != nil || !client.Enabled || !slices.Contains(client.Redirects, redirect) || q.Get("response_type") != "code" || !valid || q.Get("code_challenge_method") != "S256" || !pkceChallenge.MatchString(q.Get("code_challenge")) || len(q.Get("state")) > 1024 || len(q.Get("nonce")) > 512 || q.Get("max_age") != "" || q.Get("prompt") != "" && q.Get("prompt") != "consent" && q.Get("prompt") != "none" {
+	if err != nil || !client.Enabled || !slices.Contains(client.Redirects, redirect) || q.Get("response_type") != "code" || !valid || !oauthScopesAllowed(scope, client.AllowedScopes) || q.Get("code_challenge_method") != "S256" || !pkceChallenge.MatchString(q.Get("code_challenge")) || len(q.Get("state")) > 1024 || len(q.Get("nonce")) > 512 || q.Get("max_age") != "" || q.Get("prompt") != "" && q.Get("prompt") != "consent" && q.Get("prompt") != "none" {
 		failure(w, 400, "授权请求无效")
 		return
 	}
@@ -246,7 +344,9 @@ func (a *Server) oauthAuthorize(w http.ResponseWriter, r *http.Request) {
 	}
 	if r.Method == "GET" {
 		w.Header().Set("Content-Type", "text/html; charset=utf-8")
-		_ = consentPage.Execute(w, map[string]any{"English": oauthEnglish(r), "Name": client.Name, "Email": u.Email, "Profile": strings.Contains(scope, "profile"), "EmailScope": strings.Contains(scope, "email"), "Offline": strings.Contains(scope, "offline_access"), "Redirect": redirect, "Action": "/oauth/authorize?" + q.Encode(), "CSRF": csrf(token)})
+		english := oauthEnglish(r)
+		permissions, readOnly := oauthConsentPermissions(scope, english)
+		_ = consentPage.Execute(w, map[string]any{"English": english, "Name": client.Name, "Email": u.Email, "Permissions": permissions, "ReadOnlyPermissions": readOnly, "Host": destination.Host, "Redirect": redirect, "Action": "/oauth/authorize?" + q.Encode(), "CSRF": csrf(token)})
 		return
 	}
 	r.Body = http.MaxBytesReader(w, r.Body, 4096)
@@ -283,6 +383,10 @@ func (a *Server) oauthAuthorize(w http.ResponseWriter, r *http.Request) {
 	}
 	defer tx.Rollback()
 	current, err := a.oauthClient(r, tx, client.ID)
+	if err == nil && !oauthScopesAllowed(scope, current.AllowedScopes) {
+		failure(w, 400, "授权请求无效")
+		return
+	}
 	if err == nil && (!current.Enabled || !slices.Contains(current.Redirects, redirect)) {
 		err = errCredentials
 	}
@@ -419,6 +523,10 @@ func (a *Server) oauthToken(w http.ResponseWriter, r *http.Request) {
 			oauthError(w, 400, "invalid_grant")
 			return
 		}
+		if !oauthScopesAllowed(scope, client.AllowedScopes) {
+			oauthError(w, 400, "invalid_scope")
+			return
+		}
 		err = tx.QueryRowContext(r.Context(), a.s.Bind("SELECT nonce,auth_time FROM oauth_code_metadata WHERE code_hash=?"), tokenHash(code)).Scan(&nonce, &authTime)
 		if err != nil && !errors.Is(err, sql.ErrNoRows) {
 			oauthError(w, 503, "temporarily_unavailable")
@@ -454,14 +562,15 @@ func (a *Server) oauthToken(w http.ResponseWriter, r *http.Request) {
 		}
 		if requested := r.PostForm.Get("scope"); requested != "" {
 			narrowed, valid := oauthScope(requested)
-			for _, v := range strings.Fields(narrowed) {
-				valid = valid && slices.Contains(strings.Fields(scope), v)
-			}
-			if !valid {
+			if !valid || !oauthScopesAllowed(narrowed, strings.Fields(scope)) {
 				oauthError(w, 400, "invalid_scope")
 				return
 			}
 			scope = narrowed
+		}
+		if !oauthScopesAllowed(scope, client.AllowedScopes) {
+			oauthError(w, 400, "invalid_scope")
+			return
 		}
 		err = tx.QueryRowContext(r.Context(), a.s.Bind("SELECT nonce,auth_time FROM oauth_refresh_metadata WHERE family=?"), family).Scan(&nonce, &authTime)
 		if err != nil && !errors.Is(err, sql.ErrNoRows) {
@@ -502,7 +611,7 @@ func (a *Server) oauthToken(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	result := map[string]any{"access_token": access, "token_type": "Bearer", "expires_in": 3600, "scope": scope}
-	if slices.Contains(strings.Fields(scope), "openid") {
+	if hasOAuthScope(scope, "openid") {
 		signed, err := a.oauthIDToken(r.Context(), tx, client.ID, u, access, nonce, authTime)
 		if err != nil {
 			oauthError(w, 503, "temporarily_unavailable")
@@ -510,7 +619,7 @@ func (a *Server) oauthToken(w http.ResponseWriter, r *http.Request) {
 		}
 		result["id_token"] = signed
 	}
-	if slices.Contains(strings.Fields(scope), "offline_access") {
+	if hasOAuthScope(scope, "offline_access") {
 		if family == "" {
 			family, err = secret()
 			familyExpires = time.Now().Add(30 * 24 * time.Hour).Unix()
@@ -554,30 +663,15 @@ func (a *Server) oauthToken(w http.ResponseWriter, r *http.Request) {
 	respond(w, 200, result)
 }
 func (a *Server) oauthUserinfo(w http.ResponseWriter, r *http.Request) {
-	w.Header().Set("Cache-Control", "no-store")
-	bearer := strings.TrimPrefix(r.Header.Get("Authorization"), "Bearer ")
-	var id int64
-	var scope, credential string
-	enabled, err := a.storedPluginEnabled(r.Context(), "wishingskin.oauth2")
-	if err == nil && enabled && len(bearer) == 64 {
-		err = a.s.DB.QueryRowContext(r.Context(), a.s.Bind("SELECT t.user_id,t.scope,t.credential_hash FROM oauth_tokens t JOIN oauth_clients c ON c.client_id=t.client_id WHERE t.token_hash=? AND t.expires_at>? AND c.enabled=TRUE"), tokenHash(bearer), time.Now().Unix()).Scan(&id, &scope, &credential)
-	} else {
-		err = errCredentials
-	}
-	var u User
-	if err == nil {
-		u, err = a.oidcUser(r.Context(), id)
-	}
-	if err != nil || u.credentialHash != credential {
-		w.Header().Set("WWW-Authenticate", `Bearer error="invalid_token"`)
-		oauthError(w, 401, "invalid_token")
+	u, scope, ok := a.authenticateOAuthBearer(w, r, "")
+	if !ok {
 		return
 	}
-	result := map[string]any{"sub": strconv.FormatInt(id, 10)}
-	if strings.Contains(scope, "profile") {
+	result := map[string]any{"sub": strconv.FormatInt(u.ID, 10)}
+	if hasOAuthScope(scope, "profile") {
 		result["name"] = u.Nickname
 	}
-	if strings.Contains(scope, "email") {
+	if hasOAuthScope(scope, "email") {
 		result["email"] = u.Email
 		result["email_verified"] = u.EmailVerified
 	}
@@ -627,16 +721,18 @@ func (a *Server) accountOAuth(w http.ResponseWriter, r *http.Request) {
 	}
 	defer rows.Close()
 	items := []map[string]any{}
-	seen := map[string]bool{}
+	positions := map[string]int{}
 	for rows.Next() {
 		var id, name, scope string
 		var expires int64
 		if err = rows.Scan(&id, &name, &scope, &expires); err != nil {
 			break
 		}
-		if !seen[id] {
+		if index, exists := positions[id]; exists {
+			items[index]["scope"], _ = oauthScope(items[index]["scope"].(string) + " " + scope)
+		} else {
+			positions[id] = len(items)
 			items = append(items, map[string]any{"id": id, "name": name, "scope": scope, "expiresAt": expires})
-			seen[id] = true
 		}
 	}
 	if err != nil || rows.Err() != nil {

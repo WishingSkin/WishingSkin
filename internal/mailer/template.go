@@ -111,8 +111,22 @@ func (t Template) Render(purpose, link string) (Content, error) {
 	} else if !safeURL(link, false) {
 		return Content{}, errors.New("invalid account email link")
 	}
+	return t.render(c, link, details, ignoreRequest, sample)
+}
+
+func (t Template) RenderNotification(title, body, link string) (Content, error) {
+	if err := t.Validate(); err != nil {
+		return Content{}, err
+	}
+	if !validText(title, 160, true, false) || !validText(body, 600, true, true) || link != "" && !safeURL(link, false) {
+		return Content{}, errors.New("invalid notification email")
+	}
+	return t.render(Copy{Subject: title, Title: title, Body: body, Button: "查看详情"}, link, "", "", false)
+}
+
+func (t Template) render(c Copy, link, details, notice string, sample bool) (Content, error) {
 	text := t.BrandName + "\r\n\r\n" + c.Title + "\r\n\r\n" + c.Body
-	for _, line := range []string{details, link, ignoreRequest, t.Footer} {
+	for _, line := range []string{details, link, notice, t.Footer} {
 		if line != "" {
 			text += "\r\n\r\n" + line
 		}
@@ -123,10 +137,10 @@ func (t Template) Render(purpose, link string) (Content, error) {
 	data := struct {
 		Template
 		Copy
-		Link, Details string
-		Sample        bool
-		Paragraphs    []string
-	}{t, c, link, details, sample, strings.Split(strings.ReplaceAll(c.Body, "\r\n", "\n"), "\n")}
+		Link, Details, Notice string
+		Sample                bool
+		Paragraphs            []string
+	}{t, c, link, details, notice, sample, strings.Split(strings.ReplaceAll(c.Body, "\r\n", "\n"), "\n")}
 	var html bytes.Buffer
 	if err := emailHTML.Execute(&html, data); err != nil {
 		return Content{}, err
@@ -153,7 +167,7 @@ var emailHTML = template.Must(template.New("email").Parse(`<!doctype html>
 {{if .Link}}<p style="margin:28px 0"><a href="{{.Link}}" style="display:inline-block;background:{{.AccentColor}};color:#fff;text-decoration:none;border-radius:8px;padding:12px 20px;font-weight:600">{{.Button}}</a></p>
 <p style="font-size:12px;color:#6b7280">若按钮无法打开，请复制链接。 / If the button does not open, copy this link:<br><a href="{{.Link}}" style="color:{{.AccentColor}};overflow-wrap:anywhere;word-break:break-all">{{.Link}}</a></p>
 {{else if .Sample}}<p style="margin:28px 0"><span style="display:inline-block;background:#e5e7eb;color:#4b5563;border-radius:8px;padding:12px 20px;font-weight:600">{{.Button}}</span></p>{{end}}
-<p style="margin:24px 0 0;color:#6b7280;font-size:13px">若非本人操作，请忽略此邮件。<br>If you did not request this, ignore this email.</p>
+{{if .Notice}}<p style="margin:24px 0 0;color:#6b7280;font-size:13px;white-space:pre-line">{{.Notice}}</p>{{end}}
 </td></tr></table>
 {{if .Footer}}<p style="max-width:560px;margin:16px 0 0;color:#6b7280;font-size:12px;white-space:pre-line;overflow-wrap:anywhere">{{.Footer}}</p>{{end}}
 </td></tr></table></body></html>`))

@@ -99,10 +99,14 @@ func (a *Server) disableAdminTexture(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	defer tx.Rollback()
-	err := a.disableTexture(r.Context(), tx, u.ID, hash)
+	var notifications []notificationDelivery
+	changed, err := a.disableTexture(r.Context(), tx, u.ID, hash)
 	if errors.Is(err, sql.ErrNoRows) {
 		failure(w, 404, "材质记录不存在")
 		return
+	}
+	if err == nil && changed {
+		err = a.notifyTextureOwners(r.Context(), tx, hash, &notifications)
 	}
 	if err == nil {
 		err = tx.Commit()
@@ -111,21 +115,53 @@ func (a *Server) disableAdminTexture(w http.ResponseWriter, r *http.Request) {
 		failure(w, 503, "管理操作未完成，请重试")
 		return
 	}
+	a.deliverNotifications(notifications)
 	w.WriteHeader(204)
 }
 
-func (a *Server) disableTexture(ctx context.Context, tx *sql.Tx, actor int64, hash string) error {
+func (a *Server) disableTexture(ctx context.Context, tx *sql.Tx, actor int64, hash string) (bool, error) {
 	var disabled bool
 	err := tx.QueryRowContext(ctx, a.s.Bind("SELECT deleted FROM textures WHERE hash=? FOR UPDATE"), hash).Scan(&disabled)
 	if err != nil {
-		return err
+		return false, err
 	}
 	if disabled {
-		return nil
+		return false, nil
 	}
 	_, err = tx.ExecContext(ctx, a.s.Bind("UPDATE textures SET deleted=TRUE WHERE hash=?"), hash)
 	if err == nil {
 		err = a.s.RecordAdminEvent(ctx, tx, actor, "texture.disable", "texture", hash)
 	}
-	return err
+	return err == nil, err
+}
+
+func (a *Server) notifyTextureOwners(ctx context.Context, tx *sql.Tx, hash string, notifications *[]notificationDelivery) error {
+	rows, err := tx.QueryContext(ctx, a.s.Bind("SELECT owner_id,MIN(name) FROM texture_records WHERE file_hash=? AND deleted=FALSE AND owner_id IS NOT NULL GROUP BY owner_id ORDER BY owner_id"), hash)
+	if err != nil {
+		return err
+	}
+	defer rows.Close()
+	var owners []struct {
+		id   int64
+		name string
+	}
+	for rows.Next() {
+		var owner struct {
+			id   int64
+			name string
+		}
+		if err := rows.Scan(&owner.id, &owner.name); err != nil {
+			return err
+		}
+		owners = append(owners, owner)
+	}
+	if err := rows.Err(); err != nil {
+		return err
+	}
+	for _, owner := range owners {
+		if err := a.addNotification(ctx, tx, notifications, owner.id, "texture.disabled", "材质已下架", "管理员已下架材质「"+owner.name+"」。", "/user/resources"); err != nil {
+			return err
+		}
+	}
+	return nil
 }

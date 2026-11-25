@@ -6,7 +6,57 @@ import (
 	"net/url"
 	"strings"
 	"testing"
+	"time"
 )
+
+func TestLimitedInvitationsBothDatabases(t *testing.T) {
+	for _, dialect := range []string{"mysql", "postgres"} {
+		t.Run(dialect, func(t *testing.T) {
+			f, _ := accessApp(t, dialect)
+			webStatus(t, f.call(3, "PATCH", "/api/admin/registration", map[string]string{"mode": "open"}), 204)
+			webStatus(t, f.call(3, "PATCH", "/api/admin/plugins/invitations", map[string]bool{"enabled": true, "required": true}), 200)
+			const route = "/api/admin/plugins/invitations/codes"
+			for _, body := range []map[string]any{{"count": 1, "maxUses": 2, "uses": 1}, {"count": 1, "hours": 1, "permanent": true}, {"count": 1, "maxUses": 0}} {
+				webStatus(t, f.call(3, "POST", route, body), 400)
+			}
+			response := f.call(3, "POST", route, map[string]int{"count": 2, "maxUses": 2, "hours": 1})
+			webStatus(t, response, 201)
+			var result struct {
+				Codes                  []string
+				ExpiresAt              int64
+				MaxUses, RemainingUses int
+			}
+			if err := json.Unmarshal(response.Body.Bytes(), &result); err != nil || len(result.Codes) != 2 || result.MaxUses != 2 || result.RemainingUses != 2 || result.ExpiresAt <= time.Now().Unix() {
+				t.Fatalf("unexpected invitation limits: %s", response.Body)
+			}
+			for index, email := range []string{"one@example.test", "two@example.test", "three@example.test", "four@example.test"} {
+				clearMailLimits(f)
+				body := registrationBody(email)
+				body["invitation"] = result.Codes[0]
+				if index == 3 {
+					body["invitation"] = result.Codes[1]
+					f.exec("UPDATE invitation_codes SET expires_at=? WHERE code_hash=?", time.Now().Unix()-1, tokenHash(result.Codes[1]))
+				}
+				want := 201
+				if index >= 2 {
+					want = 400
+				}
+				webStatus(t, f.call(0, "POST", "/api/auth/register", body), want)
+			}
+			for _, filter := range []string{"", "available", "unused", "all"} {
+				export := f.call(3, "GET", "/api/admin/plugins/invitations/export?format=csv&status="+filter, nil)
+				webStatus(t, export, 200)
+				rows, err := csv.NewReader(strings.NewReader(strings.TrimPrefix(export.Body.String(), "\ufeff"))).ReadAll()
+				if err != nil || len(rows) == 0 || strings.Join(rows[0], ",") != "code,status,remaining_uses,expires_at,generated_at,used_at,source_user_id" {
+					t.Fatalf("invalid CSV: %s", export.Body)
+				}
+				if filter == "all" && (!strings.Contains(export.Body.String(), result.Codes[0]+",used,0,") || !strings.Contains(export.Body.String(), result.Codes[1]+",expired,2,")) || filter != "all" && len(rows) != 1 {
+					t.Fatalf("invalid %s export: %s", filter, export.Body)
+				}
+			}
+		})
+	}
+}
 
 func TestRegistrationDomainAndPermanentInvitationBothDatabases(t *testing.T) {
 	for _, dialect := range []string{"mysql", "postgres"} {

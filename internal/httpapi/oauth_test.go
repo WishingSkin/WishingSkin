@@ -111,6 +111,139 @@ func TestOAuthPKCEBothDatabases(t *testing.T) {
 	}
 }
 
+func TestOAuthReadOnlyScopesBothDatabases(t *testing.T) {
+	for _, dialect := range []string{"mysql", "postgres"} {
+		t.Run(dialect, func(t *testing.T) {
+			f := newManagementApp(t, dialect)
+			const callback = "https://app.example/callback"
+			clientBody := map[string]any{"name": "Scoped", "redirectUris": []string{callback}, "public": true, "enabled": true}
+			clientBody["allowedScopes"] = []string{}
+			webStatus(t, f.call(3, "POST", "/api/admin/oauth/clients", clientBody), 400)
+			clientBody["allowedScopes"] = []string{"points:read", " characters:read ", "textures:read", "minecraft:read", "offline_access", "points:read"}
+			created := f.call(3, "POST", "/api/admin/oauth/clients", clientBody)
+			webStatus(t, created, 200)
+			var client struct{ Client struct{ ID string } }
+			if err := json.Unmarshal(created.Body.Bytes(), &client); err != nil || client.Client.ID == "" {
+				t.Fatal("missing client ID", err)
+			}
+			id := client.Client.ID
+			delete(clientBody, "allowedScopes")
+			webStatus(t, f.call(3, "PATCH", "/api/admin/oauth/clients/"+id, clientBody), 200)
+			listing := f.call(3, "GET", "/api/admin/oauth/clients", nil)
+			webStatus(t, listing, 200)
+			if !strings.Contains(listing.Body.String(), `"availableScopes"`) || !strings.Contains(listing.Body.String(), `"allowedScopes"`) {
+				t.Fatal("scope metadata missing")
+			}
+			webStatus(t, f.call(3, "PATCH", "/api/admin/plugins/wishingskin.oauth2", map[string]bool{"enabled": true}), 200)
+			configurePoints(t, f, true, 7, 0, 0)
+			webStatus(t, f.call(2, "POST", "/api/points/checkin", nil), 204)
+			webCharacter(t, f.call(1, "POST", "/api/characters", map[string]string{"name": "OwnPlayer"}))
+			webCharacter(t, f.call(2, "POST", "/api/characters", map[string]string{"name": "OtherPlayer"}))
+			f.exec("UPDATE users SET character_limit=5 WHERE id=1")
+			uploadedRecord(t, f.upload(1, testPNG(t, 64, 64), map[string]string{"name": "OwnTexture"}))
+			uploadedRecord(t, f.upload(2, testPNG(t, 64, 32), map[string]string{"name": "OtherTexture"}))
+			f.exec("INSERT INTO minecraft_verifications(user_id,mc_uuid,mc_name,ms_subject,verified_at) VALUES(1,?,'OwnMC','private-subject',42)", strings.Repeat("c", 32))
+			verifier := strings.Repeat("s", 64)
+			challenge := sha256.Sum256([]byte(verifier))
+			query := url.Values{"client_id": {id}, "redirect_uri": {callback}, "response_type": {"code"}, "code_challenge_method": {"S256"}, "code_challenge": {base64.RawURLEncoding.EncodeToString(challenge[:])}, "ui_locales": {"en"}}
+			request := func(method, path string, form url.Values, account bool, bearer string) *httptest.ResponseRecorder {
+				r := httptest.NewRequest(method, "http://example.test"+path, strings.NewReader(form.Encode()))
+				r.Header.Set("Content-Type", "application/x-www-form-urlencoded")
+				r.Header.Set("Origin", "http://example.test")
+				if account {
+					r.AddCookie(&http.Cookie{Name: "ws_session", Value: fmt.Sprintf("%064d", 1)})
+				}
+				if bearer != "" {
+					r.Header.Set("Authorization", "Bearer "+bearer)
+				}
+				w := httptest.NewRecorder()
+				f.app.ServeHTTP(w, r)
+				return w
+			}
+			consentForm := url.Values{"decision": {"allow"}, "csrf": {csrf(fmt.Sprintf("%064d", 1))}}
+			query.Set("scope", "profile points:read")
+			for _, method := range []string{"GET", "POST"} {
+				webStatus(t, request(method, "/oauth/authorize?"+query.Encode(), consentForm, true, ""), 400)
+			}
+			query.Set("scope", "points:read offline_access")
+			consent := request("GET", "/oauth/authorize?"+query.Encode(), nil, true, "")
+			webStatus(t, consent, 200)
+			if body := consent.Body.String(); !strings.Contains(body, "Read your user ID") || !strings.Contains(body, "Read-only data") || !strings.Contains(body, "app.example/callback") || strings.Contains(body, "nickname") {
+				t.Fatal("incorrect consent permissions", body)
+			}
+			issue := func(scope string) map[string]string {
+				t.Helper()
+				query.Set("scope", scope)
+				approved := request("POST", "/oauth/authorize?"+query.Encode(), consentForm, true, "")
+				webStatus(t, approved, 303)
+				location, err := url.Parse(approved.Header().Get("Location"))
+				if err != nil || location.Query().Get("code") == "" {
+					t.Fatal("missing authorization code", err)
+				}
+				token := request("POST", "/oauth/token", url.Values{"grant_type": {"authorization_code"}, "client_id": {id}, "redirect_uri": {callback}, "code": {location.Query().Get("code")}, "code_verifier": {verifier}}, false, "")
+				webStatus(t, token, 200)
+				var response struct {
+					Access  string `json:"access_token"`
+					Refresh string `json:"refresh_token"`
+				}
+				if err := json.Unmarshal(token.Body.Bytes(), &response); err != nil || response.Access == "" {
+					t.Fatal("missing access token", err)
+				}
+				return map[string]string{"access": response.Access, "refresh": response.Refresh}
+			}
+			points := issue("points:read offline_access")
+			data := issue("characters:read textures:read minecraft:read")
+			reject := func(scope string) {
+				t.Helper()
+				response := request("POST", "/oauth/token", url.Values{"grant_type": {"refresh_token"}, "client_id": {id}, "refresh_token": {points["refresh"]}, "scope": {scope}}, false, "")
+				webStatus(t, response, 400)
+				if !strings.Contains(response.Body.String(), `"invalid_scope"`) {
+					t.Fatal("incorrect refresh rejection", response.Body)
+				}
+			}
+			reject("characters:read")
+			f.exec("UPDATE oauth_clients SET allowed_scopes='offline_access' WHERE client_id=?", id)
+			reject("points:read")
+			f.exec("UPDATE oauth_clients SET allowed_scopes='characters:read textures:read minecraft:read points:read offline_access' WHERE client_id=?", id)
+			grants := f.call(1, "GET", "/api/account/oauth", nil)
+			webStatus(t, grants, 200)
+			if !strings.Contains(grants.Body.String(), `"scope":"characters:read minecraft:read offline_access points:read textures:read"`) {
+				t.Fatal("active scopes were not merged", grants.Body)
+			}
+			for _, test := range []struct{ path, token, want, forbidden string }{
+				{"characters", data["access"], `"characterLimit":5`, "OtherPlayer"},
+				{"textures?pageSize=1", data["access"], "OwnTexture", "OtherTexture"},
+				{"points", points["access"], `"balance":"0"`, `"kind":"checkin"`},
+				{"minecraft", data["access"], "OwnMC", "private-subject"},
+			} {
+				w := request("GET", "/oauth/api/"+test.path, nil, false, test.token)
+				webStatus(t, w, 200)
+				if body := w.Body.String(); !strings.Contains(body, test.want) || strings.Contains(body, test.forbidden) || w.Header().Get("Cache-Control") != "no-store" {
+					t.Fatalf("incorrect scoped response for %s: %s", test.path, body)
+				}
+			}
+			missing := request("GET", "/oauth/api/characters", nil, false, points["access"])
+			webStatus(t, missing, 403)
+			if missing.Header().Get("WWW-Authenticate") != `Bearer error="insufficient_scope", scope="characters:read"` {
+				t.Fatal("missing scope challenge")
+			}
+			info := request("GET", "/oauth/userinfo", nil, false, points["access"])
+			webStatus(t, info, 200)
+			if strings.Contains(info.Body.String(), `"name"`) || strings.Contains(info.Body.String(), `"email"`) {
+				t.Fatal("identity fields leaked", info.Body)
+			}
+			webStatus(t, request("GET", "/oauth/api/characters", nil, false, strings.Repeat("a", 64)), 401)
+			webStatus(t, request("POST", "/api/characters", nil, false, data["access"]), 401)
+			webStatus(t, request("GET", "/api/admin/oauth/clients", nil, false, data["access"]), 401)
+			webStatus(t, f.call(1, "DELETE", "/api/account/oauth/"+id, nil), 204)
+			webStatus(t, request("GET", "/oauth/api/characters", nil, false, data["access"]), 401)
+			data = issue("characters:read")
+			webStatus(t, f.call(3, "PATCH", "/api/admin/plugins/wishingskin.oauth2", map[string]bool{"enabled": false}), 200)
+			webStatus(t, request("GET", "/oauth/api/characters", nil, false, data["access"]), 401)
+		})
+	}
+}
+
 func TestOAuthConfidentialAndRevocationBothDatabases(t *testing.T) {
 	for _, dialect := range []string{"mysql", "postgres"} {
 		t.Run(dialect, func(t *testing.T) {

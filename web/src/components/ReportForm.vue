@@ -3,6 +3,7 @@ import { feedbackRef } from '../feedback'
 import AppModal from './AppModal.vue'
 import { computed, ref, watch } from 'vue'
 import { t } from '../i18n'
+import { dirtyModalConfirm } from '../unsavedGuard'
 
 const props = defineProps<{ recordId: string; name: string; csrfToken: string }>()
 const emit = defineEmits<{ expired: []; login: [] }>()
@@ -32,7 +33,7 @@ async function submit() {
 <template>
   <div class="report-form">
     <button v-if="!open" class="text-button" type="button" :disabled="busy" @click="csrfToken ? open = true : emit('login')">{{ csrfToken ? t('举报这份材质') : t('登录后举报') }}</button>
-    <AppModal v-if="open" :title="t('举报材质')" :busy="busy" @close="open = false"><form class="report-fields" @submit.prevent="submit">
+    <AppModal v-if="open" :title="t('举报材质')" :busy="busy" :confirm-close="reason.trim() ? dirtyModalConfirm : false" @close="open = false"><form class="report-fields" @submit.prevent="submit">
       <p>{{ t('举报材质：{name}', { name }) }}</p>
       <label class="binding-field"><span>{{ t('举报原因') }} <small>{{ length }}/1000</small></span><textarea v-model="reason" rows="4" :disabled="busy" required /></label>
 

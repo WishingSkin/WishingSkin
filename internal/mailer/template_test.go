@@ -5,6 +5,17 @@ import (
 	"testing"
 )
 
+func TestNotificationRendersSafeHTML(t *testing.T) {
+	template := DefaultTemplate("Test site")
+	message, err := template.RenderNotification("材质已下架", "<script>literal</script>", "https://example.test/user/resources")
+	if err != nil || message.Subject != "材质已下架" || !strings.Contains(message.HTML, "&lt;script&gt;literal&lt;/script&gt;") || !strings.Contains(message.Text, "https://example.test/user/resources") {
+		t.Fatalf("notification: %v %+v", err, message)
+	}
+	if _, err := template.RenderNotification("title", "body", "javascript:alert(1)"); err == nil {
+		t.Fatal("unsafe notification link was accepted")
+	}
+}
+
 func TestCustomTemplateAndMandatoryCopy(t *testing.T) {
 	template := DefaultTemplate("我的皮肤站")
 	template.AccentColor = "#8b5cf6"

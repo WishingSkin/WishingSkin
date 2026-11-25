@@ -13,6 +13,7 @@ import { t } from '../i18n'
 import type { SettingsTab } from '../workspaceRoutes'
 import { saveSettingsSections } from '../settingsDraft'
 import type { SettingsSection } from '../settingsDraft'
+import { useUnsavedGuard } from '../unsavedGuard'
 const props = defineProps<{ site: SiteAccess; csrfToken: string; activeTab: SettingsTab }>()
 const emit = defineEmits<{ updated: []; expired: []; navigate: [path: string] }>()
 const tab = computed(() => props.activeTab)
@@ -29,6 +30,7 @@ const saving = ref(false)
 const saveError = feedbackRef('error')
 const savedMessage = feedbackRef('success')
 watch(dirty, () => { savedMessage.value = ''; saveError.value = '' })
+useUnsavedGuard(dirty, '/admin/settings/', 'settings-appearance')
 async function saveAll() {
   if (!dirty.value || saving.value || pending.value) return
   saving.value = true; saveError.value = ''; savedMessage.value = ''
@@ -38,13 +40,18 @@ async function saveAll() {
     emit('updated')
   } finally { saving.value = false }
 }
-function beforeUnload(event: BeforeUnloadEvent) { if (dirty.value) event.preventDefault() }
-onMounted(() => window.addEventListener('beforeunload', beforeUnload))
-onBeforeUnmount(() => window.removeEventListener('beforeunload', beforeUnload))
+function onKeyDown(event: KeyboardEvent) {
+  if ((event.metaKey || event.ctrlKey) && !event.altKey && !event.shiftKey && event.key.toLowerCase() === 's' && dirty.value) {
+    event.preventDefault()
+    void saveAll()
+  }
+}
+onMounted(() => window.addEventListener('keydown', onKeyDown))
+onBeforeUnmount(() => window.removeEventListener('keydown', onKeyDown))
 const labels = { site: '站点', appearance: '个性化', services: '邮件与验证', operations:'存储与备份' }
 </script>
 <template>
-  <nav class="settings-tabs" :aria-label="t('设置分类')"><button v-for="item in (['site', 'appearance', 'services', 'operations'] as const)" :key="item" class="secondary-button" type="button" :class="{ active: tab === item }" :aria-current="tab === item ? 'page' : undefined" @click="emit('navigate', `/admin/settings/${item}`)">{{ t(labels[item]) }}</button></nav>
+  <nav class="settings-tabs" :aria-label="t('设置分类')"><button v-for="item in (['site', 'appearance', 'services', 'operations'] as const)" :key="item" class="secondary-button" type="button" :class="{ active: tab === item }" :data-dirty="item === 'appearance' && dirty ? '' : undefined" :aria-label="item === 'appearance' && dirty ? t('个性化，有未保存的更改') : undefined" :aria-current="tab === item ? 'page' : undefined" @click="emit('navigate', `/admin/settings/${item}`)">{{ t(labels[item]) }}</button></nav>
   <div data-panel-region="settings">
   <div v-show="tab === 'site'"><slot /></div>
   <div v-if="appearanceVisited" v-show="tab === 'appearance'" class="personalization-workspace">

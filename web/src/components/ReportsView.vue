@@ -5,6 +5,7 @@ import { feedbackRef } from '../feedback'
 import { computed, nextTick, onMounted, ref } from 'vue'
 import { locale, t } from '../i18n'
 import LegacyReports from './LegacyReports.vue'
+import { dirtyModalConfirm } from '../unsavedGuard'
 
 interface Item { id: string; recordId: string; name: string; fileHash: string; reason: string; status: string; resolution: string; reply: string; createdAt: number; resolvedAt: number; disabled: boolean; reporterId?: string; reporterEmail?: string; ownerId?: string; ownerEmail?: string }
 const props = defineProps<{ admin?: boolean; csrfToken: string }>()
@@ -64,7 +65,7 @@ onMounted(load)
     <h2 v-if="!admin">{{ t('我的举报') }}</h2>
     <p>{{ admin ? t('查看举报原因并选择处置；处理说明会向举报人展示。') : t('在公开库或衣柜的材质详情中提交举报，在这里查看进度。') }}</p>
     <form class="admin-search panel" @submit.prevent="filter"><label class="binding-field"><span>{{ t('搜索举报') }}</span><input v-model="query" maxlength="255" :placeholder="t(admin ? '材质名称、哈希、原因或账号' : '材质名称或原因')" :disabled="busy || saving" /></label><label class="binding-field"><span>{{ t('举报状态') }}</span><select v-model="status" :disabled="busy || saving"><option value="">{{ t('全部状态') }}</option><option v-for="(label, key) in statuses" :key="key" :value="key">{{ t(label) }}</option></select></label><button class="primary-button" type="submit" :disabled="busy || saving">{{ t('搜索') }}</button><button class="secondary-button" type="button" :disabled="busy || saving" @click="load">{{ t('刷新列表') }}</button></form>
-    <AppModal v-if="selected" :title="t('处理举报')" :busy="saving" @close="selected = null"><form  class="admin-confirm panel report-fields" @submit.prevent="resolve">
+    <AppModal v-if="selected" :title="t('处理举报')" :busy="saving" :confirm-close="reply.trim() ? dirtyModalConfirm : false" @close="selected = null"><form  class="admin-confirm panel report-fields" @submit.prevent="resolve">
       <p class="admin-identity">{{ selected.name }}</p>
       <label class="binding-field"><span>{{ t('处理方式') }}</span><select v-model="action" :disabled="saving"><option value="dismiss">{{ t('驳回举报') }}</option><option value="disable">{{ t('下架整份图片') }}</option><option value="ban" :disabled="!selected.ownerId">{{ t('封禁上传者') }}</option></select></label>
       <p v-if="action === 'disable'">{{ t('同一图片的所有记录、收藏和穿戴均会停用，原始 URL 返回不可用；首版不提供恢复入口。') }}</p>

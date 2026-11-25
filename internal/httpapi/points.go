@@ -28,6 +28,11 @@ func (a *Server) registerPoints() {
 	a.mux.HandleFunc("GET /api/points", a.points)
 	a.mux.HandleFunc("POST /api/points/checkin", a.checkin)
 	a.mux.HandleFunc("PATCH /api/admin/points", a.updatePointRules)
+	a.mux.HandleFunc("POST /api/points/redeem", a.redeemPointCode)
+	a.mux.HandleFunc("GET /api/admin/points/codes", a.listPointCodes)
+	a.mux.HandleFunc("POST /api/admin/points/codes", a.createPointCodes)
+	a.mux.HandleFunc("POST /api/admin/points/codes/{id}/disable", a.disablePointCode)
+	a.mux.HandleFunc("GET /api/admin/points/codes/export", a.exportPointCodes)
 }
 
 func (a *Server) lockWebAccount(ctx context.Context, tx *sql.Tx, user int64, token string) error {
@@ -39,12 +44,7 @@ func (a *Server) lockWebAccount(ctx context.Context, tx *sql.Tx, user int64, tok
 	if banned {
 		return errCredentials
 	}
-	var count int
-	err = tx.QueryRowContext(ctx, a.s.Bind("SELECT COUNT(*) FROM web_sessions WHERE token_hash=? AND user_id=? AND expires_at>? AND NOT EXISTS (SELECT 1 FROM account_states WHERE user_id=? AND verification_required=TRUE AND email_verified=FALSE)"), tokenHash(token), user, time.Now().Unix(), user).Scan(&count)
-	if err == nil && count == 0 {
-		return errCredentials
-	}
-	return err
+	return a.lockWebSession(ctx, tx, user, token)
 }
 
 func readPointRules(ctx context.Context, q interface {
@@ -145,6 +145,7 @@ type pointEntry struct {
 	ID           string `json:"id"`
 	Kind         string `json:"kind"`
 	ReferenceID  string `json:"referenceId"`
+	Note         string `json:"note,omitempty"`
 	Delta        string `json:"delta"`
 	BalanceAfter string `json:"balanceAfter"`
 	CreatedAt    int64  `json:"createdAt"`
@@ -172,42 +173,44 @@ func (a *Server) points(w http.ResponseWriter, r *http.Request) {
 		err = tx.QueryRowContext(r.Context(), a.s.Bind("SELECT score FROM users WHERE id=?"), u.ID).Scan(&balance)
 	}
 	day := pointDay(a.pointsNow())
-	var checked, total int
+	var checked int
 	if err == nil {
 		err = tx.QueryRowContext(r.Context(), a.s.Bind("SELECT COUNT(*) FROM point_entries WHERE user_id=? AND kind='checkin' AND reference_id=?"), u.ID, day).Scan(&checked)
 	}
-	if err == nil {
-		err = tx.QueryRowContext(r.Context(), a.s.Bind("SELECT COUNT(*) FROM point_entries WHERE user_id=?"), u.ID).Scan(&total)
-	}
 	if err != nil {
 		failure(w, 503, "暂时无法读取积分")
 		return
 	}
-	rows, err := tx.QueryContext(r.Context(), a.s.Bind("SELECT entry_id,kind,reference_id,delta,balance_after,created_at FROM point_entries WHERE user_id=? ORDER BY created_at DESC,entry_id DESC LIMIT ? OFFSET ?"), u.ID, size, (page-1)*size)
-	if err != nil {
-		failure(w, 503, "暂时无法读取积分")
-		return
-	}
-	items := []pointEntry{}
-	for rows.Next() {
-		var item pointEntry
-		var delta, after int64
-		if err = rows.Scan(&item.ID, &item.Kind, &item.ReferenceID, &delta, &after, &item.CreatedAt); err != nil {
-			break
-		}
-		item.Delta = strconv.FormatInt(delta, 10)
-		item.BalanceAfter = strconv.FormatInt(after, 10)
-		items = append(items, item)
-	}
-	if err == nil {
-		err = rows.Err()
-	}
-	rows.Close()
+	items, total, err := a.pointEntries(r.Context(), tx, u.ID, page, size)
 	if err != nil {
 		failure(w, 503, "暂时无法读取积分")
 		return
 	}
 	respond(w, 200, map[string]any{"rules": rules, "balance": strconv.FormatInt(balance, 10), "day": day, "timeZone": "Asia/Shanghai", "checkedIn": checked > 0, "entries": items, "total": total, "page": page, "pageSize": size})
+}
+
+func (a *Server) pointEntries(ctx context.Context, tx *sql.Tx, userID int64, page, size int) ([]pointEntry, int, error) {
+	var total int
+	if err := tx.QueryRowContext(ctx, a.s.Bind("SELECT COUNT(*) FROM point_entries WHERE user_id=?"), userID).Scan(&total); err != nil {
+		return nil, 0, err
+	}
+	rows, err := tx.QueryContext(ctx, a.s.Bind("SELECT e.entry_id,e.kind,e.reference_id,e.delta,e.balance_after,e.created_at,COALESCE(pc.note,'') FROM point_entries e LEFT JOIN point_codes pc ON e.kind='redeem' AND pc.code_hash=e.reference_id WHERE e.user_id=? ORDER BY e.created_at DESC,e.entry_id DESC LIMIT ? OFFSET ?"), userID, size, (page-1)*size)
+	if err != nil {
+		return nil, 0, err
+	}
+	defer rows.Close()
+	items := []pointEntry{}
+	for rows.Next() {
+		var item pointEntry
+		var delta, after int64
+		if err := rows.Scan(&item.ID, &item.Kind, &item.ReferenceID, &delta, &after, &item.CreatedAt, &item.Note); err != nil {
+			return nil, 0, err
+		}
+		item.Delta = strconv.FormatInt(delta, 10)
+		item.BalanceAfter = strconv.FormatInt(after, 10)
+		items = append(items, item)
+	}
+	return items, total, rows.Err()
 }
 
 // Callers lock the account before the rules row. Rules and balance stay locked until the business operation commits.

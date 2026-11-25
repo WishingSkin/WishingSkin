@@ -237,8 +237,10 @@ func (a *Server) resolveReport(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	defer tx.Rollback()
-	var status, record string
-	err := tx.QueryRowContext(r.Context(), a.s.Bind("SELECT status,record_id FROM reports WHERE report_id=? FOR UPDATE"), id).Scan(&status, &record)
+	var status, record, textureName string
+	var reporter int64
+	var notifications []notificationDelivery
+	err := tx.QueryRowContext(r.Context(), a.s.Bind("SELECT status,record_id,reporter_id,texture_name FROM reports WHERE report_id=? FOR UPDATE"), id).Scan(&status, &record, &reporter, &textureName)
 	if errors.Is(err, sql.ErrNoRows) {
 		failure(w, 404, "举报不存在")
 		return
@@ -259,7 +261,7 @@ func (a *Server) resolveReport(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	if body.Action == "disable" {
-		err = a.disableTexture(r.Context(), tx, u.ID, hash)
+		_, err = a.disableTexture(r.Context(), tx, u.ID, hash)
 	}
 	if body.Action == "ban" {
 		if !owner.Valid {
@@ -298,11 +300,23 @@ func (a *Server) resolveReport(w http.ResponseWriter, r *http.Request) {
 		err = a.s.RecordAdminEvent(r.Context(), tx, u.ID, "report."+body.Action, "report", id)
 	}
 	if err == nil {
+		resolution := map[string]string{"dismiss": "未采取处置措施", "disable": "已下架材质", "ban": "已封禁上传者"}[body.Action]
+		message := "关于「" + textureName + "」的举报已处理。结果：" + resolution + "。"
+		if body.Reply != "" {
+			message += "\n管理员回复：" + body.Reply
+		}
+		err = a.addNotification(r.Context(), tx, &notifications, reporter, "report.resolved", "举报已处理", message, "/user/account/reports")
+	}
+	if err == nil && body.Action == "disable" && owner.Valid && owner.Int64 != reporter {
+		err = a.addNotification(r.Context(), tx, &notifications, owner.Int64, "texture.disabled", "材质已下架", "管理员已下架材质「"+textureName+"」。", "/user/resources")
+	}
+	if err == nil {
 		err = tx.Commit()
 	}
 	if err != nil {
 		failure(w, 503, "管理操作未完成，请重试")
 		return
 	}
+	a.deliverNotifications(notifications)
 	w.WriteHeader(204)
 }

@@ -3,8 +3,8 @@ package httpapi
 import (
 	"context"
 	"database/sql"
-	"net/http"
 	localstorage "github.com/WishingSkin/WishingSkin/internal/storage"
+	"net/http"
 )
 
 func (a *Server) registerPlugins() {
@@ -167,7 +167,27 @@ func (a *Server) updatePlugin(w http.ResponseWriter, r *http.Request) {
 			return
 		}
 	}
-	err := a.putPluginEnabled(r.Context(), tx, state.Manifest.ID, state.Manifest.Version, *body.Enabled)
+	var err error
+	if id == minecraftPlugin {
+		cfg, configErr := a.minecraftSettings(r.Context(), tx)
+		if *body.Enabled && (configErr != nil || !cfg.valid()) {
+			failure(w, 409, "请先保存有效的微软应用配置")
+			return
+		}
+		if configErr == nil && cfg.valid() && cfg.Enabled != *body.Enabled {
+			cfg.Enabled = *body.Enabled
+			cfg.Revision, err = secret()
+			if err == nil {
+				err = a.putMinecraftSettings(r.Context(), tx, cfg)
+			}
+		}
+		if err == nil && !*body.Enabled {
+			_, err = tx.ExecContext(r.Context(), "DELETE FROM minecraft_flows")
+		}
+	}
+	if err == nil {
+		err = a.putPluginEnabled(r.Context(), tx, state.Manifest.ID, state.Manifest.Version, *body.Enabled)
+	}
 	if err == nil && state.Manifest.ID == "wishingskin.oidc" && !*body.Enabled {
 		_, err = tx.ExecContext(r.Context(), "DELETE FROM oidc_flows")
 	}

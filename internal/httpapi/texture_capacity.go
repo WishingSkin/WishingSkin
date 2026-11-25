@@ -7,14 +7,13 @@ import (
 	"net/http"
 	"os"
 	"strings"
+
+	"github.com/WishingSkin/WishingSkin/internal/textureimport"
 )
 
 const maxConfigurableQuotaBytes int64 = 100 << 40
 
-type storageQuotaSettings struct {
-	AccountLimitBytes *int64 `json:"accountLimitBytes,omitempty"`
-	SiteLimitBytes    *int64 `json:"siteLimitBytes,omitempty"`
-}
+type storageQuotaSettings = textureimport.QuotaSettings
 
 type storageQuotaView struct {
 	AccountLimitBytes int64 `json:"accountLimitBytes"`
@@ -22,22 +21,7 @@ type storageQuotaView struct {
 }
 
 func (a *Server) effectiveTextureLimits(ctx context.Context, reader settingReader) (int64, int64, error) {
-	accountLimit := a.cfg.TextureAccountLimitBytes
-	siteLimit := a.cfg.TextureSiteLimitBytes
-	var stored storageQuotaSettings
-	ok, err := a.readSettingFrom(ctx, reader, "storage_quota", &stored)
-	if err != nil {
-		return 0, 0, err
-	}
-	if ok {
-		if stored.AccountLimitBytes != nil && *stored.AccountLimitBytes >= 0 {
-			accountLimit = *stored.AccountLimitBytes
-		}
-		if stored.SiteLimitBytes != nil && *stored.SiteLimitBytes >= 0 {
-			siteLimit = *stored.SiteLimitBytes
-		}
-	}
-	return accountLimit, siteLimit, nil
+	return textureimport.EffectiveLimits(ctx, reader, a.cfg.TextureAccountLimitBytes, a.cfg.TextureSiteLimitBytes)
 }
 
 func (a *Server) checkTextureCapacity(w http.ResponseWriter, ctx context.Context, tx *sql.Tx, userID, size int64, existing bool) bool {
@@ -79,55 +63,8 @@ func (a *Server) checkTextureCapacity(w http.ResponseWriter, ctx context.Context
 	return true
 }
 
-func (a *Server) textureUsage(ctx context.Context, q interface {
-	QueryRowContext(context.Context, string, ...any) *sql.Row
-	QueryContext(context.Context, string, ...any) (*sql.Rows, error)
-}, from, hashColumn string, args ...any) (int64, error) {
-	var used int64
-	if err := q.QueryRowContext(ctx, a.s.Bind("SELECT COALESCE(SUM(i.byte_size),0)"+from), args...).Scan(&used); err != nil {
-		return 0, err
-	}
-	rows, err := q.QueryContext(ctx, a.s.Bind("SELECT "+hashColumn+",COUNT(*)"+from+" AND i.file_hash IS NULL GROUP BY "+hashColumn), args...)
-	if err != nil {
-		return 0, err
-	}
-	defer rows.Close()
-	var root *os.Root
-	defer func() {
-		if root != nil {
-			root.Close()
-		}
-	}()
-	for rows.Next() {
-		var hash string
-		var count int64
-		if err := rows.Scan(&hash, &count); err != nil {
-			return 0, err
-		}
-		if !validHash.MatchString(strings.ToLower(hash)) {
-			return 0, errors.New("invalid stored texture hash")
-		}
-		if root == nil {
-			root, err = os.OpenRoot(a.cfg.TextureDir)
-			if err != nil && !errors.Is(err, os.ErrNotExist) {
-				return 0, err
-			}
-		}
-		size := int64(maxTextureBytes)
-		if root != nil {
-			info, err := root.Lstat(hash)
-			if err == nil && info.Mode().IsRegular() {
-				size = info.Size()
-			} else if !errors.Is(err, os.ErrNotExist) {
-				return 0, errors.New("cannot read stored texture size")
-			}
-		}
-		used += size * count
-	}
-	if err := rows.Err(); err != nil {
-		return 0, err
-	}
-	return used, nil
+func (a *Server) textureUsage(ctx context.Context, q textureimport.UsageReader, from, hashColumn string, args ...any) (int64, error) {
+	return textureimport.Usage(ctx, q, a.s, a.cfg.TextureDir, from, hashColumn, args...)
 }
 
 func (a *Server) accountQuota(w http.ResponseWriter, r *http.Request) {
@@ -230,13 +167,5 @@ func (a *Server) withinTextureCapacity(ctx context.Context, tx *sql.Tx, remainin
 }
 
 func (a *Server) recordTextureIntegrity(ctx context.Context, tx *sql.Tx, hash string, size int64) error {
-	var storedSize int64
-	var digest string
-	err := tx.QueryRowContext(ctx, a.s.Bind("SELECT byte_size,sha256 FROM texture_file_integrity WHERE file_hash=?"), hash).Scan(&storedSize, &digest)
-	if errors.Is(err, sql.ErrNoRows) {
-		_, err = tx.ExecContext(ctx, a.s.Bind("INSERT INTO texture_file_integrity(file_hash,byte_size,sha256) VALUES(?,?,?)"), hash, size, hash)
-	} else if err == nil && (storedSize != size || digest != hash) {
-		return errors.New("texture conflicts with its recorded digest")
-	}
-	return err
+	return textureimport.RecordIntegrity(ctx, tx, a.s, hash, size)
 }

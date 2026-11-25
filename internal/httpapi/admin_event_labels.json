@@ -1,5 +1,33 @@
 {
   "actions": {
+    "settings.minecraft": {
+      "zh-CN": "修改正版 Minecraft 验证设置",
+      "en": "Update Minecraft verification settings"
+    },
+    "minecraft.link": {
+      "zh-CN": "绑定正版 Minecraft 账号",
+      "en": "Link Minecraft account"
+    },
+    "minecraft.unlink": {
+      "zh-CN": "解除正版 Minecraft 账号绑定",
+      "en": "Unlink Minecraft account"
+    },
+    "invitation.export": {
+      "zh-CN": "导出邀请码",
+      "en": "Export invitation codes"
+    },
+    "points.code.create": {
+      "zh-CN": "生成积分码",
+      "en": "Create point codes"
+    },
+    "points.code.disable": {
+      "zh-CN": "停用积分码",
+      "en": "Disable point code"
+    },
+    "points.code.export": {
+      "zh-CN": "导出积分码",
+      "en": "Export point codes"
+    },
     "user.verify_email": {
       "zh-CN": "完成邮箱验证",
       "en": "Verify email"
@@ -226,6 +254,10 @@
     }
   },
   "targets": {
+    "account": {
+      "zh-CN": "账号",
+      "en": "Account"
+    },
     "notice": {
       "zh-CN": "公告",
       "en": "Notice"
@@ -241,6 +273,10 @@
     "invitation": {
       "zh-CN": "邀请码",
       "en": "Invitation code"
+    },
+    "point_code": {
+      "zh-CN": "活动积分码",
+      "en": "Event point code"
     },
     "texture": {
       "zh-CN": "图片",
@@ -268,6 +304,26 @@
     }
   },
   "settings": {
+    "allowedScopes": {
+      "zh-CN": "允许的授权权限",
+      "en": "Allowed scopes"
+    },
+    "maxSkinWidth": {
+      "zh-CN": "皮肤最大宽度",
+      "en": "Maximum skin width"
+    },
+    "maxCapeWidth": {
+      "zh-CN": "披风最大宽度",
+      "en": "Maximum cape width"
+    },
+    "maxFileBytes": {
+      "zh-CN": "文件大小上限",
+      "en": "Maximum file size"
+    },
+    "note": {
+      "zh-CN": "备注",
+      "en": "Note"
+    },
     "registration": {
       "zh-CN": "注册模式",
       "en": "Registration mode"
@@ -315,6 +371,14 @@
     "oidc": {
       "zh-CN": "OIDC 登录",
       "en": "OIDC sign-in"
+    },
+    "wishingskin.minecraft": {
+      "zh-CN": "正版 Minecraft 验证",
+      "en": "Minecraft verification"
+    },
+    "notificationEmailEnabled": {
+      "zh-CN": "邮件通知",
+      "en": "Email notifications"
     },
     "wishingskin.oidc": {
       "zh-CN": "OIDC 登录",

@@ -1,8 +1,11 @@
 <script setup lang="ts">
 import LoadingSkeleton from './LoadingSkeleton.vue'
 import { feedbackRef } from '../feedback'
-import { onMounted, ref } from 'vue'
+import { computed, onMounted, ref } from 'vue'
 import { t } from '../i18n'
+import CopyButton from './CopyButton.vue'
+import { settingsSnapshot } from '../settingsDraft'
+import { useUnsavedGuard } from '../unsavedGuard'
 const props = defineProps<{ csrfToken: string }>()
 const emit = defineEmits<{ updated: []; expired: [] }>()
 function blank() { return { enabled: false, name: 'OIDC', issuer: '', clientId: '', clientSecret: '', secretConfigured: false, clearSecret: false, redirectUri: '', id: '' } }
@@ -13,6 +16,9 @@ function select(id: string) { selected.value=id; draft.value=providers.value.fin
 function add() { const id='provider-'+crypto.randomUUID().slice(0,8); providers.value.push({ ...blank(), id }); select(id) }
 function remove() { providers.value=providers.value.filter(p=>p.id!==selected.value); select('') }
 const loaded = ref(false), busy = ref(false), error = feedbackRef('error'), message = feedbackRef('success')
+const savedSnapshot = ref('')
+const dirty = computed(() => loaded.value && savedSnapshot.value !== '' && settingsSnapshot(providers.value) !== savedSnapshot.value)
+useUnsavedGuard(dirty, '/admin/plugins/wishingskin.oidc')
 async function load() {
   error.value = ''
   try {
@@ -20,7 +26,7 @@ async function load() {
     if (response.status === 401) { emit('expired'); return }
     const data = await response.json()
     if (!response.ok) { error.value = data.error || '暂时无法读取 OIDC 设置'; return }
-    providers.value = data.providers.map((p: ReturnType<typeof blank>) => ({ ...blank(), ...p, clientSecret:'', clearSecret:false })); select(''); loaded.value=true
+    providers.value = data.providers.map((p: ReturnType<typeof blank>) => ({ ...blank(), ...p, clientSecret:'', clearSecret:false })); select(''); savedSnapshot.value = settingsSnapshot(providers.value); loaded.value=true
   } catch { error.value = '暂时无法读取 OIDC 设置' }
 }
 async function save() {
@@ -30,7 +36,7 @@ async function save() {
     if (response.status === 401) { emit('expired'); return }
     const data = await response.json()
     if (!response.ok) { error.value = data.error || '暂时无法保存 OIDC 设置'; return }
-    providers.value=data.providers.map((p: ReturnType<typeof blank>)=>({ ...blank(), ...p, clientSecret:'',clearSecret:false })); select(selected.value); message.value = 'OIDC 设置已保存。'; emit('updated')
+    providers.value=data.providers.map((p: ReturnType<typeof blank>)=>({ ...blank(), ...p, clientSecret:'',clearSecret:false })); select(selected.value); savedSnapshot.value = settingsSnapshot(providers.value); message.value = 'OIDC 设置已保存。'; emit('updated')
   } catch { error.value = '无法确认操作结果，请重新检查设置。' }
   finally { busy.value = false }
 }
@@ -46,7 +52,7 @@ onMounted(load)
       <label class="binding-field"><span>Client ID</span><input v-model="draft.clientId" maxlength="256" :required="draft.enabled" autocomplete="off" /></label>
       <label class="binding-field"><span>Client Secret</span><input v-model="draft.clientSecret" type="password" maxlength="4096" autocomplete="new-password" :placeholder="draft.secretConfigured ? t('已配置，留空保留') : t('尚未配置')" /></label>
       <label v-if="draft.secretConfigured" class="checkbox-label"><input v-model="draft.clearSecret" type="checkbox" /> {{ t('清除已保存的密钥') }}</label>
-      <dl class="oidc-redirect"><dt>{{ t('回调地址') }}</dt><dd>{{ draft.redirectUri }}</dd></dl>
+      <div class="minecraft-redirect"><dl class="oidc-redirect"><dt>{{ t('回调地址') }}</dt><dd>{{ draft.redirectUri }}</dd></dl><CopyButton :text="draft.redirectUri" :label="t('复制回调地址')" /></div>
       <button class="primary-button" type="submit">{{ busy ? t('正在保存…') : t('保存 OIDC 设置') }}</button>
     </fieldset></form>
   </section>

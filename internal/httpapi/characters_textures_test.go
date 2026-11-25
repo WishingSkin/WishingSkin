@@ -21,7 +21,10 @@ import (
 
 	"github.com/WishingSkin/WishingSkin/internal/store"
 	"github.com/WishingSkin/WishingSkin/internal/testutil"
+	"github.com/WishingSkin/WishingSkin/internal/textureimport"
 )
+
+var saveTexture = textureimport.SaveLocal
 
 type managementApp struct {
 	t   *testing.T

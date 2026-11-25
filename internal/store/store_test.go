@@ -41,6 +41,23 @@ func TestEmbeddedSchemasAgree(t *testing.T) {
 	}
 }
 
+func TestSchema29PointCodeDDL(t *testing.T) {
+	if CurrentSchemaVersion != 29 {
+		t.Fatalf("schema version = %d, want 29", CurrentSchemaVersion)
+	}
+	for _, dialect := range []string{"mysql", "postgres"} {
+		source, err := migrationFiles.ReadFile("migrations/029_p2_scopes_and_point_codes." + dialect + ".sql")
+		if err != nil {
+			t.Fatal(err)
+		}
+		for _, fragment := range []string{"allowed_scopes VARCHAR(512) NOT NULL DEFAULT ''", "PRIMARY KEY (code_hash, user_id)", "ON DELETE CASCADE", "point_codes_created_idx"} {
+			if !strings.Contains(string(source), fragment) {
+				t.Errorf("%s is missing %q", dialect, fragment)
+			}
+		}
+	}
+}
+
 func assertEmbeddedSchemasAgree(t *testing.T, migration string) {
 	t.Helper()
 	mysql, err := migrationFiles.ReadFile("migrations/" + migration + ".mysql.sql")
@@ -53,13 +70,15 @@ func assertEmbeddedSchemasAgree(t *testing.T, migration string) {
 	}
 	mysqlOptions := regexp.MustCompile(` ENGINE=InnoDB DEFAULT CHARACTER SET utf8mb4 COLLATE utf8mb4_0900_bin`)
 	ownerIndex := regexp.MustCompile(`,? KEY texture_records_owner\s*\(owner_id\)|CREATE INDEX IF NOT EXISTS texture_records_owner ON texture_records\(owner_id\);`)
-	wardrobeIndex := regexp.MustCompile(`CREATE INDEX IF NOT EXISTS wardrobe_record_id_idx ON wardrobe\(record_id\);`)
+	foreignKeyIndex := regexp.MustCompile(`CREATE INDEX IF NOT EXISTS (wardrobe_record_id_idx ON wardrobe\(record_id\)|characters_user_id_idx ON characters\(user_id\));`)
 	oidcIndex := regexp.MustCompile(`, INDEX oidc_flow_expiry\(expires_at\)|CREATE INDEX IF NOT EXISTS oidc_flow_expiry ON oidc_flows\(expires_at\);`)
 	extensionIndex := regexp.MustCompile(`, INDEX (webhook_due|plugin_event_due)\(state,next_at\)|CREATE INDEX IF NOT EXISTS (webhook_due|plugin_event_due) ON (webhook_deliveries|plugin_event_deliveries)\(state,next_at\);`)
 	likesIndex := regexp.MustCompile(`, INDEX texture_likes_record_created_idx \(record_id, created_at\)|CREATE INDEX IF NOT EXISTS texture_likes_record_created_idx ON texture_likes\(record_id, created_at\);`)
+	newIndexes := regexp.MustCompile(`, INDEX (user_notifications_user_(created|unread)_idx|minecraft_flow_expiry)\([^)]*\)|CREATE INDEX IF NOT EXISTS (user_notifications_user_(created|unread)_idx|minecraft_flow_expiry) ON (user_notifications|minecraft_flows)\([^)]*\);`)
+	pointCodeIndex := regexp.MustCompile(`, INDEX point_codes_created_idx\(created_at, code_hash\)|CREATE INDEX IF NOT EXISTS point_codes_created_idx ON point_codes\(created_at, code_hash\);`)
 	normalize := func(source string) string {
 		// Compare DDL here; dialect-specific backfill/upsert behavior is tested against both databases.
-		source = strings.SplitN(source, "INSERT INTO", 2)[0]
+		source = strings.SplitN(migrationSQL(source), "INSERT INTO", 2)[0]
 		source = strings.Join(strings.Fields(source), " ")
 		source = strings.ReplaceAll(source, ` COLLATE "C"`, "")
 		// PostgreSQL TEXT and MySQL LONGTEXT both preserve long legacy reasons.
@@ -80,12 +99,18 @@ func assertEmbeddedSchemasAgree(t *testing.T, migration string) {
 		source = extensionIndex.ReplaceAllString(source, "")
 		source = mysqlOptions.ReplaceAllString(source, "")
 		source = ownerIndex.ReplaceAllString(source, "")
-		// InnoDB creates this index for the foreign key automatically.
-		source = wardrobeIndex.ReplaceAllString(source, "")
+		// InnoDB creates these indexes for the foreign keys automatically.
+		source = foreignKeyIndex.ReplaceAllString(source, "")
 		// The same OIDC expiry index is declared inline on MySQL.
 		source = oidcIndex.ReplaceAllString(source, "")
 		// The same likes index is declared inline on MySQL.
 		source = likesIndex.ReplaceAllString(source, "")
+		source = newIndexes.ReplaceAllString(source, "")
+		if migration == "029_p2_scopes_and_point_codes" {
+			source = pointCodeIndex.ReplaceAllString(source, "")
+			source = strings.ReplaceAll(source, " CHARACTER SET ascii COLLATE ascii_bin", "")
+			source = strings.ReplaceAll(source, "ADD COLUMN IF NOT EXISTS", "ADD COLUMN")
+		}
 		return strings.Join(strings.Fields(source), " ")
 	}
 	if normalize(string(mysql)) != normalize(string(postgres)) {
@@ -120,6 +145,27 @@ func assertEmbeddedSchemasAgree(t *testing.T, migration string) {
 				t.Errorf("missing schema 26 DDL %q", fragment)
 			}
 		}
+	}
+	if migration == "027_characters_user_index" {
+		tables = nil
+		if !strings.Contains(string(postgres), "CREATE INDEX IF NOT EXISTS characters_user_id_idx ON characters(user_id);") {
+			t.Error("missing PostgreSQL character owner index")
+		}
+	}
+	if migration == "028_notifications_and_minecraft_verification" {
+		tables = []string{"user_notifications", "minecraft_verifications", "minecraft_flows"}
+		for _, index := range []struct{ name, table, columns string }{
+			{"user_notifications_user_created_idx", "user_notifications", "(user_id, created_at, notification_id)"},
+			{"user_notifications_user_unread_idx", "user_notifications", "(user_id, read_at)"},
+			{"minecraft_flow_expiry", "minecraft_flows", "(expires_at)"},
+		} {
+			if !strings.Contains(string(mysql), "INDEX "+index.name+index.columns) || !strings.Contains(string(postgres), "INDEX IF NOT EXISTS "+index.name+" ON "+index.table+index.columns) {
+				t.Errorf("missing schema 28 index %s", index.name)
+			}
+		}
+	}
+	if migration == "029_p2_scopes_and_point_codes" {
+		tables = []string{"point_codes", "point_code_redemptions"}
 	}
 	if migration == "019_admin_event_changes" {
 		tables = []string{"admin_event_changes"}
