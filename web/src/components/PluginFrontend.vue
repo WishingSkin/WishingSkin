@@ -34,6 +34,8 @@ const pickerOpen = ref(false)
 const pickerKind = ref<'skin' | 'cape'>('skin')
 const pickerBusy = ref(false)
 let pickerResolver: ((value: Record<string, unknown>) => void) | undefined
+let pickerToken = 0
+let pickerAbort: AbortController | undefined
 
 const livePreview = ref<{ title: string; model: string; dataUrl: string } | null>(null)
 
@@ -178,6 +180,9 @@ function clear() {
   iframeDirty.value = false
   emit('dirtyChange', false)
   livePreview.value = null
+  pickerToken++
+  pickerAbort?.abort()
+  pickerAbort = undefined
   if (pickerResolver) {
     pickerResolver({ cancelled: true })
     pickerResolver = undefined
@@ -200,6 +205,7 @@ async function postContext() {
     context: {
       pluginId: props.pluginId,
       frontendId: props.frontendId || '',
+      siteOrigin: typeof window !== 'undefined' ? window.location.origin : '',
       locale: locale.value,
       theme: themeSnap.mode,
       themePack: themeSnap.themePack,
@@ -260,7 +266,7 @@ async function handlePluginRequest(message: Record<string, unknown>, target: Win
     inlineQuery = rawPath.slice(qIndex + 1)
   }
   const route = routes.find(r => r.method === method && r.path === reqPath)
-  if (!route || !digest || requests.size >= 4) { respond(403, { error: 'Request unavailable' }); return }
+  if (!route || !digest || requests.size >= 8) { respond(403, { error: 'Request unavailable' }); return }
   if (message.query !== undefined && (typeof message.query !== 'string' || message.query.length > 1024 || message.query.includes('#'))) {
     respond(400, { error: 'Invalid query' }); return
   }
@@ -317,16 +323,26 @@ async function handlePickSelection(item: TextureRecord, model?: string) {
     pickerOpen.value = false
     return
   }
+  const token = pickerToken
+  pickerAbort?.abort()
+  const controller = new AbortController()
+  pickerAbort = controller
   pickerBusy.value = true
   try {
-    const r = await fetch(`/textures/${encodeURIComponent(item.fileHash)}`, { credentials: 'same-origin' })
+    const r = await fetch(`/textures/${encodeURIComponent(item.fileHash)}`, {
+      credentials: 'same-origin',
+      signal: controller.signal,
+    })
+    if (token !== pickerToken || !pickerResolver) return
     if (!r.ok) {
       toast('材质文件暂时无法加载。', 'error')
       return
     }
     const buf = await r.arrayBuffer()
+    if (token !== pickerToken || !pickerResolver) return
     const resolve = pickerResolver
     pickerResolver = undefined
+    pickerAbort = undefined
     pickerOpen.value = false
     resolve({
       cancelled: false,
@@ -337,17 +353,24 @@ async function handlePickSelection(item: TextureRecord, model?: string) {
       model: model === 'slim' || item.model === 'slim' ? 'slim' : 'default',
       dataUrl: `data:image/png;base64,${arrayBufferToBase64(buf)}`,
     })
-  } catch {
-    toast('材质文件暂时无法加载。', 'error')
+  } catch (err) {
+    if ((err as Error)?.name !== 'AbortError' && token === pickerToken) {
+      toast('材质文件暂时无法加载。', 'error')
+    }
   } finally {
-    pickerBusy.value = false
+    if (pickerAbort === controller) pickerAbort = undefined
+    if (token === pickerToken) pickerBusy.value = false
   }
 }
 
 function handlePickCancel() {
+  pickerToken++
+  pickerAbort?.abort()
+  pickerAbort = undefined
   const resolve = pickerResolver
   pickerResolver = undefined
   pickerOpen.value = false
+  pickerBusy.value = false
   resolve?.({ cancelled: true })
 }
 
@@ -392,8 +415,71 @@ async function handleHostBridge(message: Record<string, unknown>, target: Window
     reply(true, 200, { dirty: nextDirty })
     return
   }
+  if (action === 'downloadFile') {
+    const raw = typeof payload.dataUrl === 'string' && payload.dataUrl.trim()
+      ? payload.dataUrl.trim()
+      : (typeof payload.pngBase64 === 'string' ? payload.pngBase64.trim() : '')
+    if (!raw || raw.length > 12 * 1024 * 1024) {
+      reply(false, 400, undefined, 'Invalid download payload')
+      return
+    }
+    let blob: Blob | null = null
+    if (/^data:image\/svg\+xml;base64,/i.test(raw)) {
+      try {
+        const bin = atob(raw.replace(/^data:image\/svg\+xml;base64,/i, '').trim())
+        const out = new Uint8Array(bin.length)
+        for (let i = 0; i < bin.length; i++) out[i] = bin.charCodeAt(i)
+        blob = new Blob([out], { type: 'image/svg+xml' })
+      } catch {
+        blob = null
+      }
+    } else if (/^data:image\/svg\+xml;charset=utf-8,/i.test(raw)) {
+      try {
+        const text = decodeURIComponent(raw.replace(/^data:image\/svg\+xml;charset=utf-8,/i, ''))
+        blob = new Blob([text], { type: 'image/svg+xml' })
+      } catch {
+        blob = null
+      }
+    } else {
+      const decoded = decodePNGBase64(raw)
+      if (decoded && decoded.length > 0 && decoded.length <= 8 * 1024 * 1024) {
+        const copy = new Uint8Array(decoded.length)
+        copy.set(decoded)
+        blob = new Blob([copy], { type: 'image/png' })
+      }
+    }
+    if (!blob || typeof document === 'undefined') {
+      reply(false, 400, undefined, 'Unsupported file payload')
+      return
+    }
+    const rawName = (typeof payload.filename === 'string' ? payload.filename.trim() : '') || 'skin.png'
+    const safeName = rawName.replace(/[^a-zA-Z0-9._\-\u4e00-\u9fff]/g, '_').slice(0, 120) || 'skin.png'
+    const url = URL.createObjectURL(blob)
+    const a = document.createElement('a')
+    a.href = url
+    a.download = safeName
+    a.style.display = 'none'
+    document.body.appendChild(a)
+    a.click()
+    a.remove()
+    setTimeout(() => URL.revokeObjectURL(url), 1500)
+    reply(true, 200, { downloaded: true, filename: safeName })
+    return
+  }
   if (props.scope !== 'user') {
     reply(false, 403, undefined, 'Forbidden in admin scope')
+    return
+  }
+  if (action === 'notifyMutated') {
+    const rawList = Array.isArray(payload.kinds) ? payload.kinds : [payload.kind]
+    let count = 0
+    for (const k of rawList) {
+      if (k === 'textures' || k === 'characters') {
+        emit('mutated', k)
+        count++
+      }
+    }
+    reply(true, 200, { notified: count })
     return
   }
   if (action === 'setPreview') {
@@ -429,7 +515,7 @@ async function handleHostBridge(message: Record<string, unknown>, target: Window
     reply(!result.cancelled, result.cancelled ? 499 : 200, result)
     return
   }
-  if (hostRequests.size >= 4) { reply(false, 429, undefined, 'Too many host requests'); return }
+  if (hostRequests.size >= 8) { reply(false, 429, undefined, 'Too many host requests'); return }
   const controller = new AbortController()
   hostRequests.set(id, controller)
   const version = generation
