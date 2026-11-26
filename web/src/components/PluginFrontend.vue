@@ -15,6 +15,7 @@ const props = defineProps<{
   scope?: 'admin' | 'user'
   frontendId?: string
   initialContext?: Record<string, unknown>
+  availableTools?: { pluginId: string; frontendId: string; label: string }[]
   tall?: boolean
   settingsRevision?: number
 }>()
@@ -22,6 +23,7 @@ const emit = defineEmits<{
   expired: []
   mutated: [kind: 'textures' | 'characters']
   dirtyChange: [dirty: boolean]
+  openTool: [payload: { pluginId: string; frontendId: string; context?: Record<string, unknown> }]
 }>()
 
 const frame = ref<HTMLIFrameElement>()
@@ -215,6 +217,7 @@ async function postContext() {
       fontScope: themeSnap.fontScope,
       tokens: themeSnap.tokens,
       fontFaceCss,
+      ...(props.availableTools ? { availableTools: props.availableTools } : {}),
       ...(props.initialContext || {}),
     },
   }, '*')
@@ -418,7 +421,9 @@ async function handleHostBridge(message: Record<string, unknown>, target: Window
   if (action === 'downloadFile') {
     const raw = typeof payload.dataUrl === 'string' && payload.dataUrl.trim()
       ? payload.dataUrl.trim()
-      : (typeof payload.pngBase64 === 'string' ? payload.pngBase64.trim() : '')
+      : (typeof payload.pngBase64 === 'string' && payload.pngBase64.trim()
+          ? payload.pngBase64.trim()
+          : (typeof payload.dataBase64 === 'string' ? payload.dataBase64.trim() : ''))
     if (!raw || raw.length > 12 * 1024 * 1024) {
       reply(false, 400, undefined, 'Invalid download payload')
       return
@@ -471,15 +476,51 @@ async function handleHostBridge(message: Record<string, unknown>, target: Window
     return
   }
   if (action === 'notifyMutated') {
+    const kinds = new Set<'textures' | 'characters'>()
     const rawList = Array.isArray(payload.kinds) ? payload.kinds : [payload.kind]
-    let count = 0
     for (const k of rawList) {
-      if (k === 'textures' || k === 'characters') {
-        emit('mutated', k)
-        count++
-      }
+      if (k === 'textures' || k === 'characters') kinds.add(k)
     }
-    reply(true, 200, { notified: count })
+    if (payload.textures === true) kinds.add('textures')
+    if (payload.characters === true) kinds.add('characters')
+    for (const k of kinds) emit('mutated', k)
+    reply(true, 200, { notified: kinds.size })
+    return
+  }
+  if (action === 'openPluginTool') {
+    const targetPluginId = typeof payload.pluginId === 'string' ? payload.pluginId.trim() : ''
+    const targetFrontendId = typeof payload.frontendId === 'string' ? payload.frontendId.trim() : ''
+    const toolsList = props.availableTools || []
+    const allowed = Boolean(targetPluginId && targetFrontendId) && toolsList.some(
+      t => t.pluginId === targetPluginId && t.frontendId === targetFrontendId,
+    )
+    if (!allowed) {
+      reply(false, 404, undefined, 'Target plugin tool unavailable')
+      return
+    }
+    let handoffCtx: Record<string, unknown> | undefined
+    if (payload.context !== undefined) {
+      if (!payload.context || typeof payload.context !== 'object' || Array.isArray(payload.context)) {
+        reply(false, 400, undefined, 'Invalid tool handoff context')
+        return
+      }
+      try {
+        if (JSON.stringify(payload.context).length > 2 * 1024 * 1024) {
+          reply(false, 413, undefined, 'Tool handoff context too large')
+          return
+        }
+      } catch {
+        reply(false, 400, undefined, 'Invalid tool handoff context')
+        return
+      }
+      handoffCtx = payload.context as Record<string, unknown>
+    }
+    if (iframeDirty.value) {
+      iframeDirty.value = false
+      emit('dirtyChange', false)
+    }
+    emit('openTool', { pluginId: targetPluginId, frontendId: targetFrontendId, context: handoffCtx })
+    reply(true, 200, { opened: true })
     return
   }
   if (action === 'setPreview') {
@@ -645,7 +686,7 @@ if (typeof MutationObserver !== 'undefined' && typeof document !== 'undefined') 
 
 window.addEventListener('message', receive)
 watch(() => [props.pluginId, props.enabled, props.version, props.scope, props.frontendId], load, { immediate: true })
-watch([locale, () => props.initialContext], schedulePostContext)
+watch([locale, () => props.initialContext, () => props.availableTools], schedulePostContext)
 watch(() => props.settingsRevision, (rev) => {
   if (!rev || !frame.value?.contentWindow || !html.value) return
   frame.value.contentWindow.postMessage({ type: 'wishingskin:settings-updated', revision: rev }, '*')

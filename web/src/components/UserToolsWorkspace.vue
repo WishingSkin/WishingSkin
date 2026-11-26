@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { computed } from 'vue'
+import { computed, ref, watch } from 'vue'
 import { t } from '../i18n'
 import type { UserPluginEntry } from '../pluginModel'
 import { userToolPath } from '../workspaceRoutes'
@@ -32,10 +32,49 @@ const tools = computed(() => props.plugins.flatMap(plugin =>
     .map(frontend => ({ plugin, frontend })),
 ))
 
+const availableTools = computed(() => tools.value.map(item => ({
+  pluginId: item.plugin.id,
+  frontendId: item.frontend.id,
+  label: item.frontend.label,
+})))
+
 const activeTool = computed(() => {
   if (!props.selectedPluginId || !props.selectedFrontendId) return null
   return tools.value.find(item => item.plugin.id === props.selectedPluginId && item.frontend.id === props.selectedFrontendId) || null
 })
+
+const pendingHandoff = ref<{ pluginId: string; frontendId: string; context: Record<string, unknown> } | null>(null)
+
+const activeInitialContext = computed(() => {
+  if (!activeTool.value || !pendingHandoff.value) return undefined
+  if (
+    pendingHandoff.value.pluginId !== activeTool.value.plugin.id ||
+    pendingHandoff.value.frontendId !== activeTool.value.frontend.id
+  ) {
+    return undefined
+  }
+  return pendingHandoff.value.context
+})
+
+watch(() => [props.selectedPluginId, props.selectedFrontendId], ([pid, fid]) => {
+  if (
+    pendingHandoff.value &&
+    (pendingHandoff.value.pluginId !== pid || pendingHandoff.value.frontendId !== fid)
+  ) {
+    pendingHandoff.value = null
+  }
+})
+
+function handleOpenTool(req: { pluginId: string; frontendId: string; context?: Record<string, unknown> }) {
+  const exists = tools.value.some(
+    item => item.plugin.id === req.pluginId && item.frontend.id === req.frontendId,
+  )
+  if (!exists) return
+  pendingHandoff.value = req.context
+    ? { pluginId: req.pluginId, frontendId: req.frontendId, context: req.context }
+    : null
+  emit('navigate', userToolPath(req.pluginId, req.frontendId))
+}
 
 const missingSelection = computed(() =>
   !props.loading && !props.error && Boolean(props.selectedPluginId || props.selectedFrontendId) && !activeTool.value,
@@ -64,8 +103,11 @@ const missingSelection = computed(() =>
           enabled
           :version="activeTool.plugin.version"
           :csrf-token="props.csrfToken"
+          :available-tools="availableTools"
+          :initial-context="activeInitialContext"
           @expired="emit('expired')"
           @mutated="emit('mutated', $event)"
+          @open-tool="handleOpenTool"
         />
       </div>
     </template>
