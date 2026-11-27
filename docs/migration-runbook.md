@@ -14,6 +14,16 @@
 
 对照源站实际文件确认 BS 版本、传统 `yggdrasil-api` 插件版本、密码算法与 `SALT`、UUID 算法、材质 hash 规则、表前缀以及 `TEXTURES_DIR`，复制模板并填写核实值：
 
+**Linux / macOS**：
+
+```bash
+mkdir -p artifacts
+cp deploy/bs-source.example.json artifacts/source-info.json
+# 编辑 artifacts/source-info.json，不要将真实凭据写入日志
+```
+
+**Windows (PowerShell)**：
+
 ```powershell
 New-Item -ItemType Directory -Force artifacts | Out-Null
 Copy-Item deploy/bs-source.example.json artifacts/source-info.json
@@ -24,10 +34,20 @@ Copy-Item deploy/bs-source.example.json artifacts/source-info.json
 
 ## 步骤 2：只读导出与离线预检查
 
+**Linux / macOS**：
+
+```bash
+export WS_BS_SOURCE_DSN='readonly_user:replace-me@tcp(127.0.0.1:3306)/confirmed_source?parseTime=true'
+./bin/wishingskin export-bs --source-info artifacts/source-info.json --output artifacts/source-snapshot.json
+./bin/wishingskin preflight --snapshot artifacts/source-snapshot.json --source-textures artifacts/source-textures
+```
+
+**Windows (PowerShell)**：
+
 ```powershell
 $env:WS_BS_SOURCE_DSN='readonly_user:replace-me@tcp(127.0.0.1:3306)/confirmed_source?parseTime=true'
-./bin/wishingskin.exe export-bs --source-info artifacts/source-info.json --output artifacts/source-snapshot.json
-./bin/wishingskin.exe preflight --snapshot artifacts/source-snapshot.json --source-textures artifacts/source-textures
+.\bin\wishingskin.exe export-bs --source-info artifacts/source-info.json --output artifacts/source-snapshot.json
+.\bin\wishingskin.exe preflight --snapshot artifacts/source-snapshot.json --source-textures artifacts/source-textures
 ```
 
 - 导出不执行 SQL dump，也不修改源库；如源库有表前缀，给 `export-bs` 添加 `--table-prefix prefix_`。输出路径必须尚不存在。
@@ -37,6 +57,20 @@ $env:WS_BS_SOURCE_DSN='readonly_user:replace-me@tcp(127.0.0.1:3306)/confirmed_so
 
 提前创建空的 PostgreSQL 或 MySQL 目标数据库，确保无任何业务进程写入。建议将 `WS_SETTINGS_KEY_FILE` 指定到材质目录之外的独立持久路径（导入时会自动生成 32 字节密钥，请立即备份）；若使用默认密钥路径，目标材质目录须为空，或仅包含一个有效的 32 字节 `.settings.key`。
 
+**Linux / macOS**：
+
+```bash
+export WS_DATABASE_DRIVER='postgres' # 或 mysql
+export WS_DATABASE_DSN='connection-to-empty-target'
+export WS_PUBLIC_URL='https://skin.example.com'
+export WS_TEXTURE_DIR='data/migrated-textures'
+export WS_SETTINGS_KEY_FILE='secrets/wishingskin.settings.key'
+mkdir -p data
+./bin/wishingskin migrate
+```
+
+**Windows (PowerShell)**：
+
 ```powershell
 $env:WS_DATABASE_DRIVER='postgres' # 或 mysql
 $env:WS_DATABASE_DSN='connection-to-empty-target'
@@ -44,15 +78,23 @@ $env:WS_PUBLIC_URL='https://skin.example.com'
 $env:WS_TEXTURE_DIR='data/migrated-textures'
 $env:WS_SETTINGS_KEY_FILE='secrets/wishingskin.settings.key'
 New-Item -ItemType Directory -Force data | Out-Null
-./bin/wishingskin.exe migrate
+.\bin\wishingskin.exe migrate
 ```
 
 切勿将目标指向现有运营库、源材质目录，也不要把备份恢复与 BS 导入混在同一目标任务中。
 
 ## 步骤 4：执行导入与中断续跑
 
+**Linux / macOS**：
+
+```bash
+./bin/wishingskin import-bs --snapshot artifacts/source-snapshot.json --source-textures artifacts/source-textures
+```
+
+**Windows (PowerShell)**：
+
 ```powershell
-./bin/wishingskin.exe import-bs --snapshot artifacts/source-snapshot.json --source-textures artifacts/source-textures
+.\bin\wishingskin.exe import-bs --snapshot artifacts/source-snapshot.json --source-textures artifacts/source-textures
 ```
 
 导入器会再次执行预检查并写入文件 journal：先校验并通过硬链接发布材质文件，再在同一数据库事务中提交账号、角色、材质、衣柜、品牌、只读举报历史、邀请码及 `partial` 迁移状态。

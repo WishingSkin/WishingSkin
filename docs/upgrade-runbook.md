@@ -24,13 +24,23 @@
 3. 停止应用写入，用当前版本执行完整离线备份，并单独复制保管 32 字节设置密钥。
 4. 在隔离的空数据库与空材质目录上用同一旧版本演练一次 `restore`，核验账号、角色、材质和管理登录；未验证备份可用前不要覆盖生产程序。
 
+**Linux / macOS**：
+
+```bash
+# 原生部署：停止服务后在当前版本目录执行
+mkdir -p backups
+./bin/wishingskin backup --offline --directory backups/pre-upgrade-20261029
+```
+
+**Windows (PowerShell)**：
+
 ```powershell
 # 原生部署：停止服务后在当前版本目录执行
 New-Item -ItemType Directory -Force backups | Out-Null
-./bin/wishingskin.exe backup --offline --directory backups/pre-upgrade-20261029
+.\bin\wishingskin.exe backup --offline --directory backups/pre-upgrade-20261029
 ```
 
-```powershell
+```bash
 # Docker Compose：先停 app（保留数据库容器），再通过一次性容器执行备份
 docker compose --env-file .env -f deploy/compose.postgres.yaml stop app
 docker compose --env-file .env -f deploy/compose.postgres.yaml run --rm --no-deps app backup --offline --directory /data/backups/pre-upgrade-20261029
@@ -39,6 +49,17 @@ docker compose --env-file .env -f deploy/compose.postgres.yaml run --rm --no-dep
 ## 执行升级
 
 在维护窗口内构建或拉取新版本并启动应用。服务启动会自动按序完成未执行的 schema 迁移；切勿同时运行多个不同版本的实例。
+
+**Linux / macOS**：
+
+```bash
+docker compose --env-file .env -f deploy/compose.postgres.yaml build app
+docker compose --env-file .env -f deploy/compose.postgres.yaml up -d app
+docker compose --env-file .env -f deploy/compose.postgres.yaml logs --tail=100 app
+curl -i http://127.0.0.1:8090/readyz
+```
+
+**Windows (PowerShell)**：
 
 ```powershell
 docker compose --env-file .env -f deploy/compose.postgres.yaml build app

@@ -20,7 +20,7 @@
 > [!IMPORTANT]
 > 前端构建（`pnpm --dir web build`）会先删除旧的哈希资源再输出至嵌入式目录，因此必须**串行执行**前端构建与 `go build` / `go test` / `go vet`，避免 Go `embed` 读取到清理中的中间状态。
 
-```powershell
+```bash
 # 1. 前端依赖、单元测试与生产构建
 pnpm --dir web install --frozen-lockfile
 pnpm --dir web test

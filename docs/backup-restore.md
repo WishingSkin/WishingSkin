@@ -20,7 +20,7 @@ WishingSkin 提供应用层的完整离线备份与恢复工具（不执行 SQL 
 - **迁移状态约束**：存在 `pending` 迁移任务时会阻止备份；`partial` 状态原样保留。
 
 > [!CAUTION]
-> 备份内含签名私钥和业务密文，且备份格式本身不加密，请存放在受控目录中（Windows 的 `0600` 权限不能代替 NTFS ACL）。恢复完成后、启动服务前，须将原 32 字节设置密钥放回目标配置路径（若使用默认路径，请等 `restore` 创建完材质目录后再放入）。缺少或放错密钥会导致程序拒绝启动或 `/readyz` 返回 503，丢失密钥意味着已加密的服务凭据无法解密。
+> 备份内含签名私钥和业务密文，且备份格式本身不加密，请存放在受控目录中（Linux / macOS 建议设置目录权限 `0700`、密钥文件 `0600`；Windows 的 `0600` 权限不能代替 NTFS ACL）。恢复完成后、启动服务前，须将原 32 字节设置密钥放回目标配置路径（若使用默认路径，请等 `restore` 创建完材质目录后再放入）。缺少或放错密钥会导致程序拒绝启动或 `/readyz` 返回 503，丢失密钥意味着已加密的服务凭据无法解密。
 
 ## Docker Compose 持久化说明
 
@@ -49,22 +49,39 @@ PostgreSQL 与 MySQL 编排文件均把数据库、材质和 `/data/backups` 放
 
 ### 原生部署示例
 
+**Linux / macOS**：
+
+```bash
+# 1. 停止所有写入后，在当前版本环境导出备份
+mkdir -p backups
+./bin/wishingskin backup --offline --directory backups/site-20261029
+
+# 2. 在全新空数据库和尚不存在的材质目录上恢复
+export WS_DATABASE_DSN='connection-to-isolated-empty-target'
+export WS_TEXTURE_DIR='data/restored-textures'
+mkdir -p data
+./bin/wishingskin migrate
+./bin/wishingskin restore --offline --directory backups/site-20261029
+```
+
+**Windows (PowerShell)**：
+
 ```powershell
 # 1. 停止所有写入后，在当前版本环境导出备份
 New-Item -ItemType Directory -Force backups | Out-Null
-./bin/wishingskin.exe backup --offline --directory backups/site-20261029
+.\bin\wishingskin.exe backup --offline --directory backups/site-20261029
 
 # 2. 在全新空数据库和尚不存在的材质目录上恢复
 $env:WS_DATABASE_DSN='connection-to-isolated-empty-target'
 $env:WS_TEXTURE_DIR='data/restored-textures'
 New-Item -ItemType Directory -Force data | Out-Null
-./bin/wishingskin.exe migrate
-./bin/wishingskin.exe restore --offline --directory backups/site-20261029
+.\bin\wishingskin.exe migrate
+.\bin\wishingskin.exe restore --offline --directory backups/site-20261029
 ```
 
 ### Docker Compose 停写备份示例
 
-```powershell
+```bash
 docker compose --env-file .env -f deploy/compose.postgres.yaml stop app
 docker compose --env-file .env -f deploy/compose.postgres.yaml run --rm --no-deps app backup --offline --directory /data/backups/site-20261029
 ```

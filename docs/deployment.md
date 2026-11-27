@@ -14,6 +14,18 @@
 
 1. 复制环境模板并修改所有默认密码（`.env` 已被 Git 忽略，切勿提交）：
 
+**Linux / macOS**：
+
+```bash
+cp .env.example .env
+# 编辑 .env，至少配置 WS_PUBLIC_URL、WS_DATABASE_DSN 及数据库密码
+docker compose --env-file .env -f deploy/compose.postgres.yaml config
+docker compose --env-file .env -f deploy/compose.postgres.yaml build app
+docker compose --env-file .env -f deploy/compose.postgres.yaml up -d postgres
+```
+
+**Windows (PowerShell)**：
+
 ```powershell
 Copy-Item .env.example .env
 # 编辑 .env，至少配置 WS_PUBLIC_URL、WS_DATABASE_DSN 及数据库密码
@@ -28,7 +40,7 @@ docker compose --env-file .env -f deploy/compose.postgres.yaml up -d postgres
 2. 服务默认监听宿主机的 `127.0.0.1:8090`，并持久化 `textures`、`backups` 与数据库命名卷。日常维护请勿运行 `docker compose down -v`，否则会清空数据卷。
 3. **初始化首个管理员**（仅全新空站执行）：
 
-```powershell
+```bash
 docker compose --env-file .env -f deploy/compose.postgres.yaml run --rm --no-deps app create-admin
 docker compose --env-file .env -f deploy/compose.postgres.yaml up -d app
 ```
@@ -39,7 +51,32 @@ docker compose --env-file .env -f deploy/compose.postgres.yaml up -d app
 
 推荐直接从 [GitHub Releases](https://github.com/WishingSkin/WishingSkin/releases) 下载对应平台（`linux` / `windows` / `darwin` 的 `amd64` / `arm64`）压缩包并核对 `SHA256SUMS.txt`；若使用预构建容器镜像，也可将编排文件中的 `build:` 替换为官方多架构镜像 `ghcr.io/wishingskin/wishingskin:<版本>`。
 
+**Linux / macOS**：
+
+```bash
+# 以 Linux amd64 为例（macOS 可替换为 darwin_arm64 并改用 shasum -a 256）
+sha256sum wishingskin_<版本>_linux_amd64.tar.gz
+tar -xzf wishingskin_<版本>_linux_amd64.tar.gz
+```
+
+**Windows (PowerShell)**：
+
+```powershell
+Get-FileHash wishingskin_<版本>_windows_amd64.zip -Algorithm SHA256
+Expand-Archive wishingskin_<版本>_windows_amd64.zip -DestinationPath .
+```
+
 如需自行从源码构建，环境需与 `Dockerfile` 保持一致（Go 1.26.11、Node.js 24.19.0、pnpm 11.24.0），先构建前端 `web/dist`，再编译 Go 程序：
+
+**Linux / macOS**：
+
+```bash
+pnpm --dir web install --frozen-lockfile
+pnpm --dir web build
+go build -trimpath -o bin/wishingskin ./cmd/wishingskin
+```
+
+**Windows (PowerShell)**：
 
 ```powershell
 pnpm --dir web install --frozen-lockfile
@@ -51,11 +88,42 @@ go build -trimpath -o bin/wishingskin.exe ./cmd/wishingskin
 
 1. 提前创建空的 PostgreSQL 或 MySQL 数据库（运行账号需具备 DDL 权限）以及独立的材质目录。
 2. 通过 systemd、Docker 或服务管理器注入 `WS_DATABASE_DRIVER`、`WS_DATABASE_DSN`、`WS_PUBLIC_URL` 和 `WS_TEXTURE_DIR`（程序不会自动加载 `.env`）。
-3. 首次运行 `serve` 或 `migrate` 会自动执行 schema 迁移。新站先在终端运行 `./bin/wishingskin.exe create-admin`，再启动 `./bin/wishingskin.exe serve`；若从 BS 迁入，请改按[迁移手册](migration-runbook.md)执行。
+3. 首次运行 `serve` 或 `migrate` 会自动执行 schema 迁移。新站先在终端运行 `./wishingskin create-admin`，再启动 `./wishingskin serve`（源码构建产物位于 `bin/wishingskin`，Windows 对应为 `.\wishingskin.exe` 或 `.\bin\wishingskin.exe`）；若从 BS 迁入，请改按[迁移手册](migration-runbook.md)执行。
+
+**Linux / macOS**：
+
+```bash
+export WS_DATABASE_DRIVER='postgres' # 或 mysql
+export WS_DATABASE_DSN='postgres://wishingskin:replace-me@127.0.0.1:5432/wishingskin?sslmode=disable'
+export WS_PUBLIC_URL='https://skin.example.com'
+export WS_TEXTURE_DIR='data/textures'
+./wishingskin create-admin
+./wishingskin serve
+```
+
+**Windows (PowerShell)**：
+
+```powershell
+$env:WS_DATABASE_DRIVER='postgres' # 或 mysql
+$env:WS_DATABASE_DSN='postgres://wishingskin:replace-me@127.0.0.1:5432/wishingskin?sslmode=disable'
+$env:WS_PUBLIC_URL='https://skin.example.com'
+$env:WS_TEXTURE_DIR='data/textures'
+.\wishingskin.exe create-admin
+.\wishingskin.exe serve
+```
 
 ## 上线后核验
 
 分别从本机和反向代理外网入口检查健康接口：
+
+**Linux / macOS**：
+
+```bash
+curl -i https://skin.example.com/healthz
+curl -i https://skin.example.com/readyz
+```
+
+**Windows (PowerShell)**：
 
 ```powershell
 Invoke-WebRequest https://skin.example.com/healthz

@@ -67,6 +67,20 @@ WishingSkin 通过 Plugin Runtime v2 支持动态可执行插件，自 `v0.3.0` 
 
 仓库在 `deploy/` 目录提供 PostgreSQL 与 MySQL 两套编排文件（二选一，不要同时启动）：
 
+**Linux / macOS**：
+
+```bash
+cp .env.example .env
+# 编辑 .env，设置 WS_PUBLIC_URL、WS_DATABASE_DSN 及数据库密码
+
+docker compose --env-file .env -f deploy/compose.postgres.yaml build app
+docker compose --env-file .env -f deploy/compose.postgres.yaml up -d postgres
+docker compose --env-file .env -f deploy/compose.postgres.yaml run --rm --no-deps app create-admin
+docker compose --env-file .env -f deploy/compose.postgres.yaml up -d app
+```
+
+**Windows (PowerShell)**：
+
 ```powershell
 Copy-Item .env.example .env
 # 编辑 .env，设置 WS_PUBLIC_URL、WS_DATABASE_DSN 及数据库密码
@@ -84,13 +98,23 @@ docker compose --env-file .env -f deploy/compose.postgres.yaml up -d app
 
 需要 Go 1.26.11、Node.js 24.19.0、pnpm 11.24.0 以及已创建的 PostgreSQL 或 MySQL 数据库。前端构建与 Go 编译需串行执行：
 
+**Linux / macOS**：
+
+```bash
+pnpm --dir web install --frozen-lockfile
+pnpm --dir web build
+go build -trimpath -o bin/wishingskin ./cmd/wishingskin
+```
+
+**Windows (PowerShell)**：
+
 ```powershell
 pnpm --dir web install --frozen-lockfile
 pnpm --dir web build
 go build -trimpath -o bin/wishingskin.exe ./cmd/wishingskin
 ```
 
-配置好数据库连接与公开地址环境变量后，先运行 `./bin/wishingskin.exe create-admin` 创建管理员，再执行 `./bin/wishingskin.exe serve` 启动服务。
+配置好数据库连接与公开地址环境变量后，先运行 `./bin/wishingskin create-admin`（Windows 为 `.\bin\wishingskin.exe create-admin`）创建管理员，再执行 `./bin/wishingskin serve`（Windows 为 `.\bin\wishingskin.exe serve`）启动服务。
 
 ## 文档导航
 

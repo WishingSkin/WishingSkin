@@ -6,6 +6,16 @@
 
 在仓库根目录执行构建：
 
+**Linux / macOS**：
+
+```bash
+pnpm --dir web install --frozen-lockfile
+pnpm --dir web build
+go build -trimpath -o bin/wishingskin ./cmd/wishingskin
+```
+
+**Windows (PowerShell)**：
+
 ```powershell
 pnpm --dir web install --frozen-lockfile
 pnpm --dir web build
@@ -15,9 +25,21 @@ go build -trimpath -o bin/wishingskin.exe ./cmd/wishingskin
 > [!IMPORTANT]
 > 前端构建与 Go 编译、测试、`go vet` 必须**严格串行**。Vite 构建时会清空并重写 `web/dist`，若与 Go `embed` 并发运行会导致构建报错。
 
-程序只从进程环境变量读取配置，不会自动加载 `.env`。首次初始化数据库后，在终端运行 `./bin/wishingskin.exe create-admin` 创建管理员，再执行 `./bin/wishingskin.exe serve`。完整配置见[配置与 CLI 参考](configuration.md)。
+程序只从进程环境变量读取配置，不会自动加载 `.env`。首次初始化数据库后，在终端运行 `./bin/wishingskin create-admin`（Windows 为 `.\bin\wishingskin.exe create-admin`）创建管理员，再执行 `./bin/wishingskin serve`（Windows 为 `.\bin\wishingskin.exe serve`）。完整配置见[配置与 CLI 参考](configuration.md)。
 
 ## 测试与质量检查
+
+**Linux / macOS**：
+
+```bash
+pnpm --dir web test
+pnpm --dir web build
+go test -timeout 20m ./... -count=1
+go vet ./...
+go build -trimpath -o bin/wishingskin ./cmd/wishingskin
+```
+
+**Windows (PowerShell)**：
 
 ```powershell
 pnpm --dir web test
@@ -30,6 +52,16 @@ go build -trimpath -o bin/wishingskin.exe ./cmd/wishingskin
 ### 双数据库集成测试
 
 数据库测试依赖环境变量 `WS_TEST_MYSQL_DSN` 与 `WS_TEST_POSTGRES_DSN`；未配置时相关用例会自动跳过。可使用仓库自带的本地测试容器：
+
+**Linux / macOS**：
+
+```bash
+docker compose -f compose.test.yaml up -d --wait
+export WS_TEST_MYSQL_DSN='root:wishingskin-local-test-only@tcp(127.0.0.1:33316)/wishingskin_test?parseTime=true'
+export WS_TEST_POSTGRES_DSN='postgres://wishingskin_test:wishingskin-local-test-only@127.0.0.1:35416/wishingskin_test?sslmode=disable'
+```
+
+**Windows (PowerShell)**：
 
 ```powershell
 docker compose -f compose.test.yaml up -d --wait
@@ -48,7 +80,7 @@ $env:WS_TEST_POSTGRES_DSN='postgres://wishingskin_test:wishingskin-local-test-on
 - Schema 定义与升级逻辑位于 `internal/store/migrate.go`。调整 schema 时，须同步更新备份表契约、升级手册与恢复校验，避免新程序直接打开或恢复不匹配的旧备份。
 - `testdata/bs` 提供合成 BS 快照与 PNG 样本（不含私钥）。需要手动测试预检查时，可运行以下生成器创建本地测试夹具（目标目录须尚不存在）：
 
-```powershell
+```bash
 go run ./testdata/bs/generate.go artifacts/generated-bs-fixture
 ```
 
@@ -79,6 +111,14 @@ WishingSkin 采用通用语义化版本（[Semantic Versioning 2.0.0](https://se
   - 修订号 `PATCH`：向后兼容的缺陷与安全修复。
 - **预发布版本**：如需在正式版前验证，使用 `-rc.1`、`-beta.1` 等后缀（例如 `v0.2.0-rc.1`）；本地开发构建默认显示 `0.1.0-dev`。
 - **注入构建版本号**：发布编译时通过 `-ldflags` 注入 `main.buildVersion`（不带 `v` 前缀，例如 `0.1.0`），供 Yggdrasil `implementationVersion` 等接口输出：
+
+**Linux / macOS**：
+
+```bash
+go build -trimpath -ldflags "-s -w -X main.buildVersion=0.1.0" -o bin/wishingskin ./cmd/wishingskin
+```
+
+**Windows (PowerShell)**：
 
 ```powershell
 go build -trimpath -ldflags "-s -w -X main.buildVersion=0.1.0" -o bin/wishingskin.exe ./cmd/wishingskin

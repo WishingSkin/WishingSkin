@@ -22,6 +22,15 @@ func communityPlugins() []sdk.Plugin {
 
 按顺序串行执行前端构建与 Go 编译：
 
+**Linux / macOS**：
+
+```bash
+pnpm --dir web build
+go build -trimpath -o bin/wishingskin ./cmd/wishingskin
+```
+
+**Windows (PowerShell)**：
+
 ```powershell
 pnpm --dir web build
 go build -trimpath -o bin/wishingskin.exe ./cmd/wishingskin
