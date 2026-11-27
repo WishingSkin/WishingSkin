@@ -197,11 +197,22 @@ function clear() {
   hostRequests.clear()
 }
 
+function clonePlain<T>(value: T): T {
+  if (value === undefined || value === null || typeof value !== 'object') return value
+  try {
+    return JSON.parse(JSON.stringify(value)) as T
+  } catch {
+    return value
+  }
+}
+
 async function postContext() {
   const version = generation
   const themeSnap = readHostThemeTokens()
   const fontFaceCss = await loadFontFaceCss(themeSnap.fontPreset, themeSnap.fontScope)
   if (version !== generation || !frame.value?.contentWindow || !html.value) return
+  const availableTools = clonePlain(props.availableTools)
+  const initialContext = clonePlain(props.initialContext)
   frame.value.contentWindow.postMessage({
     type: 'wishingskin:context',
     context: {
@@ -217,8 +228,8 @@ async function postContext() {
       fontScope: themeSnap.fontScope,
       tokens: themeSnap.tokens,
       fontFaceCss,
-      ...(props.availableTools ? { availableTools: props.availableTools } : {}),
-      ...(props.initialContext || {}),
+      ...(availableTools ? { availableTools } : {}),
+      ...(initialContext || {}),
     },
   }, '*')
 }
@@ -666,6 +677,10 @@ function receive(event: MessageEvent) {
   const message = event.data as Record<string, unknown> | null
   if (!message || typeof message !== 'object') return
   const target = event.source as Window
+  if (message.type === 'wishingskin:ready') {
+    void postContext()
+    return
+  }
   if (message.type === 'wishingskin:resize' && typeof message.height === 'number' && Number.isFinite(message.height)) {
     const next = Math.min(4800, Math.max(260, Math.ceil(message.height)))
     frameHeight.value = next

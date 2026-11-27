@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { computed, ref, watch } from 'vue'
+import { computed, shallowRef, watch } from 'vue'
 import { t } from '../i18n'
 import type { UserPluginEntry } from '../pluginModel'
 import { userToolPath } from '../workspaceRoutes'
@@ -43,7 +43,7 @@ const activeTool = computed(() => {
   return tools.value.find(item => item.plugin.id === props.selectedPluginId && item.frontend.id === props.selectedFrontendId) || null
 })
 
-const pendingHandoff = ref<{ pluginId: string; frontendId: string; context: Record<string, unknown> } | null>(null)
+const pendingHandoff = shallowRef<{ pluginId: string; frontendId: string; context: Record<string, unknown> } | null>(null)
 
 const activeInitialContext = computed(() => {
   if (!activeTool.value || !pendingHandoff.value) return undefined
