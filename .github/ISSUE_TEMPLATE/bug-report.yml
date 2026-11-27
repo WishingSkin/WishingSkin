@@ -1,0 +1,72 @@
+name: Bug 报告 / Bug Report
+description: 提交运行异常、接口错误或界面样式问题，帮助我们定位修复
+title: "[Bug]: "
+labels:
+  - bug
+body:
+  - type: markdown
+    attributes:
+      value: |
+        感谢反馈问题！请尽量提供完整版本与复现步骤。若涉及官方插件内部逻辑，请前往 [WishingSkin/plugins](https://github.com/WishingSkin/plugins/issues/new/choose) 提交。
+  - type: textarea
+    id: summary
+    attributes:
+      label: 问题概述 / Summary
+      description: 简明描述发生了什么异常。
+      placeholder: 例如：管理后台插件配置页按钮高度不一致，或启动器外置登录提示 401。
+    validations:
+      required: true
+  - type: input
+    id: version
+    attributes:
+      label: WishingSkin 版本 / Version
+      description: 填写 Release 版本号（如 v0.3.0）或具体 commit SHA。
+      placeholder: v0.3.0
+    validations:
+      required: true
+  - type: dropdown
+    id: deployment
+    attributes:
+      label: 部署方式 / Deployment
+      options:
+        - 预编译二进制 / Prebuilt Binary
+        - Docker Compose / 容器镜像
+        - 源码构建 / Build from Source
+        - 其他 / Other
+    validations:
+      required: true
+  - type: dropdown
+    id: database
+    attributes:
+      label: 数据库类型 / Database
+      options:
+        - PostgreSQL
+        - MySQL 8
+        - 不适用（纯前端或尚未连库）/ N/A
+    validations:
+      required: true
+  - type: textarea
+    id: steps
+    attributes:
+      label: 复现步骤 / Steps to Reproduce
+      description: 按顺序列出触发问题的操作步骤。
+      value: |
+        1. 进入「...」页面
+        2. 执行「...」操作
+        3. 观察到异常现象
+    validations:
+      required: true
+  - type: textarea
+    id: expected_actual
+    attributes:
+      label: 预期行为与实际结果 / Expected vs Actual
+      description: 说明正常情况下应当如何表现，以及当前实际表现。
+    validations:
+      required: true
+  - type: textarea
+    id: logs
+    attributes:
+      label: 报错日志、浏览器或截图 / Logs, Environment & Screenshots
+      description: 可粘贴服务端日志、浏览器控制台报错或直接拖入截图。注意先剔除数据库 DSN、密钥或 Token 等敏感信息！
+    validations:
+      required: false

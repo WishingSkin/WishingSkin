@@ -1,0 +1,11 @@
+blank_issues_enabled: false
+contact_links:
+  - name: 官方插件问题或建议 / Plugin Issues
+    url: https://github.com/WishingSkin/plugins/issues/new/choose
+    about: 涉及 ai-skin、moderation、skin-editor 等官方插件自身逻辑，请提交到插件仓库
+  - name: 使用交流与部署求助 / Discussions
+    url: https://github.com/WishingSkin/WishingSkin/discussions
+    about: 配置疑问、启动器兼容或社区交流请先前往 Discussions
+  - name: 安全漏洞私密报告 / Security Advisory
+    url: https://github.com/WishingSkin/WishingSkin/security/advisories/new
+    about: 请勿公开披露安全漏洞细节，点击此处私密上报

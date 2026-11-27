@@ -9,7 +9,23 @@
 </p>
 
 <p align="center">
-  Go 单体后端 · Vue 3 前端 · MySQL 8 / PostgreSQL · Yggdrasil 外置登录 · 插件扩展 · MC 实景主题系统
+  Go 单体后端 | Vue 3 前端 | MySQL 8 / PostgreSQL | Yggdrasil 外置登录 | 插件扩展 | MC 实景主题系统
+</p>
+
+<p align="center">
+  <a href="https://github.com/WishingSkin/WishingSkin/releases"><img src="https://img.shields.io/github/v/release/WishingSkin/WishingSkin" alt="Release" /></a>
+  <a href="https://github.com/WishingSkin/WishingSkin/actions/workflows/ci.yml"><img src="https://github.com/WishingSkin/WishingSkin/actions/workflows/ci.yml/badge.svg" alt="CI" /></a>
+  <a href="LICENSE"><img src="https://img.shields.io/github/license/WishingSkin/WishingSkin" alt="License" /></a>
+  <img src="https://img.shields.io/badge/Go-1.26-00ADD8" alt="Go 1.26" />
+  <a href="https://github.com/WishingSkin/WishingSkin/pkgs/container/wishingskin"><img src="https://img.shields.io/badge/Docker-GHCR-2496ED" alt="Docker GHCR" /></a>
+</p>
+
+<p align="center">
+  <a href="#快速开始">快速开始</a> |
+  <a href="#核心特性">核心特性</a> |
+  <a href="#官方插件生态">官方插件生态</a> |
+  <a href="#文档导航">文档导航</a> |
+  <a href="#社区反馈与贡献">社区反馈与贡献</a>
 </p>
 
 ---
@@ -25,6 +41,20 @@ WishingSkin 是一个面向自托管服主与社区的开源 Minecraft 皮肤站
 - **主题与个性化**：内置默认 + 13 套主题（含 8 套 Minecraft 地上/地下成对群系实景壁纸与全群系原版像素粒子）、支持上传 `client.jar`/材质包服务端白名单提取、内置开源像素字体与自定义 WOFF2 / 外链 CSS 字体、半透明/毛玻璃实时调节、中英文文案覆写、多区块首页及历史公告管理。
 - **插件与第三方集成**：内置邀请码（支持默认单次永久及自定义限时/限次模式、按可用状态导出）、积分与活动积分码（每日签到、扣费配置及限时/限次积分码批量生成、导出与用户兑换）、正版 Minecraft Java 验证绑定（Microsoft / Xbox Live / Minecraft 权益校验，不修改既有角色 UUID）、多 OIDC 登录、本站 OAuth2/OIDC 授权服务（支持应用权限白名单及只读资源 API Scope）、AuthMe/HTTP 外部账号连接与 S3 兼容对象存储；支持 Go SDK 源码插件和 Plugin Runtime v2 动态可执行插件（官方 Ed25519 签名、同步审核钩子、Host API、用户端工具工作区与官方静态市场源）。
 - **运维与迁移**：管理后台运行概览与字段级操作审计、单二进制 CLI 批量材质导入（`import-textures`，支持 `--dry-run` 试跑、配额与审核遵循）、每日定时备份、完整性校验与隔离恢复、公开材质签名 CDN、孤立文件回收，以及从固定版本 Blessing Skin 6.0.2 迁入账号、角色 UUID、材质与衣柜数据。
+
+## 官方插件生态
+
+WishingSkin 通过 Plugin Runtime v2 支持动态可执行插件，自 `v0.3.0` 起已内置官方 Ed25519 验签公钥。管理员在后台「插件管理 → 插件市场」点击「填入官方市场源」（或订阅 [`https://wishingskin.github.io/plugins/catalog.json`](https://wishingskin.github.io/plugins/catalog.json)）即可一键校验 SHA-256 与签名安装，插件源码与独立发布维护于 [WishingSkin/plugins](https://github.com/WishingSkin/plugins)。
+
+| 插件标识 | 名称 | 当前版本 | 功能简介 |
+| --- | --- | --- | --- |
+| `wishingskin.moderation` | 合规校验与内容审核 | `0.1.0` | 敏感词、RE2 正则、空白/纯色图检测与外部审核 Webhook |
+| `wishingskin.skin-overlays` | 皮肤装扮叠层 | `0.1.0` | 在现有皮肤上叠加透明装饰层，一键预览、合成与穿戴 |
+| `wishingskin.skin-editor` | 在线皮肤编辑器 | `0.1.0` | 带 UV 分区标注、对称绘制与实时预览的 64×64 像素工作台 |
+| `wishingskin.skin-tools` | 皮肤格式与调色工具 | `0.1.0` | 64×32 升级、Steve/Alex 手臂转换、HSL 调色与杂点清理 |
+| `wishingskin.render-card` | 角色渲染与玩家名片 | `0.1.0` | 角色头像、全身渲染图与可嵌入 README / 论坛的 SVG 名片 |
+| `wishingskin.server-sync` | 社群与游戏服务器联动 | `0.1.0` | 推送站内事件至 Discord / KOOK / 通用 Webhook 并提供查询接口 |
+| `wishingskin.ai-skin` | AI 皮肤工坊（测试版） | `0.1.0-beta.1` | 文本 D2-Strict 像素精绘、图像 B2-v2 正交投影与外接算力节点 |
 
 ## 快速开始
 
@@ -87,6 +117,13 @@ go build -trimpath -o bin/wishingskin.exe ./cmd/wishingskin
 - [BS 来源契约](docs/bs-source-contract.md)：冻结源码版本、字段映射与预检查校验规则
 - [架构与数据模型](docs/architecture.md)：目录职责、材质分层与系统边界
 - [开发指南](docs/development-guide.md)：本地开发、双库测试与前端视觉规范
+
+## 社区反馈与贡献
+
+- **问题反馈与需求建议**：请在 [Issues](https://github.com/WishingSkin/WishingSkin/issues) 中按表单提交 Bug 或功能建议；插件本身的问题请提交至 [WishingSkin/plugins](https://github.com/WishingSkin/plugins/issues)。
+- **使用交流与提问**：欢迎前往 [GitHub Discussions](https://github.com/WishingSkin/WishingSkin/discussions) 讨论部署、主题与插件用法。
+- **参与开发与版本记录**：提交代码前请阅读 [贡献指南](CONTRIBUTING.md)，版本变更记录见 [CHANGELOG.md](CHANGELOG.md)。
+- **安全漏洞上报**：切勿公开披露漏洞细节，请按 [安全政策](SECURITY.md) 通过 GitHub Private Vulnerability Reporting 私密提交。
 
 ## 许可证
 

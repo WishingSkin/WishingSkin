@@ -1,0 +1,40 @@
+name: 功能建议 / Feature Request
+description: 为 WishingSkin 提出新功能、体验改进或文档完善建议
+title: "[Feature]: "
+labels:
+  - enhancement
+body:
+  - type: dropdown
+    id: area
+    attributes:
+      label: 功能领域 / Area
+      options:
+        - 角色与材质管理
+        - Yggdrasil 外置登录与游戏接入
+        - 插件系统与官方市场
+        - 主题、字体与前端界面
+        - 运维、备份与 Blessing Skin 迁移
+        - 其他 / Other
+    validations:
+      required: true
+  - type: textarea
+    id: problem
+    attributes:
+      label: 需求背景与痛点 / Problem & Motivation
+      description: 当前版本在什么场景下存在不便或缺失？
+    validations:
+      required: true
+  - type: textarea
+    id: solution
+    attributes:
+      label: 期望实现方案 / Proposed Solution
+      description: 你希望站点或接口如何交互与运作？
+    validations:
+      required: true
+  - type: textarea
+    id: alternatives
+    attributes:
+      label: 替代方案与补充说明 / Alternatives & Context
+      description: 可选，补充你评估过的替代方式、参考截图或协议依据。
+    validations:
+      required: false
