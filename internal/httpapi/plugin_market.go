@@ -35,7 +35,7 @@ func fetchExtension(ctx context.Context, raw string, limit int64) ([]byte, error
 	if !validExtensionURL(raw) {
 		return nil, errors.New("invalid extension URL")
 	}
-	client := newSafeExtensionClient(30 * time.Second)
+	client := newSafeExtensionDownloadClient(60 * time.Second)
 	req, err := http.NewRequestWithContext(ctx, "GET", raw, nil)
 	if err != nil {
 		return nil, err

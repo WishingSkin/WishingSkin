@@ -23,7 +23,7 @@ WishingSkin 是一个面向自托管服主与社区的开源 Minecraft 皮肤站
 - **游戏接入**：内置 Yggdrasil 外置登录（支持 `authlib-injector` 一键拖拽启动器接入链接及可选开启角色名/非邮箱登录 `feature.non_email_login`，兼容 PCL2、HMCL、BakaXL 与 Prism Launcher），同时提供 CustomSkinLoader 配置导出与传统链接模板。
 - **账号与安全**：本地邮箱验证与找回、管理员审核激活、邮箱域名白黑名单、Cloudflare Turnstile、TOTP 两步验证与一次性恢复码、可切换递增或 10 位随机用户 ID；后台支持直接调整单用户积分余额、角色上限并重置密码（自动撤销所有会话与游戏令牌）；工作台内置未保存编辑离开/弹窗误关保护与统一一键复制操作。
 - **主题与个性化**：内置默认 + 13 套主题（含 8 套 Minecraft 地上/地下成对群系实景壁纸与全群系原版像素粒子）、支持上传 `client.jar`/材质包服务端白名单提取、内置开源像素字体与自定义 WOFF2 / 外链 CSS 字体、半透明/毛玻璃实时调节、中英文文案覆写、多区块首页及历史公告管理。
-- **插件与第三方集成**：内置邀请码（支持默认单次永久及自定义限时/限次模式、按可用状态导出）、积分与活动积分码（每日签到、扣费配置及限时/限次积分码批量生成、导出与用户兑换）、正版 Minecraft Java 验证绑定（Microsoft / Xbox Live / Minecraft 权益校验，不修改既有角色 UUID）、多 OIDC 登录、本站 OAuth2/OIDC 授权服务（支持应用权限白名单及只读资源 API Scope）、AuthMe/HTTP 外部账号连接与 S3 兼容对象存储；支持 Go SDK 源码插件和 ZIP / 静态市场源动态可执行插件。
+- **插件与第三方集成**：内置邀请码（支持默认单次永久及自定义限时/限次模式、按可用状态导出）、积分与活动积分码（每日签到、扣费配置及限时/限次积分码批量生成、导出与用户兑换）、正版 Minecraft Java 验证绑定（Microsoft / Xbox Live / Minecraft 权益校验，不修改既有角色 UUID）、多 OIDC 登录、本站 OAuth2/OIDC 授权服务（支持应用权限白名单及只读资源 API Scope）、AuthMe/HTTP 外部账号连接与 S3 兼容对象存储；支持 Go SDK 源码插件和 Plugin Runtime v2 动态可执行插件（官方 Ed25519 签名、同步审核钩子、Host API、用户端工具工作区与官方静态市场源）。
 - **运维与迁移**：管理后台运行概览与字段级操作审计、单二进制 CLI 批量材质导入（`import-textures`，支持 `--dry-run` 试跑、配额与审核遵循）、每日定时备份、完整性校验与隔离恢复、公开材质签名 CDN、孤立文件回收，以及从固定版本 Blessing Skin 6.0.2 迁入账号、角色 UUID、材质与衣柜数据。
 
 ## 快速开始
@@ -31,7 +31,7 @@ WishingSkin 是一个面向自托管服主与社区的开源 Minecraft 皮肤站
 ### 使用预编译包或官方镜像
 
 - **预编译二进制**：前往 [GitHub Releases](https://github.com/WishingSkin/WishingSkin/releases) 下载对应平台压缩包（提供 Linux / Windows / macOS 的 `amd64` 与 `arm64` 构建及 `SHA256SUMS.txt`）。
-- **Docker 镜像**：多架构官方镜像发布在 `ghcr.io/wishingskin/wishingskin`（例如 `ghcr.io/wishingskin/wishingskin:0.1.0` 或 `:latest`），可替换 `deploy/compose.*.yaml` 中的 `build:` 直接运行。
+- **Docker 镜像**：多架构官方镜像发布在 `ghcr.io/wishingskin/wishingskin`（例如 `ghcr.io/wishingskin/wishingskin:0.3.0` 或 `:latest`），可替换 `deploy/compose.*.yaml` 中的 `build:` 直接运行。
 
 ### Docker Compose（推荐）
 

@@ -20,11 +20,27 @@ const SignatureFile = "plugin.sig"
 
 var ErrInvalidSignature = errors.New("untrusted or invalid plugin signature")
 
+const builtInOfficialPluginPubKeyHex = "24b38fce460f6ac248f2575cba0909e701e0c91640785588026e62f6c5d904f4"
+
+var builtInOfficialPublicKeys = func() []ed25519.PublicKey {
+	raw, err := hex.DecodeString(builtInOfficialPluginPubKeyHex)
+	if err != nil || len(raw) != ed25519.PublicKeySize {
+		panic("invalid built-in official plugin public key")
+	}
+	return []ed25519.PublicKey{ed25519.PublicKey(raw)}
+}()
+
 // BuiltInOfficialPublicKeys returns compiled-in Ed25519 public keys trusted for
 // official wishingskin.* dynamic packages. Additional keys may be supplied via
 // WS_OFFICIAL_PLUGIN_PUBKEYS.
 func BuiltInOfficialPublicKeys() []ed25519.PublicKey {
-	return nil
+	out := make([]ed25519.PublicKey, len(builtInOfficialPublicKeys))
+	for i, k := range builtInOfficialPublicKeys {
+		cp := make(ed25519.PublicKey, len(k))
+		copy(cp, k)
+		out[i] = cp
+	}
+	return out
 }
 
 // ParsePublicKeys parses comma-separated 64-char hex or base64 Ed25519 public keys.

@@ -6,6 +6,7 @@ import (
 	"net"
 	"net/http"
 	"net/netip"
+	"strings"
 	"time"
 )
 
@@ -89,5 +90,35 @@ func newSafeExtensionClient(timeout time.Duration) *http.Client {
 		Timeout:       timeout,
 		Transport:     tr,
 		CheckRedirect: func(*http.Request, []*http.Request) error { return http.ErrUseLastResponse },
+	}
+}
+
+func newSafeExtensionDownloadClient(timeout time.Duration) *http.Client {
+	tr := http.DefaultTransport.(*http.Transport).Clone()
+	tr.Proxy = nil
+	tr.DialContext = safeExtensionDialContext
+	return &http.Client{
+		Timeout:   timeout,
+		Transport: tr,
+		CheckRedirect: func(req *http.Request, via []*http.Request) error {
+			if len(via) >= 5 {
+				return errors.New("too many redirects")
+			}
+			if req.Method != http.MethodGet && req.Method != http.MethodHead {
+				return http.ErrUseLastResponse
+			}
+			if !validExtensionURL(req.URL.String()) {
+				return errors.New("invalid redirect URL")
+			}
+			if len(via) > 0 {
+				if strings.EqualFold(via[0].URL.Scheme, "https") && !strings.EqualFold(req.URL.Scheme, "https") {
+					return errors.New("https downgrade redirect is not allowed")
+				}
+				if !loopbackOriginHost(via[0].URL.Hostname()) && loopbackOriginHost(req.URL.Hostname()) {
+					return errors.New("redirect to loopback host is not allowed")
+				}
+			}
+			return nil
+		},
 	}
 }

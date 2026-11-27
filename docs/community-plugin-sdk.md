@@ -62,7 +62,7 @@ go build -trimpath -o bin/wishingskin.exe ./cmd/wishingskin
 {"packages":[{"id":"example.greeting","name":"Greeting","version":"1.0.0","url":"https://plugins.example.com/greeting.zip","sha256":"<ZIP 的 SHA-256>"}]}
 ```
 
-下载不跟随重定向；安装与升级前都会展示清单与权限，并核验 ZIP 的 SHA-256 摘要一致。ZIP 压缩与展开上限均为 128 MiB、最多 256 个条目，根目录包含 `plugin.json` 及目标平台可执行文件：
+下载支持最多 5 跳受限 HTTPS 安全重定向（每一跳均校验非私网/非回环/非保留 IP，禁止 HTTPS 降级为 HTTP）；安装与升级前都会展示清单与权限，并核验 ZIP 的 SHA-256 摘要一致。ZIP 压缩与展开上限均为 128 MiB、最多 256 个条目，根目录包含 `plugin.json` 及目标平台可执行文件：
 
 ```json
 {
@@ -112,6 +112,12 @@ X-WishingSkin-Signature: sha256=<HMAC-SHA256 十六进制>
 ```
 
 动态插件事件与 Webhook 均走持久队列，每分钟巡检、每批最多 4 条、失败最多重试 5 次、完成记录保留 30 天。接收端应校验时间窗口并按投递 ID 做幂等去重。
+
+## Plugin Runtime v2（`protocol: 2`）补充说明
+
+- **官方命名空间签名**：`wishingskin.*` 插件包须附带 `plugin.sig` 且通过 Ed25519 校验。宿主已内置正式官方发布公钥，同时可通过 `WS_OFFICIAL_PLUGIN_PUBKEYS` 追加附加公钥。
+- **同步审核钩子与二进制路由**：`protocol: 2` 插件可声明 `hooks`（`text.check`、`texture.upload.check`）并申请 `hooks` / `hooks.image` 权限；路由响应可通过 `RuntimeResponse` 返回 `PNG` / `SVG` 等受限安全媒体类型。
+- **内部 Host API 与用户端工作区**：宿主在 `127.0.0.1:0` 为每个插件注入独立 Bearer Token，按 `host.*` 声明权限开放站点、角色、材质与积分读写接口。`userFrontends`（`user.tools`、`texture.action`）运行在独立 opaque origin iframe 中，通过 `postMessage` 与宿主通信（支持 `wishingskin:ready` 握手与 `openPluginTool` 跨工具传参跳转）；其中代表当前登录用户执行的文件保存与穿戴桥接动作沿用用户浏览器会话与 CSRF 校验。
 
 ## 插件备份与恢复边界
 

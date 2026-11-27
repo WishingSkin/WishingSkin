@@ -4,6 +4,26 @@
 
 ## [Unreleased]
 
+## [0.3.0] - 2026-11-27
+
+### 新增
+
+- Plugin Runtime v2（`protocol: 2`）：扩展 `pkg/plugin` SDK（新增 `UserFrontend`、`HookRequest` / `HookDecision`、`RuntimeResponse` 二进制响应字段与 `ServeRuntimeV2`），管理端区分展示“官方扩展”与“官方签名”徽标。
+- Ed25519 官方插件签名与内置信任公钥：在 `internal/runtimeplugin` 中内置正式官方发布公钥（`BuiltInOfficialPublicKeys()`），支持通过 `WS_OFFICIAL_PLUGIN_PUBKEYS` 追加逗号分隔公钥；仅验签通过的动态包可使用 `wishingskin.` 命名空间。
+- 同步合规审核钩子（`hooks`、`hooks.image`）：支持在账号改名、角色改名及材质上传落库前触发 `text.check` 与 `texture.upload.check` 进行拦截、放行或转审。
+- 内部 Host API 与扩展事件：宿主仅监听 `127.0.0.1:0` 提供按插件 Bearer Token 鉴权的受控接口（支持读取站点、角色、材质字节，并按权限写入新材质、穿戴绑定与扣减积分）；事件系统新增 `character.rename`、`character.delete`、`minecraft.link`、`minecraft.unlink`。
+- 用户端工具工作区与材质动作槽位：新增 `/user/tools/{pluginId}/{frontendId}` 工具箱与材质详情动作入口，提供主题/字体令牌同步、材质选择器、本地文件导出、右侧 3D 实时预览停靠栏、跨工具一键跳转与 `wishingskin:ready` 握手。
+- 官方静态插件市场接入与安全重定向下载：后台插件市场支持一键填入官方市场源（`https://wishingskin.github.io/plugins/catalog.json`）；市场目录与包下载客户端支持最多 5 跳的安全重定向，拦截私网/回环/元数据 IP 与 HTTPS 降级跳转，兼容 GitHub Releases 302 下载链路。
+
+### 改进与修复
+
+- 优化 `PluginFrontend` 与 `UserToolsWorkspace` 跨工具上下文传递，修复响应式 `Proxy` 引发的结构化克隆异常及下载/变更通知桥接字段兼容性。
+- 修复 PostgreSQL 集成测试并发执行时查询全局 `pg_indexes` 引起的偶发 OID 竞态。
+
+### 兼容性
+
+- 数据库维持 Schema 29，无新增表结构迁移，可从 `v0.2.0` 原地平滑升级并完全兼容既有 `protocol: 1` 社区插件。
+
 ## [0.2.0] - 2026-11-25
 
 ### 新增

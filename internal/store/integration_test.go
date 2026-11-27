@@ -70,7 +70,17 @@ func TestDatabaseIntegration(t *testing.T) {
 			}
 
 			t.Run("character_owner_index", func(t *testing.T) {
-				query := "SELECT COUNT(*) FROM pg_indexes WHERE schemaname=current_schema() AND tablename='characters' AND indexname='characters_user_id_idx' AND indexdef LIKE '%(user_id)'"
+				query := `SELECT COUNT(*)
+FROM pg_class t
+JOIN pg_namespace n ON n.oid = t.relnamespace
+JOIN pg_index ix ON ix.indrelid = t.oid
+JOIN pg_class i ON i.oid = ix.indexrelid
+JOIN pg_attribute a ON a.attrelid = t.oid AND a.attnum = ix.indkey[0]
+WHERE n.nspname = current_schema()
+  AND t.relname = 'characters'
+  AND i.relname = 'characters_user_id_idx'
+  AND ix.indnatts = 1
+  AND a.attname = 'user_id'`
 				if dialect == "mysql" {
 					query = "SELECT COUNT(*) FROM information_schema.STATISTICS WHERE TABLE_SCHEMA=DATABASE() AND TABLE_NAME='characters' AND COLUMN_NAME='user_id' AND SEQ_IN_INDEX=1"
 				}

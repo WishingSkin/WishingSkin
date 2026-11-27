@@ -16,6 +16,7 @@ WishingSkin 从进程环境变量读取启动配置，不会自动加载 `.env` 
 | `WS_TEXTURE_ACCOUNT_LIMIT_BYTES` | 否 | `268435456`（256 MiB） | 单账号上传配额初始默认值（按未删除的自有材质记录累计，设为 `0` 不限）；后台“存储与备份”保存配额后优先生效 |
 | `WS_TEXTURE_SITE_LIMIT_BYTES` | 否 | `10737418240`（10 GiB） | 全站上传配额初始默认值（按去重材质文件累计含待回收文件，设为 `0` 不限）；后台“存储与备份”保存配额后优先生效 |
 | `WS_PLUGIN_DIR` | 否 | `<WS_TEXTURE_DIR>/.plugins` | 动态插件包存放目录，需具备读写与执行权限 |
+| `WS_OFFICIAL_PLUGIN_PUBKEYS` | 否 | 已内置正式官方公钥 | 逗号分隔的附加 Ed25519 官方插件公钥（Hex 或 Base64），用于扩展受信任的 `wishingskin.*` 签名来源 |
 | `WS_SETTINGS_KEY_FILE` | 否 | `<WS_TEXTURE_DIR>/.settings.key` | 32 字节站点设置加密密钥文件路径；生产环境建议放在材质目录之外的受限位置并单独备份 |
 | `WS_TRUSTED_PROXIES` | 否 | 空 | 允许信任 `X-Forwarded-For` 的反向代理网段，逗号分隔的 IPv4/IPv6 CIDR（如 `127.0.0.1/32,172.18.0.0/16`）；切勿填入公网用户可达网段 |
 

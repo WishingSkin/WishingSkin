@@ -42,7 +42,7 @@
 | 本站 OAuth2 | 授权码 + PKCE S256，支持公开/机密客户端、应用权限白名单、OIDC 发现、RS256 ID Token、Refresh Token 轮换、撤销、内省与窄范围只读 API（`/oauth/api/{characters,textures,points,minecraft}`） |
 | 外部账号连接 | AuthMe 只读 MySQL 与通用 HTTP 主动验证绑定；不保存外部密码，也不替代本站登录密码 |
 | S3 对象存储 | 保留本地副本、优先远端读取并校验 hash（异常自动回退本地）、旧材质幂等同步与远端分页回收 |
-| 社区插件 | Go SDK 源码插件，以及通过 ZIP / 静态市场源安装的动态可执行插件；支持独立配置、热加载、路由、页面、任务、KV 数据、SQL 迁移、iframe 前端和持久事件 |
+| 社区插件 | Go SDK 源码插件，以及支持 Plugin Runtime v2（`protocol: 2`）的动态可执行插件：支持官方 Ed25519 签名与内置公钥验证、一键订阅官方市场源、同步审核钩子（`text.check` / `texture.upload.check`）、受控内部 Host API、用户端工具工作区与材质详情动作（`user.tools` / `texture.action`）、热重载、KV 数据与 SQL 迁移 |
 | Webhook | 支持 HMAC-SHA256 签名、持久队列投递、失败重试与最近 50 条投递历史 |
 
 ### 明确边界

@@ -339,3 +339,19 @@ func TestInspectWithKeysTypedSentinelErrors(t *testing.T) {
 		t.Fatalf("expected ErrUnsupportedPlatform, got %v", err)
 	}
 }
+
+func TestBuiltInOfficialPublicKeysReturnsImmutableCopy(t *testing.T) {
+	keys := rp.BuiltInOfficialPublicKeys()
+	if len(keys) != 1 || len(keys[0]) != ed25519.PublicKeySize {
+		t.Fatalf("unexpected built-in keys: %+v", keys)
+	}
+	origHex := hex.EncodeToString(keys[0])
+	if origHex != "24b38fce460f6ac248f2575cba0909e701e0c91640785588026e62f6c5d904f4" {
+		t.Fatalf("unexpected built-in public key hex: %s", origHex)
+	}
+	keys[0][0] ^= 0xff
+	keysAgain := rp.BuiltInOfficialPublicKeys()
+	if hex.EncodeToString(keysAgain[0]) != origHex {
+		t.Fatalf("built-in public key slice was mutated")
+	}
+}
